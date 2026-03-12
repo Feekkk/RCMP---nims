@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 session_start();
 if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
     header('Location: ../auth/login.php');
@@ -835,7 +835,7 @@ $status_meta = [
                     </button>
                     <div class="action-dropdown">
                         <a href="../technician/laptopAdd.php" class="action-dropdown-item"><i class="ri-macbook-line" style="color: var(--primary);"></i> Single Asset</a>
-                        <a href="#" class="action-dropdown-item"><i class="ri-stack-line" style="color: var(--secondary);"></i> Bulk Assets</a>
+                        <a href="../technician/laptopCSV.php" class="action-dropdown-item"><i class="ri-stack-line" style="color: var(--secondary);"></i> Bulk Assets</a>
                     </div>
                 </div>
             </div>
