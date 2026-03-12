@@ -589,7 +589,7 @@
             <a href="index.php">Overview</a>
             <a href="#features">Capabilities</a>
             <a href="#resources">IT Guidelines</a>
-            <button class="btn-login-nav" onclick="window.location.href='login.php'">IT Staff Login</button>
+            <button class="btn-login-nav" onclick="window.location.href='auth/login.php'">IT Staff Login</button>
         </div>
     </nav>
 
@@ -609,7 +609,7 @@
             </p>
             
             <div class="cta-group">
-                <a href="login.php" class="btn btn-primary">
+                <a href="auth/login.php" class="btn btn-primary">
                     <i class="ri-login-circle-line" style="margin-right: 8px; font-size: 1.2rem;"></i> System Access
                 </a>
                 <a href="#about" class="btn btn-secondary">
