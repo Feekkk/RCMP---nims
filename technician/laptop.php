@@ -1,11 +1,62 @@
-<?php
+﻿<?php
 session_start();
-// Basic authentication check: ensures the user is logged in and is a technician (role_id 1)
 if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
     header('Location: ../auth/login.php');
     exit;
 }
+
+require_once '../config/database.php';
+
+//  Active status filter (from URL ?status_id=N) 
+$filter_status = isset($_GET['status_id']) && is_numeric($_GET['status_id'])
+    ? (int)$_GET['status_id'] : null;
+
+//  Status counts (all statuses, even zero)
+$status_counts = db()->query("
+    SELECT s.status_id, s.name, COUNT(l.asset_id) AS total
+    FROM status s
+    LEFT JOIN laptop l ON l.status_id = s.status_id
+    WHERE s.status_id NOT IN (9, 10)
+    GROUP BY s.status_id, s.name
+    ORDER BY s.status_id
+")->fetchAll();
+
+// Total laptops
+$total_laptops = (int)db()->query("SELECT COUNT(*) FROM laptop")->fetchColumn();
+
+//  Laptop list
+$sql = "
+    SELECT l.asset_id, l.serial_num, l.brand, l.model,
+           l.PO_DATE, l.status_id, s.name AS status_name,
+           h.staff_id AS assignee_id, hs.department
+    FROM laptop l
+    JOIN status s ON s.status_id = l.status_id
+    LEFT JOIN handover h ON h.asset_id = l.asset_id
+    LEFT JOIN handover_staff hs ON hs.handover_id = h.handover_id
+";
+$params = [];
+if ($filter_status !== null) {
+    $sql .= " WHERE l.status_id = :status_id";
+    $params[':status_id'] = $filter_status;
+}
+$sql .= " ORDER BY l.asset_id DESC";
+$stmt = db()->prepare($sql);
+$stmt->execute($params);
+$laptops = $stmt->fetchAll();
+
+// Status visual meta (icon, badge class, colour) 
+$status_meta = [
+    1 => ['icon'=>'ri-checkbox-circle-fill', 'cls'=>'badge-active',   'colour'=>'#10b981','bg'=>'rgba(16,185,129,0.1)',  'border'=>'rgba(16,185,129,0.3)'],
+    2 => ['icon'=>'ri-close-circle-fill',    'cls'=>'badge-disposed', 'colour'=>'#64748b','bg'=>'rgba(100,116,139,0.1)','border'=>'rgba(100,116,139,0.3)'],
+    3 => ['icon'=>'ri-user-received-2-fill', 'cls'=>'badge-progress', 'colour'=>'#2563eb','bg'=>'rgba(37,99,235,0.1)',  'border'=>'rgba(37,99,235,0.3)'],
+    4 => ['icon'=>'ri-archive-fill',         'cls'=>'badge-reserve',  'colour'=>'#8b5cf6','bg'=>'rgba(139,92,246,0.1)', 'border'=>'rgba(139,92,246,0.3)'],
+    5 => ['icon'=>'ri-tools-fill',           'cls'=>'badge-repair',   'colour'=>'#f59e0b','bg'=>'rgba(245,158,11,0.1)', 'border'=>'rgba(245,158,11,0.3)'],
+    6 => ['icon'=>'ri-alert-fill',           'cls'=>'badge-disposed', 'colour'=>'#ef4444','bg'=>'rgba(239,68,68,0.1)',  'border'=>'rgba(239,68,68,0.3)'],
+    7 => ['icon'=>'ri-delete-bin-fill',      'cls'=>'badge-disposed', 'colour'=>'#94a3b8','bg'=>'rgba(148,163,184,0.1)','border'=>'rgba(148,163,184,0.3)'],
+    8 => ['icon'=>'ri-map-pin-line',         'cls'=>'badge-repair',   'colour'=>'#f97316','bg'=>'rgba(249,115,22,0.1)', 'border'=>'rgba(249,115,22,0.3)'],
+];
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -28,14 +79,15 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             --accent: #f59e0b;
             --danger: #ef4444;
             --success: #10b981;
-            --dark: #0f172a;
-            --darker: #020617;
-            --light: #f8fafc;
-            --glass-bg: rgba(15, 23, 42, 0.65);
-            --glass-border: rgba(255, 255, 255, 0.08);
-            --glass-panel: rgba(255, 255, 255, 0.03);
-            --text-main: #f1f5f9;
-            --text-muted: #94a3b8;
+            --bg: #f1f5f9;
+            --sidebar-bg: #ffffff;
+            --card-bg: #ffffff;
+            --card-border: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --glass-panel: #f8fafc;
+            --glass-bg: #ffffff;
+            --glass-border: #e2e8f0;
         }
 
         * {
@@ -46,38 +98,16 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: var(--darker);
+            background-color: var(--bg);
             color: var(--text-main);
             overflow-x: hidden;
             display: flex;
             min-height: 100vh;
         }
 
-        /* Background Layers */
-        .page-bg {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: -2;
-            background-image: url('../public/bgm.png');
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
-        }
-
-        .bg-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: -1;
-            background: linear-gradient(135deg, rgba(2, 6, 23, 0.95) 0%, rgba(15, 23, 42, 0.85) 100%);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-        }
+        .page-bg { display: none; }
+        .bg-overlay { display: none; }
+        .blob { display: none; }
 
         /* Decorative glowing orbs */
         .blob {
@@ -103,10 +133,8 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         .sidebar {
             width: 280px;
             height: 100vh;
-            background: rgba(15, 23, 42, 0.3);
-            backdrop-filter: blur(25px);
-            -webkit-backdrop-filter: blur(25px);
-            border-right: 1px solid var(--glass-border);
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--card-border);
             position: fixed;
             top: 0;
             left: 0;
@@ -114,7 +142,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             flex-direction: column;
             padding: 1.5rem;
             z-index: 100;
-            box-shadow: 5px 0 25px rgba(0,0,0,0.2);
+            box-shadow: 4px 0 20px rgba(15,23,42,0.06);
             transition: transform 0.3s ease;
         }
 
@@ -150,35 +178,28 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             font-weight: 500;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
-            overflow: hidden;
         }
 
         .nav-item:hover {
-            color: var(--text-main);
-            background: rgba(255, 255, 255, 0.05);
+            color: var(--primary);
+            background: rgba(37, 99, 235, 0.06);
         }
 
         .nav-item.active {
-            color: white;
-            background: linear-gradient(90deg, rgba(37, 99, 235, 0.2), transparent);
-            border: 1px solid rgba(37, 99, 235, 0.3);
-            box-shadow: inset 2px 0 0 var(--secondary);
+            color: var(--primary);
+            background: rgba(37, 99, 235, 0.1);
+            border: 1px solid rgba(37, 99, 235, 0.2);
+            box-shadow: inset 3px 0 0 var(--primary);
         }
 
-        .nav-item i {
-            font-size: 1.25rem;
-            color: inherit;
-        }
-
-        .nav-item.active i {
-            color: var(--secondary);
-        }
+        .nav-item i { font-size: 1.25rem; color: inherit; }
+        .nav-item.active i { color: var(--primary); }
 
         .user-profile {
             margin-top: auto;
             padding: 1rem;
             background: var(--glass-panel);
-            border: 1px solid var(--glass-border);
+            border: 1px solid var(--card-border);
             border-radius: 16px;
             display: flex;
             align-items: center;
@@ -188,8 +209,8 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         }
 
         .user-profile:hover {
-            background: rgba(255,255,255,0.08);
-            border-color: rgba(255,255,255,0.15);
+            background: rgba(37,99,235,0.06);
+            border-color: rgba(37,99,235,0.2);
         }
 
         .avatar {
@@ -207,15 +228,12 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3);
         }
 
-        .user-info {
-            flex: 1;
-            overflow: hidden;
-        }
+        .user-info { flex: 1; overflow: hidden; }
 
         .user-name {
             font-size: 0.9rem;
             font-weight: 600;
-            color: white;
+            color: var(--text-main);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -223,7 +241,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
 
         .user-role {
             font-size: 0.75rem;
-            color: var(--secondary);
+            color: var(--primary);
             margin-top: 0.2rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -271,22 +289,20 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         }
 
         .nav-dropdown-item:hover {
-            color: var(--text-main);
-            background: rgba(255, 255, 255, 0.05);
+            color: var(--primary);
+            background: rgba(37, 99, 235, 0.06);
         }
 
         .nav-dropdown-item:hover::before {
-            background: var(--secondary);
-            box-shadow: 0 0 8px var(--secondary);
+            background: var(--primary);
         }
         
         .nav-dropdown-item.active {
-            color: white;
+            color: var(--primary);
         }
 
         .nav-dropdown-item.active::before {
-            background: var(--secondary);
-            box-shadow: 0 0 8px var(--secondary);
+            background: var(--primary);
         }
 
         .nav-item.open .chevron {
@@ -308,7 +324,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             align-items: flex-end;
             margin-bottom: 2rem;
             animation: fadeInDown 0.6s ease-out;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
+            border-bottom: 1px solid var(--card-border);
             padding-bottom: 1.5rem;
         }
 
@@ -318,14 +334,14 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             font-weight: 700;
             margin-bottom: 0.3rem;
             letter-spacing: -0.5px;
-            color: white;
+            color: var(--text-main);
             display: flex;
             align-items: center;
             gap: 0.75rem;
         }
 
         .page-title h1 i {
-            color: var(--secondary);
+            color: var(--primary);
         }
 
         .page-title p {
@@ -333,7 +349,59 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             font-size: 1rem;
         }
 
+        /* Status Filter Cards */
+        .status-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.75rem;
+            animation: fadeInUp 0.65s ease-out;
+        }
+
+        .status-card {
+            background: var(--card-bg);
+            border: 2px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.1rem 1.25rem;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            text-decoration: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+
+        .status-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(15,23,42,0.08);
+        }
+
+        .status-card.active-filter {
+            box-shadow: 0 4px 16px rgba(15,23,42,0.1);
+        }
+
+        .status-card-icon { font-size: 1.5rem; }
+        .status-card-count {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--text-main);
+            line-height: 1;
+        }
+        .status-card-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-card-all { border-color: var(--primary); }
+        .status-card-all .status-card-icon { color: var(--primary); }
+        .status-card-all.active-filter { background: rgba(37,99,235,0.06); }
+
         /* Controls / Actions */
+
         .table-controls {
             display: flex;
             justify-content: space-between;
@@ -360,11 +428,11 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
 
         .search-input {
             width: 100%;
-            background: var(--glass-panel);
-            border: 1px solid var(--glass-border);
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
             border-radius: 12px;
             padding: 0.85rem 1rem 0.85rem 3rem;
-            color: white;
+            color: var(--text-main);
             font-family: 'Inter', sans-serif;
             font-size: 0.95rem;
             transition: all 0.3s ease;
@@ -372,9 +440,9 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         }
 
         .search-input:focus {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: var(--secondary);
-            box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+            background: #fff;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
 
         .action-buttons {
@@ -411,40 +479,32 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
 
         .btn-outline {
             background: var(--glass-panel);
-            border: 1px solid var(--glass-border);
-            color: white;
+            border: 1px solid var(--card-border);
+            color: var(--text-muted);
         }
 
         .btn-outline:hover {
-            background: rgba(255,255,255,0.08);
-            border-color: rgba(255,255,255,0.2);
+            background: rgba(37,99,235,0.06);
+            border-color: rgba(37,99,235,0.2);
+            color: var(--primary);
             transform: translateY(-2px);
         }
 
         /* Glass Table Card */
         .glass-card {
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
             border-radius: 20px;
             padding: 1.75rem;
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 12px rgba(15,23,42,0.06);
             animation: fadeInUp 0.9s ease-out;
             overflow: hidden;
         }
 
         /* Table Styles */
-        .table-responsive {
-            overflow-x: auto;
-            width: 100%;
-        }
+        .table-responsive { overflow-x: auto; width: 100%; }
 
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-            white-space: nowrap;
-        }
+        .data-table { width: 100%; border-collapse: collapse; white-space: nowrap; }
 
         .data-table th {
             text-align: left;
@@ -454,29 +514,20 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             font-size: 0.8rem;
             text-transform: uppercase;
             letter-spacing: 1px;
-            border-bottom: 1px solid rgba(255,255,255,0.08);
+            border-bottom: 1px solid var(--card-border);
         }
 
         .data-table td {
             padding: 1.25rem 1rem;
             font-size: 0.95rem;
-            border-bottom: 1px dashed rgba(255,255,255,0.05);
+            border-bottom: 1px dashed var(--card-border);
             color: var(--text-main);
             vertical-align: middle;
         }
 
-        .data-table tbody tr {
-            transition: background 0.3s ease;
-        }
-
-        .data-table tbody tr:hover {
-            background: rgba(255,255,255,0.03);
-            border-radius: 8px;
-        }
-
-        .data-table tr:last-child td {
-            border-bottom: none;
-        }
+        .data-table tbody tr { transition: background 0.3s ease; }
+        .data-table tbody tr:hover { background: rgba(37,99,235,0.03); }
+        .data-table tr:last-child td { border-bottom: none; }
 
         .laptop-identity {
             display: flex;
@@ -499,7 +550,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
 
         .laptop-info h4 {
             font-weight: 600;
-            color: white;
+            color: var(--text-main);
             margin-bottom: 0.2rem;
             font-size: 0.95rem;
         }
@@ -528,9 +579,9 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
 
         .btn-action {
             padding: 0.5rem;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
-            color: var(--text-main);
+            background: var(--glass-panel);
+            border: 1px solid var(--card-border);
+            color: var(--text-muted);
             border-radius: 8px;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -558,7 +609,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             gap: 0.5rem;
             margin-top: 1.5rem;
             padding-top: 1.5rem;
-            border-top: 1px solid rgba(255,255,255,0.05);
+            border-top: 1px solid var(--card-border);
         }
 
         .page-btn {
@@ -569,7 +620,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             align-items: center;
             justify-content: center;
             background: var(--glass-panel);
-            border: 1px solid var(--glass-border);
+            border: 1px solid var(--card-border);
             color: var(--text-muted);
             cursor: pointer;
             transition: all 0.3s ease;
@@ -577,8 +628,9 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         }
 
         .page-btn:hover:not(:disabled) {
-            background: rgba(255,255,255,0.1);
-            color: white;
+            background: rgba(37,99,235,0.08);
+            color: var(--primary);
+            border-color: rgba(37,99,235,0.2);
         }
 
         .page-btn.active {
@@ -608,12 +660,12 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             position: absolute;
             top: calc(100% + 0.5rem);
             right: 0;
-            background: var(--darker);
-            border: 1px solid var(--glass-border);
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
             border-radius: 12px;
             padding: 0.5rem;
             min-width: 140px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            box-shadow: 0 8px 25px rgba(15,23,42,0.12);
             display: none;
             flex-direction: column;
             gap: 0.25rem;
@@ -639,8 +691,8 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         }
 
         .action-dropdown-item:hover {
-            background: rgba(255, 255, 255, 0.05);
-            color: white;
+            background: rgba(37, 99, 235, 0.06);
+            color: var(--primary);
         }
 
         /* Animations */
@@ -734,11 +786,35 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             </div>
         </header>
 
+        <!-- Status Filter Cards -->
+        <div class="status-cards">
+            <!-- All -->
+            <a href="laptop.php"
+               class="status-card status-card-all <?= $filter_status === null ? 'active-filter' : '' ?>">
+                <span class="status-card-icon"><i class="ri-macbook-line"></i></span>
+                <span class="status-card-count"><?= $total_laptops ?></span>
+                <span class="status-card-label">All Assets</span>
+            </a>
+            <?php foreach ($status_counts as $sc):
+                $sid  = (int)$sc['status_id'];
+                $meta = $status_meta[$sid] ?? ['icon'=>'ri-question-line','cls'=>'','colour'=>'#64748b','bg'=>'rgba(100,116,139,0.1)','border'=>'rgba(100,116,139,0.3)'];
+                $active = ($filter_status === $sid);
+            ?>
+            <a href="laptop.php?status_id=<?= $sid ?>"
+               class="status-card <?= $active ? 'active-filter' : '' ?>"
+               style="color:<?= $meta['colour'] ?>;<?= $active ? "border-color:{$meta['colour']};background:{$meta['bg']};" : '' ?>">
+                <span class="status-card-icon"><i class="<?= $meta['icon'] ?>"></i></span>
+                <span class="status-card-count" style="color:var(--text-main)"><?= (int)$sc['total'] ?></span>
+                <span class="status-card-label"><?= htmlspecialchars($sc['name']) ?></span>
+            </a>
+            <?php endforeach; ?>
+        </div>
+
         <!-- Tool & Search Bar -->
         <div class="table-controls">
             <div class="search-box">
                 <i class="ri-search-2-line"></i>
-                <input type="text" class="search-input" placeholder="Search by Model, Serial No, or Assignee...">
+                <input type="text" id="searchInput" class="search-input" placeholder="Search by Model, Serial No, or Assignee...">
             </div>
             <div class="action-buttons">
                 <button class="btn btn-outline" title="Filter Records">
@@ -779,131 +855,71 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
                             <th>Actions</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="laptopTableBody">
+                        <?php if (empty($laptops)): ?>
+                        <tr>
+                            <td colspan="6" style="text-align:center; padding: 3rem; color: var(--text-muted);">
+                                <i class="ri-inbox-line" style="font-size:2rem; display:block; margin-bottom:0.5rem;"></i>
+                                No laptops found<?= $filter_status !== null ? ' for this status' : '' ?>.
+                            </td>
+                        </tr>
+                        <?php else: foreach ($laptops as $row):
+                            $sid   = (int)$row['status_id'];
+                            $meta  = $status_meta[$sid] ?? ['icon'=>'ri-question-line','cls'=>'badge-active','colour'=>'#64748b','bg'=>'rgba(100,116,139,0.15)','border'=>'rgba(100,116,139,0.3)'];
+                            $icon_style = "color:{$meta['colour']};background:{$meta['bg']};border:1px solid {$meta['border']};";
+                            $device = trim(htmlspecialchars($row['brand'] ?? '') . ' ' . htmlspecialchars($row['model'] ?? ''));
+                            if (!$device) $device = 'Unknown Device';
+                            $assignee   = htmlspecialchars($row['assignee_id'] ?? '-');
+                            $department = htmlspecialchars($row['department']  ?? '-');
+                            $po_date    = $row['PO_DATE'] ? date('d M Y', strtotime($row['PO_DATE'])) : 'â€”';
+                        ?>
                         <tr>
                             <td>
                                 <div class="laptop-identity">
-                                    <div class="laptop-icon"><i class="ri-macbook-fill"></i></div>
+                                    <div class="laptop-icon" style="<?= $icon_style ?>"><i class="<?= $meta['icon'] ?>"></i></div>
                                     <div class="laptop-info">
-                                        <h4>Lenovo ThinkPad T14</h4>
-                                        <p>SN: PF-192XKA &bull; RCMP-LTP-001</p>
+                                        <h4><?= $device ?></h4>
+                                        <p>SN: <?= htmlspecialchars($row['serial_num'] ?? 'â€”') ?> &bull; <?= htmlspecialchars($row['asset_id']) ?></p>
                                     </div>
                                 </div>
                             </td>
-                            <td>Academic Dept</td>
-                            <td>Dr. Azman Shah</td>
-                            <td>12 Mar 2024</td>
-                            <td><span class="badge badge-active"><i class="ri-checkbox-circle-fill"></i> Active</span></td>
+                            <td><?= $department ?></td>
+                            <td><?= $assignee ?></td>
+                            <td><?= $po_date ?></td>
+                            <td><span class="badge <?= $meta['cls'] ?>"><i class="<?= $meta['icon'] ?>"></i> <?= htmlspecialchars($row['status_name']) ?></span></td>
                             <td>
-                                <button class="btn-action view" title="View Logs"><i class="ri-eye-line"></i></button>
+                                <button class="btn-action view" title="View Details"><i class="ri-eye-line"></i></button>
                                 <button class="btn-action edit" title="Edit Device"><i class="ri-edit-line"></i></button>
                             </td>
                         </tr>
-                        
-                        <tr>
-                            <td>
-                                <div class="laptop-identity">
-                                    <div class="laptop-icon" style="color: #94a3b8; background: rgba(148, 163, 184, 0.15); border-color: rgba(148, 163, 184, 0.3);"><i class="ri-macbook-line"></i></div>
-                                    <div class="laptop-info">
-                                        <h4>Dell Latitude 5420</h4>
-                                        <p>SN: 8H7V2A1 &bull; RCMP-LTP-045</p>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>Library Unit</td>
-                            <td>Library Reserve</td>
-                            <td>20 Jun 2023</td>
-                            <td><span class="badge badge-reserve"><i class="ri-archive-fill"></i> Reserve</span></td>
-                            <td>
-                                <button class="btn-action view" title="View Logs"><i class="ri-eye-line"></i></button>
-                                <button class="btn-action edit" title="Edit Device"><i class="ri-edit-line"></i></button>
-                            </td>
-                        </tr>
-
-                        <tr>
-                            <td>
-                                <div class="laptop-identity">
-                                    <div class="laptop-icon"><i class="ri-macbook-fill"></i></div>
-                                    <div class="laptop-info">
-                                        <h4>HP ProBook 450 G9</h4>
-                                        <p>SN: 5CD2349XZ &bull; RCMP-LTP-088</p>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>Administration</td>
-                            <td>Siti Munirah</td>
-                            <td>05 Jan 2025</td>
-                            <td><span class="badge badge-active"><i class="ri-checkbox-circle-fill"></i> Active</span></td>
-                            <td>
-                                <button class="btn-action view" title="View Logs"><i class="ri-eye-line"></i></button>
-                                <button class="btn-action edit" title="Edit Device"><i class="ri-edit-line"></i></button>
-                            </td>
-                        </tr>
-
-                        <tr>
-                            <td>
-                                <div class="laptop-identity">
-                                    <div class="laptop-icon" style="color: #f59e0b; background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.3);"><i class="ri-tools-fill"></i></div>
-                                    <div class="laptop-info">
-                                        <h4>MacBook Air M1</h4>
-                                        <p>SN: FVFXC21QK &bull; RCMP-LTP-012</p>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>Management</td>
-                            <td>Dato' Ridzuan</td>
-                            <td>10 Nov 2022</td>
-                            <td><span class="badge badge-repair"><i class="ri-tools-fill"></i> In Repair</span></td>
-                            <td>
-                                <button class="btn-action view" title="View Logs"><i class="ri-eye-line"></i></button>
-                                <button class="btn-action edit" title="Edit Device"><i class="ri-edit-line"></i></button>
-                            </td>
-                        </tr>
-
-                        <tr>
-                            <td>
-                                <div class="laptop-identity">
-                                    <div class="laptop-icon" style="color: #ef4444; background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3);"><i class="ri-alert-fill"></i></div>
-                                    <div class="laptop-info">
-                                        <h4>Acer Extensa 15</h4>
-                                        <p>SN: NXEGA2019 &bull; RCMP-LTP-105</p>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>Student Affairs</td>
-                            <td>-</td>
-                            <td>15 Aug 2019</td>
-                            <td><span class="badge badge-disposed"><i class="ri-delete-bin-fill"></i> Disposed</span></td>
-                            <td>
-                                <button class="btn-action view" title="View Logs"><i class="ri-eye-line"></i></button>
-                                <button class="btn-action edit" title="Edit Device"><i class="ri-edit-line"></i></button>
-                            </td>
-                        </tr>
+                        <?php endforeach; endif; ?>
                     </tbody>
                 </table>
             </div>
             
-            <!-- Pagination Wrapper -->
+            <!-- Pagination -->
             <div class="pagination">
-                <div class="page-info">Showing 1 to 5 of 124 entries</div>
-                <button class="page-btn" disabled><i class="ri-arrow-left-s-line"></i></button>
-                <button class="page-btn active">1</button>
-                <button class="page-btn">2</button>
-                <button class="page-btn">3</button>
-                <button class="page-btn">...</button>
-                <button class="page-btn">25</button>
-                <button class="page-btn"><i class="ri-arrow-right-s-line"></i></button>
+                <div class="page-info">
+                    Showing <strong><?= count($laptops) ?></strong> record<?= count($laptops) !== 1 ? 's' : '' ?><?= $filter_status !== null ? ' (filtered)' : '' ?>
+                </div>
             </div>
         </div>
 
     </main>
 
     <script>
+        // Client-side search
+        document.getElementById('searchInput').addEventListener('input', function () {
+            const q = this.value.toLowerCase();
+            document.querySelectorAll('#laptopTableBody tr').forEach(row => {
+                row.style.display = row.innerText.toLowerCase().includes(q) ? '' : 'none';
+            });
+        });
+
         function toggleDropdown(element, event) {
             event.preventDefault();
             const group = element.closest('.nav-group');
             const dropdown = group.querySelector('.nav-dropdown');
-            
             element.classList.toggle('open');
             dropdown.classList.toggle('show');
         }
@@ -912,23 +928,15 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             event.stopPropagation();
             const container = element.closest('.dropdown-container');
             const dropdown = container.querySelector('.action-dropdown');
-            
-            // Close other action dropdowns
             document.querySelectorAll('.action-dropdown.show').forEach(drop => {
-                if (drop !== dropdown) {
-                    drop.classList.remove('show');
-                }
+                if (drop !== dropdown) drop.classList.remove('show');
             });
-            
             dropdown.classList.toggle('show');
         }
 
-        // Close dropdowns when clicking outside
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.dropdown-container')) {
-                document.querySelectorAll('.action-dropdown.show').forEach(drop => {
-                    drop.classList.remove('show');
-                });
+                document.querySelectorAll('.action-dropdown.show').forEach(drop => drop.classList.remove('show'));
             }
         });
     </script>

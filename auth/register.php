@@ -40,13 +40,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             --primary: #2563eb;
             --primary-hover: #1d4ed8;
             --secondary: #0ea5e9;
-            --darker: #020617;
-            --glass-bg: rgba(15, 23, 42, 0.65);
-            --glass-border: rgba(255, 255, 255, 0.1);
-            --text-main: #f1f5f9;
-            --text-muted: #94a3b8;
-            --input-bg: rgba(255, 255, 255, 0.05);
-            --input-border: rgba(255, 255, 255, 0.1);
+            --bg: #f0f4f8;
+            --card-bg: #ffffff;
+            --card-border: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --input-bg: #f8fafc;
+            --input-border: #cbd5e1;
         }
 
         * {
@@ -57,7 +57,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: var(--darker);
+            background-color: var(--bg);
+            background-image: linear-gradient(135deg, #dbeafe 0%, #f0f4f8 50%, #e0f2fe 100%);
             color: var(--text-main);
             min-height: 100vh;
             display: flex;
@@ -65,34 +66,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             justify-content: center;
             position: relative;
             overflow-x: hidden;
-            /* Allow scrolling on small screens for register page due to fields */
             padding: 2rem 0; 
         }
 
-        /* Background Setup */
-        .page-bg {
-            position: fixed; /* fixed instead of absolute so scrolling doesn't cut background */
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -2;
-            background-image: url('../public/bgm.png');
-            background-size: cover;
-            background-position: center;
-        }
-
-        .bg-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -1;
-            background: linear-gradient(135deg, rgba(2, 6, 23, 0.95) 0%, rgba(15, 23, 42, 0.8) 100%);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-        }
+        .page-bg { display: none; }
+        .bg-overlay { display: none; }
 
         /* Decorative glowing orbs */
         .blob {
@@ -124,14 +102,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             width: 100%;
             max-width: 480px;
             padding: 2.5rem;
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
             border-radius: 24px;
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255,255,255,0.05);
+            box-shadow: 0 20px 60px rgba(37, 99, 235, 0.1), 0 4px 16px rgba(0,0,0,0.06);
             animation: fadeIn 0.6s ease-out forwards;
             margin: auto;
+            position: relative;
+            z-index: 1;
         }
 
         .auth-header {
@@ -215,7 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border: 1px solid var(--input-border);
             border-radius: 12px;
             padding: 0.85rem 1rem 0.85rem 3rem;
-            color: white;
+            color: var(--text-main);
             font-family: 'Inter', sans-serif;
             font-size: 1rem;
             transition: all 0.3s ease;
@@ -223,25 +201,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         .form-input:focus {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: var(--secondary);
-            box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.15);
+            background: #fff;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
         }
 
         .form-input:focus + .form-icon,
         .form-input:not(:placeholder-shown) + .form-icon {
-            color: var(--secondary);
+            color: var(--primary);
         }
 
         .text-link {
-            color: var(--secondary);
+            color: var(--primary);
             text-decoration: none;
             font-weight: 500;
             transition: color 0.3s ease;
         }
 
         .text-link:hover {
-            color: #38bdf8;
+            color: var(--primary-hover);
             text-decoration: underline;
         }
 
@@ -293,7 +271,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         .back-home:hover {
-            color: white;
+            color: var(--primary);
         }
 
         @keyframes fadeIn {

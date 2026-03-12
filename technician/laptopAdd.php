@@ -39,6 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $invoice_date  = $date('invoice_date');
     $invoice_num   = $str('invoice_num');
     $purchase_cost = $dec('purchase_cost');
+    $remarks       = $str('remarks');
 
     // ── Handover (only when status = 3 Deploy) ──────────────────────────────
     $is_deploy      = ($status_id === 3);
@@ -70,12 +71,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     (asset_id, serial_num, brand, model, category, part_number,
                      processor, memory, os, storage, gpu,
                      PO_DATE, PO_NUM, DO_DATE, DO_NUM,
-                     INVOICE_DATE, INVOICE_NUM, PURCHASE_COST, status_id)
+                     INVOICE_DATE, INVOICE_NUM, PURCHASE_COST, status_id, remarks)
                 VALUES
                     (:asset_id, :serial_num, :brand, :model, :category, :part_number,
                      :processor, :memory, :os, :storage, :gpu,
                      :po_date, :po_num, :do_date, :do_num,
-                     :invoice_date, :invoice_num, :purchase_cost, :status_id)
+                     :invoice_date, :invoice_num, :purchase_cost, :status_id, :remarks)
             ");
             $stmt->execute([
                 ':asset_id'      => $asset_id,
@@ -97,6 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':invoice_num'   => $invoice_num,
                 ':purchase_cost' => $purchase_cost,
                 ':status_id'     => $status_id,
+                ':remarks'       => $remarks,
             ]);
 
             // 2. Handover record (only for Deploy)
@@ -177,85 +179,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             --accent: #f59e0b;
             --danger: #ef4444;
             --success: #10b981;
-            --dark: #0f172a;
-            --darker: #020617;
-            --light: #f8fafc;
-            --glass-bg: rgba(15, 23, 42, 0.65);
-            --glass-border: rgba(255, 255, 255, 0.08);
-            --glass-panel: rgba(255, 255, 255, 0.03);
-            --text-main: #f1f5f9;
-            --text-muted: #94a3b8;
+            --bg: #f1f5f9;
+            --sidebar-bg: #ffffff;
+            --card-bg: #ffffff;
+            --card-border: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --glass-panel: #f8fafc;
+            --glass-bg: #ffffff;
+            --glass-border: #e2e8f0;
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: var(--darker);
+            background-color: var(--bg);
             color: var(--text-main);
             overflow-x: hidden;
             display: flex;
             min-height: 100vh;
         }
 
-        /* Background Layers */
-        .page-bg {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: -2;
-            background-image: url('../public/bgm.png');
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
-        }
-
-        .bg-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: -1;
-            background: linear-gradient(135deg, rgba(2, 6, 23, 0.95) 0%, rgba(15, 23, 42, 0.85) 100%);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-        }
-
-        /* Decorative glowing orbs */
-        .blob {
-            position: fixed;
-            border-radius: 50%;
-            filter: blur(100px);
-            z-index: -1;
-            opacity: 0.3;
-            pointer-events: none;
-        }
-
-        .blob-1 {
-            width: 400px; height: 400px; background: var(--primary);
-            top: -100px; left: -100px;
-        }
-
-        .blob-2 {
-            width: 350px; height: 350px; background: var(--secondary);
-            bottom: -50px; right: 20%;
-        }
+        .page-bg { display: none; }
+        .bg-overlay { display: none; }
+        .blob { display: none; }
 
         /* Sidebar Navigation */
         .sidebar {
             width: 280px;
             height: 100vh;
-            background: rgba(15, 23, 42, 0.3);
-            backdrop-filter: blur(25px);
-            -webkit-backdrop-filter: blur(25px);
-            border-right: 1px solid var(--glass-border);
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--card-border);
             position: fixed;
             top: 0;
             left: 0;
@@ -263,7 +218,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flex-direction: column;
             padding: 1.5rem;
             z-index: 100;
-            box-shadow: 5px 0 25px rgba(0,0,0,0.2);
+            box-shadow: 4px 0 20px rgba(15,23,42,0.06);
             transition: transform 0.3s ease;
         }
 
@@ -272,21 +227,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             align-items: center;
             justify-content: center;
             padding-bottom: 2rem;
-            border-bottom: 1px solid var(--glass-border);
+            border-bottom: 1px solid var(--card-border);
             margin-bottom: 2rem;
         }
 
         .sidebar-logo img {
             height: 45px;
-            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+            filter: drop-shadow(0 2px 4px rgba(15,23,42,0.1));
         }
 
-        .nav-menu {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-            flex: 1;
-        }
+        .nav-menu { display: flex; flex-direction: column; gap: 0.75rem; flex: 1; }
 
         .nav-item {
             padding: 0.85rem 1.25rem;
@@ -299,35 +249,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-weight: 500;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
-            overflow: hidden;
         }
 
-        .nav-item:hover {
-            color: var(--text-main);
-            background: rgba(255, 255, 255, 0.05);
-        }
+        .nav-item:hover { color: var(--primary); background: rgba(37, 99, 235, 0.06); }
 
         .nav-item.active {
-            color: white;
-            background: linear-gradient(90deg, rgba(37, 99, 235, 0.2), transparent);
-            border: 1px solid rgba(37, 99, 235, 0.3);
-            box-shadow: inset 2px 0 0 var(--secondary);
+            color: var(--primary);
+            background: rgba(37, 99, 235, 0.1);
+            border: 1px solid rgba(37, 99, 235, 0.2);
+            box-shadow: inset 3px 0 0 var(--primary);
         }
 
-        .nav-item i {
-            font-size: 1.25rem;
-            color: inherit;
-        }
-
-        .nav-item.active i {
-            color: var(--secondary);
-        }
+        .nav-item i { font-size: 1.25rem; color: inherit; }
+        .nav-item.active i { color: var(--primary); }
 
         .user-profile {
             margin-top: auto;
             padding: 1rem;
             background: var(--glass-panel);
-            border: 1px solid var(--glass-border);
+            border: 1px solid var(--card-border);
             border-radius: 16px;
             display: flex;
             align-items: center;
@@ -336,10 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             cursor: pointer;
         }
 
-        .user-profile:hover {
-            background: rgba(255,255,255,0.08);
-            border-color: rgba(255,255,255,0.15);
-        }
+        .user-profile:hover { background: rgba(37,99,235,0.06); border-color: rgba(37,99,235,0.2); }
 
         .avatar {
             width: 42px;
@@ -356,15 +293,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3);
         }
 
-        .user-info {
-            flex: 1;
-            overflow: hidden;
-        }
+        .user-info { flex: 1; overflow: hidden; }
 
         .user-name {
             font-size: 0.9rem;
             font-weight: 600;
-            color: white;
+            color: var(--text-main);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -372,7 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         .user-role {
             font-size: 0.75rem;
-            color: var(--secondary);
+            color: var(--primary);
             margin-top: 0.2rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -387,12 +321,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding-left: 3.25rem;
             margin-top: -0.25rem;
             margin-bottom: 0.25rem;
-            animation: fadeInDown 0.3s ease-out;
         }
 
-        .nav-dropdown.show {
-            display: flex;
-        }
+        .nav-dropdown.show { display: flex; }
 
         .nav-dropdown-item {
             padding: 0.6rem 1rem;
@@ -412,34 +343,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             top: 50%;
             width: 6px;
             height: 6px;
-            background: var(--glass-border);
+            background: var(--card-border);
             border-radius: 50%;
             transform: translateY(-50%);
             transition: all 0.3s ease;
         }
 
-        .nav-dropdown-item:hover {
-            color: var(--text-main);
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .nav-dropdown-item:hover::before {
-            background: var(--secondary);
-            box-shadow: 0 0 8px var(--secondary);
-        }
-        
-        .nav-dropdown-item.active {
-            color: white;
-        }
-
-        .nav-dropdown-item.active::before {
-            background: var(--secondary);
-            box-shadow: 0 0 8px var(--secondary);
-        }
-
-        .nav-item.open .chevron {
-            transform: rotate(180deg);
-        }
+        .nav-dropdown-item:hover { color: var(--primary); background: rgba(37,99,235,0.05); }
+        .nav-dropdown-item:hover::before { background: var(--primary); }
+        .nav-dropdown-item.active { color: var(--primary); }
+        .nav-dropdown-item.active::before { background: var(--primary); }
+        .nav-item.open .chevron { transform: rotate(180deg); }
 
         /* Main Content Layout */
         .main-content {
@@ -457,7 +371,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             align-items: center;
             margin-bottom: 2rem;
             animation: fadeInDown 0.6s ease-out;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
+            border-bottom: 1px solid var(--card-border);
             padding-bottom: 1.5rem;
         }
 
@@ -467,14 +381,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-weight: 700;
             margin-bottom: 0.3rem;
             letter-spacing: -0.5px;
-            color: white;
+            color: var(--text-main);
             display: flex;
             align-items: center;
             gap: 0.75rem;
         }
 
         .page-title h1 i {
-            color: var(--secondary);
+            color: var(--primary);
         }
 
         .page-title p {
@@ -491,28 +405,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             text-decoration: none;
             font-weight: 500;
             transition: all 0.3s ease;
-            background: rgba(255,255,255,0.05);
+            background: var(--glass-panel);
             padding: 0.6rem 1.2rem;
             border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.1);
+            border: 1px solid var(--card-border);
         }
 
         .btn-back:hover {
-            color: white;
-            background: rgba(255,255,255,0.1);
-            border-color: rgba(255,255,255,0.2);
+            color: var(--primary);
+            background: rgba(37,99,235,0.06);
+            border-color: rgba(37,99,235,0.2);
             transform: translateX(-3px);
         }
 
         /* Glass Form Cards */
         .form-section {
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
             border-radius: 20px;
             padding: 2.5rem;
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 12px rgba(15,23,42,0.06);
             animation: fadeInUp 0.8s ease-out;
             margin-bottom: 2rem;
             position: relative;
@@ -592,10 +504,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         .form-input, .form-select, .form-textarea {
             background: var(--glass-panel);
-            border: 1px solid var(--glass-border);
+            border: 1px solid var(--card-border);
             border-radius: 12px;
             padding: 0.9rem 1.2rem;
-            color: white;
+            color: var(--text-main);
             font-family: 'Inter', sans-serif;
             font-size: 0.95rem;
             transition: all 0.3s ease;
@@ -604,16 +516,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         .form-input:focus, .form-select:focus, .form-textarea:focus {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: var(--secondary);
-            box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.15);
+            background: #fff;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
             transform: translateY(-2px);
         }
 
         .form-input:disabled, .form-select:disabled, .form-textarea:disabled {
-            background: rgba(255, 255, 255, 0.01);
-            border-color: rgba(255, 255, 255, 0.03);
-            color: rgba(241, 245, 249, 0.3);
+            background: var(--glass-panel);
+            border-color: var(--card-border);
+            color: rgba(15, 23, 42, 0.3);
             cursor: not-allowed;
         }
         
@@ -626,18 +538,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         .form-select {
             appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2394a3b8'%3E%3Cpath d='M12 16L6 10H18L12 16Z'/%3E%3C/svg%3E");
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 16L6 10H18L12 16Z'/%3E%3C/svg%3E");
             background-repeat: no-repeat;
             background-position: right 1rem center;
             background-size: 1.2rem;
             cursor: pointer;
         }
         
-        .form-select option {
-            background: var(--dark);
-            color: white;
-            padding: 10px;
-        }
+        .form-select option { background: #fff; color: var(--text-main); padding: 10px; }
 
         .form-textarea {
             resize: vertical;
@@ -700,9 +608,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         .btn-outline:hover {
-            background: rgba(255,255,255,0.05);
-            border-color: white;
-            color: white;
+            background: rgba(37,99,235,0.06);
+            border-color: rgba(37,99,235,0.2);
+            color: var(--primary);
         }
 
         /* Animations */
@@ -821,7 +729,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <h1><i class="ri-macbook-fill"></i> Register New Laptop</h1>
                 <p>Enter the specifications and details to catalog a new asset.</p>
             </div>
-            <a href="laptopView.php" class="btn-back">
+            <a href="../technician/laptop.php" class="btn-back">
                 <i class="ri-arrow-left-line"></i> Back to Inventory
             </a>
         </header>
@@ -1015,6 +923,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <label class="form-label">Warranty Remarks / Provider</label>
                         <input type="text" name="warranty_remarks" class="form-input" placeholder="e.g. 3 Year On-Site Service">
                     </div>
+                </div>
+            </div>
+
+            <!-- SECTION 6: Remarks (Optional) -->
+            <div class="form-section">
+                <div class="section-header" style="margin-bottom: 1.5rem; border: none;">
+                    <h3 class="section-title"><i class="ri-sticky-note-line"></i> Remarks</h3>
+                    <span class="badge badge-optional">Optional</span>
+                </div>
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">Any additional notes, observations, or general remarks about this device.</p>
+                <div class="form-group">
+                    <label class="form-label">General Remarks</label>
+                    <textarea name="remarks" class="form-textarea" rows="5" placeholder="e.g. Keyboard key slightly sticky. Purchased under IT upgrade budget FY2024. Configured with standard IT image."></textarea>
                 </div>
             </div>
 

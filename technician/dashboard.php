@@ -26,16 +26,15 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             --primary-hover: #1d4ed8;
             --secondary: #0ea5e9;
             --accent: #f59e0b;
-            --danger: #ef4444;      
+            --danger: #ef4444;
             --success: #10b981;
-            --dark: #0f172a;
-            --darker: #020617;
-            --light: #f8fafc;
-            --glass-bg: rgba(15, 23, 42, 0.65);
-            --glass-border: rgba(255, 255, 255, 0.08);
-            --glass-panel: rgba(255, 255, 255, 0.03);
-            --text-main: #f1f5f9;
-            --text-muted: #94a3b8;
+            --bg: #f1f5f9;
+            --sidebar-bg: #ffffff;
+            --card-bg: #ffffff;
+            --card-border: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --glass-panel: #f8fafc;
         }
 
         * {
@@ -46,38 +45,16 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: var(--darker);
+            background-color: var(--bg);
             color: var(--text-main);
             overflow-x: hidden;
             display: flex;
             min-height: 100vh;
         }
 
-        /* Background Layers */
-        .page-bg {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: -2;
-            background-image: url('../public/bgm.png');
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
-        }
-
-        .bg-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: -1;
-            background: linear-gradient(135deg, rgba(2, 6, 23, 0.95) 0%, rgba(15, 23, 42, 0.85) 100%);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-        }
+        .page-bg { display: none; }
+        .bg-overlay { display: none; }
+        .blob { display: none; }
 
         /* Decorative glowing orbs */
         .blob {
@@ -103,10 +80,8 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         .sidebar {
             width: 280px;
             height: 100vh;
-            background: rgba(15, 23, 42, 0.3);
-            backdrop-filter: blur(25px);
-            -webkit-backdrop-filter: blur(25px);
-            border-right: 1px solid var(--glass-border);
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--card-border);
             position: fixed;
             top: 0;
             left: 0;
@@ -114,7 +89,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             flex-direction: column;
             padding: 1.5rem;
             z-index: 100;
-            box-shadow: 5px 0 25px rgba(0,0,0,0.2);
+            box-shadow: 4px 0 20px rgba(15,23,42,0.06);
             transition: transform 0.3s ease;
         }
 
@@ -150,19 +125,18 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             font-weight: 500;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
-            overflow: hidden;
         }
 
         .nav-item:hover {
-            color: var(--text-main);
-            background: rgba(255, 255, 255, 0.05);
+            color: var(--primary);
+            background: rgba(37, 99, 235, 0.06);
         }
 
         .nav-item.active {
-            color: white;
-            background: linear-gradient(90deg, rgba(37, 99, 235, 0.2), transparent);
-            border: 1px solid rgba(37, 99, 235, 0.3);
-            box-shadow: inset 2px 0 0 var(--secondary);
+            color: var(--primary);
+            background: rgba(37, 99, 235, 0.1);
+            border: 1px solid rgba(37, 99, 235, 0.2);
+            box-shadow: inset 3px 0 0 var(--primary);
         }
 
         .nav-item i {
@@ -171,14 +145,14 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         }
 
         .nav-item.active i {
-            color: var(--secondary);
+            color: var(--primary);
         }
 
         .user-profile {
             margin-top: auto;
             padding: 1rem;
             background: var(--glass-panel);
-            border: 1px solid var(--glass-border);
+            border: 1px solid var(--card-border);
             border-radius: 16px;
             display: flex;
             align-items: center;
@@ -188,8 +162,8 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         }
 
         .user-profile:hover {
-            background: rgba(255,255,255,0.08);
-            border-color: rgba(255,255,255,0.15);
+            background: rgba(37,99,235,0.06);
+            border-color: rgba(37,99,235,0.2);
         }
 
         .avatar {
@@ -215,7 +189,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         .user-name {
             font-size: 0.9rem;
             font-weight: 600;
-            color: white;
+            color: var(--text-main);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -223,7 +197,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
 
         .user-role {
             font-size: 0.75rem;
-            color: var(--secondary);
+            color: var(--primary);
             margin-top: 0.2rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -254,7 +228,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             font-weight: 700;
             margin-bottom: 0.3rem;
             letter-spacing: -0.5px;
-            color: white;
+            color: var(--text-main);
         }
 
         .greeting p {
@@ -299,9 +273,9 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             width: 44px;
             height: 44px;
             border-radius: 12px;
-            background: var(--glass-panel);
-            border: 1px solid var(--glass-border);
-            color: var(--text-main);
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-muted);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -312,7 +286,8 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         }
 
         .header-icon-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(37, 99, 235, 0.06);
+            color: var(--primary);
             transform: translateY(-2px);
         }
 
@@ -337,34 +312,32 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         }
 
         .stat-card {
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
             border-radius: 20px;
             padding: 1.5rem;
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
             transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             display: flex;
             align-items: center;
             gap: 1.25rem;
             position: relative;
             overflow: hidden;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 12px rgba(15,23,42,0.06);
         }
 
         .stat-card::before {
             content: '';
             position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, transparent 100%);
+            top: 0; left: 0; width: 4px; height: 100%;
+            background: linear-gradient(180deg, var(--primary), var(--secondary));
             opacity: 0;
             transition: opacity 0.4s ease;
         }
 
         .stat-card:hover {
-            transform: translateY(-8px);
-            border-color: rgba(255, 255, 255, 0.2);
-            box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+            transform: translateY(-5px);
+            border-color: rgba(37,99,235,0.2);
+            box-shadow: 0 8px 24px rgba(37,99,235,0.1);
         }
 
         .stat-card:hover::before { opacity: 1; }
@@ -397,9 +370,8 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             font-weight: 700;
             font-family: 'Outfit', sans-serif;
             line-height: 1.1;
-            color: white;
+            color: var(--text-main);
             margin-bottom: 0.2rem;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
 
         .stat-label {
@@ -417,13 +389,11 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         }
 
         .glass-card {
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
             border-radius: 20px;
             padding: 1.75rem;
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 12px rgba(15,23,42,0.06);
             display: flex;
             flex-direction: column;
         }
@@ -434,7 +404,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             align-items: center;
             margin-bottom: 1.5rem;
             padding-bottom: 1rem;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
+            border-bottom: 1px solid var(--card-border);
         }
 
         .card-title {
@@ -444,23 +414,23 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             display: flex;
             align-items: center;
             gap: 0.6rem;
-            color: white;
+            color: var(--text-main);
         }
 
         .card-title i {
-            color: var(--secondary);
+            color: var(--primary);
         }
 
         .view-all {
             font-size: 0.85rem;
-            color: var(--secondary);
+            color: var(--primary);
             text-decoration: none;
             font-weight: 500;
             transition: color 0.3s ease;
         }
 
         .view-all:hover {
-            color: #38bdf8;
+            color: var(--primary-hover);
             text-decoration: underline;
         }
 
@@ -483,13 +453,13 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             font-size: 0.8rem;
             text-transform: uppercase;
             letter-spacing: 1px;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
+            border-bottom: 1px solid var(--card-border);
         }
 
         .recent-table td {
             padding: 1.15rem 1rem;
             font-size: 0.95rem;
-            border-bottom: 1px dashed rgba(255,255,255,0.05);
+            border-bottom: 1px dashed var(--card-border);
             color: var(--text-main);
             vertical-align: middle;
         }
@@ -503,8 +473,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         }
 
         .recent-table tbody tr:hover {
-            background: rgba(255,255,255,0.03);
-            border-radius: 8px;
+            background: rgba(37,99,235,0.03);
         }
 
         .ticket-id {
@@ -531,9 +500,9 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
 
         .btn-action {
             padding: 0.4rem;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
-            color: var(--text-main);
+            background: var(--glass-panel);
+            border: 1px solid var(--card-border);
+            color: var(--text-muted);
             border-radius: 8px;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -557,8 +526,8 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             display: flex;
             gap: 1rem;
             padding: 1rem;
-            background: rgba(255,255,255,0.02);
-            border: 1px solid var(--glass-border);
+            background: var(--glass-panel);
+            border: 1px solid var(--card-border);
             border-radius: 12px;
             transition: all 0.3s ease;
             position: relative;
@@ -566,8 +535,8 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         }
 
         .alert-item:hover {
-            background: rgba(255,255,255,0.06);
-            border-color: rgba(255,255,255,0.15);
+            background: rgba(37,99,235,0.04);
+            border-color: rgba(37,99,235,0.15);
             transform: translateX(4px);
         }
 
@@ -595,7 +564,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         .alert-item.info .alert-icon { color: var(--secondary); background: rgba(14, 165, 233, 0.15); }
 
         .alert-content { flex: 1; }
-        .alert-content h4 { font-size: 0.95rem; margin-bottom: 0.2rem; font-weight: 600; color: white; }
+        .alert-content h4 { font-size: 0.95rem; margin-bottom: 0.2rem; font-weight: 600; color: var(--text-main); }
         .alert-content p { font-size: 0.8rem; color: var(--text-muted); line-height: 1.4; }
 
         .alert-meta {
@@ -665,7 +634,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             top: 50%;
             width: 6px;
             height: 6px;
-            background: var(--glass-border);
+            background: var(--card-border);
             border-radius: 50%;
             transform: translateY(-50%);
             transition: all 0.3s ease;
@@ -838,7 +807,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
                             <tr>
                                 <td><span class="ticket-id">TCK-8492</span></td>
                                 <td>
-                                    <div style="font-weight: 500; color: white;">Projector Connectivity</div>
+                                    <div style="font-weight: 500; color: var(--text-main);">Projector Connectivity</div>
                                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">Reported by Lecturer Dr. Azman</div>
                                 </td>
                                 <td>LT 1, Block A</td>
@@ -850,7 +819,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
                             <tr>
                                 <td><span class="ticket-id">TCK-8488</span></td>
                                 <td>
-                                    <div style="font-weight: 500; color: white;">Network Switch Down</div>
+                                    <div style="font-weight: 500; color: var(--text-main);">Network Switch Down</div>
                                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">NMS Auto-alert</div>
                                 </td>
                                 <td>Lab 3, Block B</td>
@@ -862,7 +831,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
                             <tr>
                                 <td><span class="ticket-id">TCK-8485</span></td>
                                 <td>
-                                    <div style="font-weight: 500; color: white;">PC Blue Screen (BSOD)</div>
+                                    <div style="font-weight: 500; color: var(--text-main);">PC Blue Screen (BSOD)</div>
                                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">Lab PC-14</div>
                                 </td>
                                 <td>Library</td>
@@ -874,7 +843,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
                             <tr>
                                 <td><span class="ticket-id">TCK-8480</span></td>
                                 <td>
-                                    <div style="font-weight: 500; color: white;">Software Installation Req.</div>
+                                    <div style="font-weight: 500; color: var(--text-main);">Software Installation Req.</div>
                                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">SPSS Version 28</div>
                                 </td>
                                 <td>Academic Office</td>
