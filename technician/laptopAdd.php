@@ -1,0 +1,877 @@
+<?php
+session_start();
+// Basic authentication check: ensures the user is logged in and is a technician (role_id 1)
+if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
+    header('Location: ../auth/login.php');
+    exit;
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register Laptop - RCMP NIMS</title>
+    <link rel="icon" type="image/png" href="../public/rcmp.png">
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --secondary: #0ea5e9;
+            --accent: #f59e0b;
+            --danger: #ef4444;
+            --success: #10b981;
+            --dark: #0f172a;
+            --darker: #020617;
+            --light: #f8fafc;
+            --glass-bg: rgba(15, 23, 42, 0.65);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-panel: rgba(255, 255, 255, 0.03);
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--darker);
+            color: var(--text-main);
+            overflow-x: hidden;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Background Layers */
+        .page-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -2;
+            background-image: url('../public/bgm.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+
+        .bg-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            background: linear-gradient(135deg, rgba(2, 6, 23, 0.95) 0%, rgba(15, 23, 42, 0.85) 100%);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        /* Decorative glowing orbs */
+        .blob {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(100px);
+            z-index: -1;
+            opacity: 0.3;
+            pointer-events: none;
+        }
+
+        .blob-1 {
+            width: 400px; height: 400px; background: var(--primary);
+            top: -100px; left: -100px;
+        }
+
+        .blob-2 {
+            width: 350px; height: 350px; background: var(--secondary);
+            bottom: -50px; right: 20%;
+        }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            width: 280px;
+            height: 100vh;
+            background: rgba(15, 23, 42, 0.3);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border-right: 1px solid var(--glass-border);
+            position: fixed;
+            top: 0;
+            left: 0;
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+            z-index: 100;
+            box-shadow: 5px 0 25px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--glass-border);
+            margin-bottom: 2rem;
+        }
+
+        .sidebar-logo img {
+            height: 45px;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+        }
+
+        .nav-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            flex: 1;
+        }
+
+        .nav-item {
+            padding: 0.85rem 1.25rem;
+            border-radius: 12px;
+            color: var(--text-muted);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .nav-item:hover {
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .nav-item.active {
+            color: white;
+            background: linear-gradient(90deg, rgba(37, 99, 235, 0.2), transparent);
+            border: 1px solid rgba(37, 99, 235, 0.3);
+            box-shadow: inset 2px 0 0 var(--secondary);
+        }
+
+        .nav-item i {
+            font-size: 1.25rem;
+            color: inherit;
+        }
+
+        .nav-item.active i {
+            color: var(--secondary);
+        }
+
+        .user-profile {
+            margin-top: auto;
+            padding: 1rem;
+            background: var(--glass-panel);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .user-profile:hover {
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(255,255,255,0.15);
+        }
+
+        .avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            color: white;
+            font-size: 1.1rem;
+            box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3);
+        }
+
+        .user-info {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .user-name {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: white;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .user-role {
+            font-size: 0.75rem;
+            color: var(--secondary);
+            margin-top: 0.2rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+
+        /* Sidebar Dropdown */
+        .nav-dropdown {
+            display: none;
+            flex-direction: column;
+            gap: 0.25rem;
+            padding-left: 3.25rem;
+            margin-top: -0.25rem;
+            margin-bottom: 0.25rem;
+            animation: fadeInDown 0.3s ease-out;
+        }
+
+        .nav-dropdown.show {
+            display: flex;
+        }
+
+        .nav-dropdown-item {
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .nav-dropdown-item::before {
+            content: '';
+            position: absolute;
+            left: -1rem;
+            top: 50%;
+            width: 6px;
+            height: 6px;
+            background: var(--glass-border);
+            border-radius: 50%;
+            transform: translateY(-50%);
+            transition: all 0.3s ease;
+        }
+
+        .nav-dropdown-item:hover {
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .nav-dropdown-item:hover::before {
+            background: var(--secondary);
+            box-shadow: 0 0 8px var(--secondary);
+        }
+        
+        .nav-dropdown-item.active {
+            color: white;
+        }
+
+        .nav-dropdown-item.active::before {
+            background: var(--secondary);
+            box-shadow: 0 0 8px var(--secondary);
+        }
+
+        .nav-item.open .chevron {
+            transform: rotate(180deg);
+        }
+
+        /* Main Content Layout */
+        .main-content {
+            margin-left: 280px;
+            flex: 1;
+            padding: 2.5rem 3.5rem;
+            max-width: calc(100vw - 280px); 
+            padding-bottom: 5rem;
+        }
+
+        /* Header Area */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            animation: fadeInDown 0.6s ease-out;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            padding-bottom: 1.5rem;
+        }
+
+        .page-title h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.25rem;
+            font-weight: 700;
+            margin-bottom: 0.3rem;
+            letter-spacing: -0.5px;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .page-title h1 i {
+            color: var(--secondary);
+        }
+
+        .page-title p {
+            color: var(--text-muted);
+            font-size: 1rem;
+        }
+        
+        /* Back Button */
+        .btn-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            background: rgba(255,255,255,0.05);
+            padding: 0.6rem 1.2rem;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .btn-back:hover {
+            color: white;
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.2);
+            transform: translateX(-3px);
+        }
+
+        /* Glass Form Cards */
+        .form-section {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 2.5rem;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            animation: fadeInUp 0.8s ease-out;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .form-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            opacity: 0.7;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px dashed rgba(255,255,255,0.1);
+        }
+
+        .section-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .section-title i {
+            color: var(--secondary);
+            background: rgba(14, 165, 233, 0.15);
+            padding: 0.5rem;
+            border-radius: 10px;
+        }
+
+        /* Form Grid */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem 2.5rem;
+        }
+        
+        .form-grid.grid-3 {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .form-grid.grid-1 {
+            grid-template-columns: 1fr;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .form-label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+            transition: color 0.3s ease;
+        }
+
+        .form-label span {
+            color: var(--danger);
+            margin-left: 0.2rem;
+        }
+
+        .form-input, .form-select, .form-textarea {
+            background: var(--glass-panel);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 0.9rem 1.2rem;
+            color: white;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            width: 100%;
+            outline: none;
+        }
+
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--secondary);
+            box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .form-input:disabled, .form-select:disabled, .form-textarea:disabled {
+            background: rgba(255, 255, 255, 0.01);
+            border-color: rgba(255, 255, 255, 0.03);
+            color: rgba(241, 245, 249, 0.3);
+            cursor: not-allowed;
+        }
+        
+        /* Disabled Section Styles */
+        .section-disabled {
+            opacity: 0.5;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .form-select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2394a3b8'%3E%3Cpath d='M12 16L6 10H18L12 16Z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            background-size: 1.2rem;
+            cursor: pointer;
+        }
+        
+        .form-select option {
+            background: var(--dark);
+            color: white;
+            padding: 10px;
+        }
+
+        .form-textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        /* Badges */
+        .badge {
+            padding: 0.4rem 0.85rem;
+            border-radius: 50px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .badge-optional { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); }
+
+        /* Actions */
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 1.5rem;
+            margin-top: 3rem;
+            animation: fadeInUp 1s ease-out;
+        }
+
+        .btn {
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            border: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            box-shadow: 0 8px 20px -5px rgba(37, 99, 235, 0.5);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 25px -5px rgba(37, 99, 235, 0.6);
+            filter: brightness(1.1);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--text-muted);
+            color: var(--text-muted);
+        }
+
+        .btn-outline:hover {
+            background: rgba(255,255,255,0.05);
+            border-color: white;
+            color: white;
+        }
+
+        /* Animations */
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Responsive */
+        @media (max-width: 1100px) {
+            .form-grid.grid-3 { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 900px) {
+            .sidebar { transform: translateX(-100%); width: 260px; }
+            .main-content { margin-left: 0; max-width: 100vw; padding: 1.5rem; }
+            .form-grid, .form-grid.grid-3 { grid-template-columns: 1fr; gap: 1rem;}
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Backgrounds -->
+    <div class="page-bg"></div>
+    <div class="bg-overlay"></div>
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <img src="../public/logo-nims.png" alt="RCMP NIMS">
+        </div>
+
+        <nav class="nav-menu">
+            <a href="dashboard.php" class="nav-item">
+                <i class="ri-dashboard-2-line"></i> Dashboard
+            </a>
+            <div class="nav-group">
+                <a href="#" class="nav-item open" onclick="toggleDropdown(this, event)" style="justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <i class="ri-macbook-line"></i> Inventory
+                    </div>
+                    <i class="ri-arrow-down-s-line chevron" style="transition: transform 0.3s ease; font-size: 1.2rem;"></i>
+                </a>
+                <div class="nav-dropdown show">
+                    <a href="laptopView.php" class="nav-dropdown-item active">Laptop</a>
+                    <a href="#" class="nav-dropdown-item">AV</a>
+                    <a href="#" class="nav-dropdown-item">Network</a>
+                </div>
+            </div>
+            <a href="#" class="nav-item">
+                <i class="ri-delete-bin-line"></i> Disposal
+            </a>
+            <a href="#" class="nav-item">
+                <i class="ri-history-line"></i> History 
+            </a>
+            <a href="#" class="nav-item">
+                <i class="ri-book-read-line"></i> User Manual 
+            </a>
+            <a href="#" class="nav-item">
+                <i class="ri-user-settings-line"></i> Profile 
+            </a>
+        </nav>
+
+        <div class="user-profile" onclick="window.location.href='../auth/logout.php'" title="Logout">
+            <div class="avatar">
+                <?php 
+                    echo isset($_SESSION['user_name']) ? strtoupper($_SESSION['user_name'][0]) : 'T'; 
+                ?>
+            </div>
+            <div class="user-info">
+                <div class="user-name"><?php echo htmlspecialchars($_SESSION['user_name'] ?? 'Technician User'); ?></div>
+                <div class="user-role">IT Technician</div>
+            </div>
+            <i class="ri-logout-box-r-line" style="color: var(--text-muted); font-size: 1.2rem;"></i>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        
+        <!-- Header -->
+        <header class="page-header">
+            <div class="page-title">
+                <h1><i class="ri-macbook-fill"></i> Register New Laptop</h1>
+                <p>Enter the specifications and details to catalog a new asset.</p>
+            </div>
+            <a href="laptopView.php" class="btn-back">
+                <i class="ri-arrow-left-line"></i> Back to Inventory
+            </a>
+        </header>
+
+        <!-- Form Wrapper -->
+        <form action="#" method="POST" id="laptopForm">
+            
+            <!-- SECTION 1: Identity -->
+            <div class="form-section">
+                <div class="section-header" style="margin-bottom: 1.5rem; border: none;">
+                    <h3 class="section-title"><i class="ri-qr-code-line"></i> Device Identity</h3>
+                </div>
+                <div class="form-grid grid-3">
+                    <div class="form-group">
+                        <label class="form-label">Asset ID <span>*</span></label>
+                        <input type="number" name="asset_id" class="form-input" placeholder="e.g. 1001" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Serial Number <span>*</span></label>
+                        <input type="text" name="serial_num" class="form-input" placeholder="e.g. PF1XZ9K" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">System Status <span>*</span></label>
+                        <select name="status_id" id="status_id" class="form-select" required>
+                            <option value="" disabled selected>Select Status</option>
+                            <option value="1">Active</option>
+                            <option value="2">Non-active</option>
+                            <option value="3">Deploy</option>
+                            <option value="4">Reserved</option>
+                            <option value="5">Maintenance</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Brand</label>
+                        <input type="text" name="brand" class="form-input" placeholder="e.g. Lenovo">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Model</label>
+                        <input type="text" name="model" class="form-input" placeholder="e.g. ThinkPad T14">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Part Number / Model No</label>
+                        <input type="text" name="part_number" class="form-input" placeholder="e.g. 20W0004UMY">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Category</label>
+                        <select name="category" class="form-select">
+                            <option value="" disabled selected>Select Category</option>
+                            <option value="Desktop AIO">Desktop AIO</option>
+                            <option value="Desktop IO">Desktop IO Sharing</option>
+                            <option value="Notebook">Notebook</option>
+                            <option value="Notebook Standby">Notebook Standby</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 2: Specifications -->
+            <div class="form-section">
+                <div class="section-header" style="margin-bottom: 1.5rem; border: none;">
+                    <h3 class="section-title"><i class="ri-cpu-line"></i> Specifications</h3>
+                </div>
+                <div class="form-grid grid-3">
+                    <div class="form-group">
+                        <label class="form-label">Processor (CPU)</label>
+                        <input type="text" name="processor" class="form-input" placeholder="e.g. Intel Core i7-1165G7">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Memory (RAM)</label>
+                        <input type="text" name="memory" class="form-input" placeholder="e.g. 16GB DDR4">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Storage</label>
+                        <input type="text" name="storage" class="form-input" placeholder="e.g. 512GB NVMe SSD">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Graphics (GPU)</label>
+                        <input type="text" name="gpu" class="form-input" placeholder="e.g. Intel Iris Xe">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Operating System</label>
+                        <input type="text" name="os" class="form-input" placeholder="e.g. Windows 11 Pro">
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 3: Purchase & Invoicing -->
+            <div class="form-section">
+                <div class="section-header" style="margin-bottom: 1.5rem; border: none;">
+                    <h3 class="section-title"><i class="ri-shopping-bag-3-line"></i> Purchase Details</h3>
+                </div>
+                <div class="form-grid grid-3">
+                    <div class="form-group">
+                        <label class="form-label">Purchase Date (PO Date)</label>
+                        <input type="date" name="po_date" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">PO Number</label>
+                        <input type="text" name="po_num" class="form-input" placeholder="e.g. PO-2024-001">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Delivery Order Date (DO Date)</label>
+                        <input type="date" name="do_date" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">DO Number</label>
+                        <input type="text" name="do_num" class="form-input" placeholder="e.g. DO-2024-001">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Invoice Date</label>
+                        <input type="date" name="invoice_date" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Invoice Number</label>
+                        <input type="text" name="invoice_num" class="form-input" placeholder="e.g. INV-2024-001">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Purchase Cost (RM)</label>
+                        <input type="number" step="0.01" name="purchase_cost" class="form-input" placeholder="0.00">
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 4: Handover (Optional) -->
+            <div class="form-section section-disabled" id="handover_section">
+                <div class="section-header">
+                    <h3 class="section-title"><i class="ri-user-shared-line"></i> Handover Assignment</h3>
+                    <span class="badge badge-optional">Optional</span>
+                </div>
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">If the laptop is being immediately assigned, fill out the handover details below. (Requires "Deploy" Status)</p>
+                <div class="form-grid grid-3">
+                    <div class="form-group">
+                        <label class="form-label">Staff ID</label>
+                        <input type="text" name="staff_id" class="form-input handover-input" placeholder="Enter Staff ID" disabled>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Department</label>
+                        <input type="text" name="department" class="form-input handover-input" placeholder="e.g. Academic" disabled>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Assignment Type</label>
+                        <select name="assignment_type" class="form-select handover-input" disabled>
+                            <option value="" disabled selected>Select Type</option>
+                            <option value="Permanent">Permanent</option>
+                            <option value="Temporary">Temporary</option>
+                            <option value="Loan">Loan</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Handover Date</label>
+                        <input type="date" name="handover_date" class="form-input handover-input" disabled>
+                    </div>
+                    <div class="form-group" style="grid-column: span 2;">
+                        <label class="form-label">Handover Remarks</label>
+                        <input type="text" name="handover_remarks" class="form-input handover-input" placeholder="e.g. Charger and bag included" disabled>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 5: Warranty (Optional) -->
+            <div class="form-section">
+                <div class="section-header">
+                    <h3 class="section-title"><i class="ri-shield-check-line"></i> Warranty Information</h3>
+                    <span class="badge badge-optional">Optional</span>
+                </div>
+                <div class="form-grid grid-3">
+                    <div class="form-group">
+                        <label class="form-label">Warranty Start Date</label>
+                        <input type="date" name="warranty_start_date" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Warranty End Date</label>
+                        <input type="date" name="warranty_end_date" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Warranty Remarks / Provider</label>
+                        <input type="text" name="warranty_remarks" class="form-input" placeholder="e.g. 3 Year On-Site Service">
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="reset" class="btn btn-outline">Clear Form</button>
+                <button type="submit" class="btn btn-primary"><i class="ri-save-line"></i> Register Laptop Record</button>
+            </div>
+
+        </form>
+    </main>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const statusSelect = document.getElementById('status_id');
+            const handoverSection = document.getElementById('handover_section');
+            const handoverInputs = document.querySelectorAll('.handover-input');
+
+            function toggleHandover() {
+                // '3' is the ID for 'Deploy'
+                if (statusSelect.value === '3') {
+                    handoverSection.classList.remove('section-disabled');
+                    handoverInputs.forEach(input => input.disabled = false);
+                } else {
+                    handoverSection.classList.add('section-disabled');
+                    handoverInputs.forEach(input => {
+                        input.disabled = true;
+                        input.value = ''; // clear values when disabled
+                    });
+                }
+            }
+
+            // Initially check the state
+            toggleHandover();
+
+            // Check whenever status changes
+            statusSelect.addEventListener('change', toggleHandover);
+        });
+
+        function toggleDropdown(element, event) {
+            event.preventDefault();
+            const group = element.closest('.nav-group');
+            const dropdown = group.querySelector('.nav-dropdown');
+            
+            element.classList.toggle('open');
+            dropdown.classList.toggle('show');
+        }
+    </script>
+</body>
+</html>
