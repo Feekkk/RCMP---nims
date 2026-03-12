@@ -6,14 +6,14 @@ CREATE DATABASE IF NOT EXISTS nims
   COLLATE utf8mb4_unicode_ci;
 USE nims;
 
-CREATE TABLE role (
+CREATE TABLE IF NOT EXISTS role (
   id INT UNSIGNED PRIMARY KEY,
   name VARCHAR(128) NOT NULL UNIQUE
 );
 
-INSERT INTO role (id, name) VALUES (1, 'technician'), (2, 'admin');
+INSERT IGNORE INTO role (id, name) VALUES (1, 'technician'), (2, 'admin');
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   staff_id VARCHAR(32) NOT NULL,
   full_name VARCHAR(128) NOT NULL,
   email VARCHAR(128) NOT NULL UNIQUE,
@@ -27,14 +27,14 @@ CREATE TABLE users (
   INDEX idx_role_id (role_id)
 );
 
-CREATE TABLE status (
+CREATE TABLE IF NOT EXISTS status (
   status_id INT UNSIGNED PRIMARY KEY,
   name VARCHAR(128) NOT NULL UNIQUE
 );
 
-INSERT INTO status (status_id, name) VALUES (1, 'Active'), (2, 'Non-active'), (3, 'Deploy'), (4, 'Reserved'), (5, 'Maintenance'), (6, 'Faulty'), (7, 'Disposed'), (8, 'Lost'), (9, 'Online'), (10, 'Offline');
+INSERT IGNORE INTO status (status_id, name) VALUES (1, 'Active'), (2, 'Non-active'), (3, 'Deploy'), (4, 'Reserved'), (5, 'Maintenance'), (6, 'Faulty'), (7, 'Disposed'), (8, 'Lost'), (9, 'Online'), (10, 'Offline');
 
-CREATE TABLE laptop (
+CREATE TABLE IF NOT EXISTS laptop (
     `asset_id` INT(11) NOT NULL,
     `serial_num` VARCHAR(100) DEFAULT NULL,
     `brand` VARCHAR(100) DEFAULT NULL,
@@ -63,7 +63,7 @@ CREATE TABLE laptop (
     INDEX idx_status_id (status_id)
 );
 
-CREATE TABLE handover (
+CREATE TABLE IF NOT EXISTS handover (
   `handover_id` INT(11) NOT NULL AUTO_INCREMENT,
   `asset_id` INT(11) NOT NULL,
   `staff_id` VARCHAR(32) NOT NULL,
@@ -78,7 +78,7 @@ CREATE TABLE handover (
   INDEX idx_asset_id (asset_id)
 );
 
-CREATE TABLE handover_staff(
+CREATE TABLE IF NOT EXISTS handover_staff(
   `handover_staff_id` INT(11) NOT NULL AUTO_INCREMENT,
   `staff_id` VARCHAR(32) NOT NULL,
   `handover_id` INT(11) NOT NULL,
@@ -93,7 +93,7 @@ CREATE TABLE handover_staff(
   INDEX idx_handover_id (handover_id)
 );
 
-CREATE TABLE warranty(
+CREATE TABLE IF NOT EXISTS warranty(
   `warranty_id` INT(11) NOT NULL AUTO_INCREMENT,
   `asset_id` INT(11) NOT NULL,
   `warranty_start_date` DATE NOT NULL,
