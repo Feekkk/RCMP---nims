@@ -7,6 +7,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RCMP NIMS - UniKL NextCheck Inventory Management</title>
+    <link rel="icon" type="image/png" href="public/rcmp.png">
     <meta name="description" content="RCMP NIMS is a modern asset management system for the UniKL RCMP IT Department. Monitor, track, and optimize technical resources securely.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
