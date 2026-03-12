@@ -12,7 +12,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Technician Dashboard - RCMP NIMS</title>
-    <link rel="icon" type="image/png" href="public/rcmp.png">
+    <link rel="icon" type="image/png" href="../public/rcmp.png">
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,7 +26,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             --primary-hover: #1d4ed8;
             --secondary: #0ea5e9;
             --accent: #f59e0b;
-            --danger: #ef4444;
+            --danger: #ef4444;      
             --success: #10b981;
             --dark: #0f172a;
             --darker: #020617;
