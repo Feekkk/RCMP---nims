@@ -1,9 +1,158 @@
 <?php
 session_start();
+
 // Basic authentication check: ensures the user is logged in and is a technician (role_id 1)
 if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
     header('Location: ../auth/login.php');
     exit;
+}
+
+require_once '../config/database.php';
+
+$success_message = '';
+$error_message   = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // ── Helper: sanitise input ──────────────────────────────────────────────
+    $str  = fn($k) => isset($_POST[$k]) && $_POST[$k] !== '' ? trim($_POST[$k])  : null;
+    $date = fn($k) => isset($_POST[$k]) && $_POST[$k] !== '' ? trim($_POST[$k])  : null;
+    $dec  = fn($k) => isset($_POST[$k]) && $_POST[$k] !== '' ? (float)$_POST[$k] : null;
+    $int  = fn($k) => isset($_POST[$k]) && $_POST[$k] !== '' ? (int)$_POST[$k]   : null;
+
+    // ── Laptop (required) ───────────────────────────────────────────────────
+    $asset_id      = $int('asset_id');
+    $serial_num    = $str('serial_num');
+    $status_id     = $int('status_id');
+    $brand         = $str('brand');
+    $model         = $str('model');
+    $part_number   = $str('part_number');
+    $category      = $str('category');
+    $processor     = $str('processor');
+    $memory        = $str('memory');
+    $storage       = $str('storage');
+    $gpu           = $str('gpu');
+    $os            = $str('os');
+    $po_date       = $date('po_date');
+    $po_num        = $str('po_num');
+    $do_date       = $date('do_date');
+    $do_num        = $str('do_num');
+    $invoice_date  = $date('invoice_date');
+    $invoice_num   = $str('invoice_num');
+    $purchase_cost = $dec('purchase_cost');
+
+    // ── Handover (only when status = 3 Deploy) ──────────────────────────────
+    $is_deploy      = ($status_id === 3);
+    $ho_staff_id    = $str('staff_id');
+    $ho_department  = $str('department');
+    $ho_assign_type = $str('assignment_type');
+    $ho_date        = $date('handover_date');
+    $ho_remarks     = $str('handover_remarks');
+
+    // ── Warranty (optional) ─────────────────────────────────────────────────
+    $w_start   = $date('warranty_start_date');
+    $w_end     = $date('warranty_end_date');
+    $w_remarks = $str('warranty_remarks');
+    $has_warranty = ($w_start !== null && $w_end !== null);
+
+    // ── Validation ──────────────────────────────────────────────────────────
+    if (!$asset_id || !$serial_num || !$status_id) {
+        $error_message = 'Asset ID, Serial Number, and Status are required.';
+    } elseif ($is_deploy && (!$ho_staff_id || !$ho_department || !$ho_assign_type || !$ho_date)) {
+        $error_message = 'Handover details (Staff ID, Department, Assignment Type, Date) are required for Deploy status.';
+    } else {
+        try {
+            $pdo = db();
+            $pdo->beginTransaction();
+
+            // 1. Insert laptop record
+            $stmt = $pdo->prepare("
+                INSERT INTO laptop 
+                    (asset_id, serial_num, brand, model, category, part_number,
+                     processor, memory, os, storage, gpu,
+                     PO_DATE, PO_NUM, DO_DATE, DO_NUM,
+                     INVOICE_DATE, INVOICE_NUM, PURCHASE_COST, status_id)
+                VALUES
+                    (:asset_id, :serial_num, :brand, :model, :category, :part_number,
+                     :processor, :memory, :os, :storage, :gpu,
+                     :po_date, :po_num, :do_date, :do_num,
+                     :invoice_date, :invoice_num, :purchase_cost, :status_id)
+            ");
+            $stmt->execute([
+                ':asset_id'      => $asset_id,
+                ':serial_num'    => $serial_num,
+                ':brand'         => $brand,
+                ':model'         => $model,
+                ':category'      => $category,
+                ':part_number'   => $part_number,
+                ':processor'     => $processor,
+                ':memory'        => $memory,
+                ':os'            => $os,
+                ':storage'       => $storage,
+                ':gpu'           => $gpu,
+                ':po_date'       => $po_date,
+                ':po_num'        => $po_num,
+                ':do_date'       => $do_date,
+                ':do_num'        => $do_num,
+                ':invoice_date'  => $invoice_date,
+                ':invoice_num'   => $invoice_num,
+                ':purchase_cost' => $purchase_cost,
+                ':status_id'     => $status_id,
+            ]);
+
+            // 2. Handover record (only for Deploy)
+            if ($is_deploy) {
+                $stmt2 = $pdo->prepare("
+                    INSERT INTO handover (asset_id, staff_id, handover_date, handover_remarks)
+                    VALUES (:asset_id, :staff_id, :handover_date, :handover_remarks)
+                ");
+                $stmt2->execute([
+                    ':asset_id'        => $asset_id,
+                    ':staff_id'        => $ho_staff_id,
+                    ':handover_date'   => $ho_date,
+                    ':handover_remarks'=> $ho_remarks,
+                ]);
+                $handover_id = (int)$pdo->lastInsertId();
+
+                // 3. Handover Staff record
+                $stmt3 = $pdo->prepare("
+                    INSERT INTO handover_staff (staff_id, handover_id, department, assignment_type)
+                    VALUES (:staff_id, :handover_id, :department, :assignment_type)
+                ");
+                $stmt3->execute([
+                    ':staff_id'       => $ho_staff_id,
+                    ':handover_id'    => $handover_id,
+                    ':department'     => $ho_department,
+                    ':assignment_type'=> $ho_assign_type,
+                ]);
+            }
+
+            // 4. Warranty record (optional)
+            if ($has_warranty) {
+                $stmt4 = $pdo->prepare("
+                    INSERT INTO warranty (asset_id, warranty_start_date, warranty_end_date, warranty_remarks)
+                    VALUES (:asset_id, :start, :end, :remarks)
+                ");
+                $stmt4->execute([
+                    ':asset_id' => $asset_id,
+                    ':start'    => $w_start,
+                    ':end'      => $w_end,
+                    ':remarks'  => $w_remarks,
+                ]);
+            }
+
+            $pdo->commit();
+            $success_message = "Laptop (Asset ID: {$asset_id}) has been successfully registered!";
+
+        } catch (\PDOException $e) {
+            if (isset($pdo)) $pdo->rollBack();
+            // Show friendly duplicate-key message
+            if ($e->getCode() == 23000) {
+                $error_message = "Asset ID <strong>{$asset_id}</strong> already exists. Please use a unique Asset ID.";
+            } else {
+                $error_message = "Database error: " . htmlspecialchars($e->getMessage());
+            }
+        }
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -577,6 +726,31 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             .main-content { margin-left: 0; max-width: 100vw; padding: 1.5rem; }
             .form-grid, .form-grid.grid-3 { grid-template-columns: 1fr; gap: 1rem;}
         }
+
+        /* Alert Messages */
+        .alert {
+            padding: 1rem 1.5rem;
+            border-radius: 14px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            animation: fadeInDown 0.5s ease-out;
+        }
+
+        .alert-success {
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            color: #10b981;
+        }
+
+        .alert-error {
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            color: #ef4444;
+        }
     </style>
 </head>
 <body>
@@ -653,7 +827,22 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
         </header>
 
         <!-- Form Wrapper -->
-        <form action="#" method="POST" id="laptopForm">
+        <?php if ($success_message): ?>
+        <div class="alert alert-success">
+            <i class="ri-checkbox-circle-fill" style="font-size: 1.3rem;"></i>
+            <?php echo $success_message; ?>
+            <a href="laptopView.php" style="margin-left: auto; color: inherit; font-weight: 600; text-decoration: underline;">View Inventory &rarr;</a>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($error_message): ?>
+        <div class="alert alert-error">
+            <i class="ri-error-warning-fill" style="font-size: 1.3rem;"></i>
+            <?php echo $error_message; ?>
+        </div>
+        <?php endif; ?>
+
+        <form action="" method="POST" id="laptopForm">
             
             <!-- SECTION 1: Identity -->
             <div class="form-section">
