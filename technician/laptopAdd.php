@@ -707,7 +707,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <a href="#" class="nav-item">
                 <i class="ri-delete-bin-line"></i> Disposal
             </a>
-            <a href="#" class="nav-item">
+            <a href="history.php" class="nav-item">
                 <i class="ri-history-line"></i> History 
             </a>
             <a href="#" class="nav-item">
@@ -751,7 +751,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="alert alert-success">
             <i class="ri-checkbox-circle-fill" style="font-size: 1.3rem;"></i>
             <?php echo $success_message; ?>
-            <a href="laptopView.php" style="margin-left: auto; color: inherit; font-weight: 600; text-decoration: underline;">View Inventory &rarr;</a>
+            <a href="laptop.php" style="margin-left: auto; color: inherit; font-weight: 600; text-decoration: underline;">View Inventory &rarr;</a>
         </div>
         <?php endif; ?>
 

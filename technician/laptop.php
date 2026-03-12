@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 session_start();
 if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
     header('Location: ../auth/login.php');
@@ -750,7 +750,7 @@ $status_meta = [
             <a href="#" class="nav-item">
                 <i class="ri-delete-bin-line"></i> Disposal
             </a>
-            <a href="#" class="nav-item">
+            <a href="history.php" class="nav-item">
                 <i class="ri-history-line"></i> History 
             </a>
             <a href="#" class="nav-item">

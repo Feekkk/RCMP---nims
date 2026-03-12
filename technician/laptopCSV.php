@@ -420,7 +420,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             </div>
         </div>
         <a href="#" class="nav-item"><i class="ri-delete-bin-line"></i> Disposal</a>
-        <a href="#" class="nav-item"><i class="ri-history-line"></i> History</a>
+        <a href="history.php" class="nav-item"><i class="ri-history-line"></i> History</a>
         <a href="#" class="nav-item"><i class="ri-book-read-line"></i> User Manual</a>
         <a href="#" class="nav-item"><i class="ri-user-settings-line"></i> Profile</a>
     </nav>
