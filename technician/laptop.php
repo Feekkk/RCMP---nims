@@ -690,7 +690,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
                     <i class="ri-arrow-down-s-line chevron" style="transition: transform 0.3s ease; font-size: 1.2rem;"></i>
                 </a>
                 <div class="nav-dropdown show">
-                    <a href="laptopView.php" class="nav-dropdown-item active">Laptop</a>
+                    <a href="laptop.php" class="nav-dropdown-item active">Laptop</a>
                     <a href="#" class="nav-dropdown-item">AV</a>
                     <a href="#" class="nav-dropdown-item">Network</a>
                 </div>
