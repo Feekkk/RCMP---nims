@@ -1,5 +1,28 @@
 <?php
-// RCMP NIMS - Registration Page
+session_start();
+require_once __DIR__ . '/../config/database.php';
+
+$msg = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $name = trim($_POST['full_name'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $staffId = trim($_POST['staff_id'] ?? '');
+    $password = $_POST['password'] ?? '';
+    if (strlen($password) < 6) {
+        $msg = 'Password must be at least 6 characters.';
+    } else {
+        $hash = password_hash($password, PASSWORD_DEFAULT);
+        $stmt = db()->prepare('INSERT INTO users (staff_id, full_name, email, password_hash, role_id) VALUES (?, ?, ?, ?, ?)');
+        try {
+            $stmt->execute([$staffId, $name, $email, $hash, 1]);
+            header('Location: login.php?registered=1');
+            exit;
+        } catch (PDOException $e) {
+            if ($e->getCode() == 23000) $msg = 'Staff ID or email already exists.';
+            else $msg = 'Registration failed. Please try again.';
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -171,6 +194,20 @@
             transition: color 0.3s ease;
         }
 
+        .password-toggle {
+            position: absolute;
+            right: 0.9rem;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            font-size: 1.1rem;
+        }
+
         .form-input {
             width: 100%;
             background: var(--input-bg);
@@ -307,6 +344,7 @@
             <p class="auth-subtitle">Register for IT Department Access</p>
         </div>
 
+        <?php if ($msg): ?><p style="color:#ef4444;margin-bottom:1rem;font-size:0.9rem;"><?= htmlspecialchars($msg) ?></p><?php endif; ?>
         <form action="" method="POST">
             <div class="form-group">
                 <label class="form-label" for="full_name">Full Name</label>
@@ -338,6 +376,9 @@
                     <div class="form-input-wrapper">
                         <input type="password" id="password" name="password" class="form-input" placeholder="Create password" required>
                         <i class="ri-lock-line form-icon"></i>
+                        <button type="button" class="password-toggle" data-target="password" aria-label="Toggle password visibility">
+                            <i class="ri-eye-off-line"></i>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -351,6 +392,32 @@
             Already have an account? <a href="login.php" class="text-link">Login here</a>
         </div>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('.password-toggle').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var targetId = btn.getAttribute('data-target');
+                    var input = document.getElementById(targetId);
+                    if (!input) return;
+                    var icon = btn.querySelector('i');
+                    if (input.type === 'password') {
+                        input.type = 'text';
+                        if (icon) {
+                            icon.classList.remove('ri-eye-off-line');
+                            icon.classList.add('ri-eye-line');
+                        }
+                    } else {
+                        input.type = 'password';
+                        if (icon) {
+                            icon.classList.remove('ri-eye-line');
+                            icon.classList.add('ri-eye-off-line');
+                        }
+                    }
+                });
+            });
+        });
+    </script>
 
 </body>
 </html>

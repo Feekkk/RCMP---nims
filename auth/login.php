@@ -1,5 +1,29 @@
 <?php
-// RCMP NIMS - Login Page
+session_start();
+require_once __DIR__ . '/../config/database.php';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $staffId = trim($_POST['staff_id'] ?? '');
+    $password = $_POST['password'] ?? '';
+
+    $stmt = db()->prepare('SELECT staff_id, password_hash, role_id FROM users WHERE staff_id = ?');
+    $stmt->execute([$staffId]);
+    $user = $stmt->fetch();
+
+    if ($user && password_verify($password, $user['password_hash'])) {
+        $_SESSION['staff_id'] = $user['staff_id'];
+        $_SESSION['role_id'] = $user['role_id'];
+
+        if ((int)$user['role_id'] === 1) {
+            header('Location: ../technician/dashboard.php');
+        } else {
+            header('Location: ../admin/dashboard.php');
+        }
+        exit;
+    } else {
+        $err = 'Invalid staff ID or password.';
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -160,6 +184,20 @@
             font-size: 1.2rem;
             pointer-events: none;
             transition: color 0.3s ease;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 0.9rem;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            font-size: 1.1rem;
         }
 
         .form-input {
@@ -365,16 +403,18 @@
             <p class="auth-subtitle">Welcome back to the IT Control Center</p>
         </div>
 
+        <?php if (isset($err)): ?><p style="color:#ef4444;margin-bottom:1rem;font-size:0.9rem;"><?= htmlspecialchars($err) ?></p><?php endif; ?>
+        <?php if (!empty($_GET['registered'])): ?><p style="color:#10b981;margin-bottom:1rem;font-size:0.9rem;">Registration successful. Please log in.</p><?php endif; ?>
         <form action="" method="POST">
             <div class="form-group">
                 <label class="form-label">Choose your role</label>
                 <div class="role-selector">
                     <div class="role-option">
-                        <input type="radio" id="role_staff" name="role" value="staff" checked>
-                        <label for="role_staff" class="role-label"><i class="ri-user-line" style="margin-right: 5px;"></i> IT Staff</label>
+                        <input type="radio" id="role_technician" name="role" value="1" checked>
+                        <label for="role_technician" class="role-label"><i class="ri-user-line" style="margin-right: 5px;"></i> Technician</label>
                     </div>
                     <div class="role-option">
-                        <input type="radio" id="role_admin" name="role" value="admin">
+                        <input type="radio" id="role_admin" name="role" value="2">
                         <label for="role_admin" class="role-label"><i class="ri-shield-user-line" style="margin-right: 5px;"></i> Administrator</label>
                     </div>
                 </div>
@@ -393,6 +433,9 @@
                 <div class="form-input-wrapper">
                     <input type="password" id="password" name="password" class="form-input" placeholder="Enter your password" required>
                     <i class="ri-lock-line form-icon"></i>
+                    <button type="button" class="password-toggle" data-target="password" aria-label="Toggle password visibility">
+                        <i class="ri-eye-off-line"></i>
+                    </button>
                 </div>
             </div>
 
@@ -413,6 +456,32 @@
             Don't have an account? <a href="register.php" class="text-link">Register here</a>
         </div>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('.password-toggle').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var targetId = btn.getAttribute('data-target');
+                    var input = document.getElementById(targetId);
+                    if (!input) return;
+                    var icon = btn.querySelector('i');
+                    if (input.type === 'password') {
+                        input.type = 'text';
+                        if (icon) {
+                            icon.classList.remove('ri-eye-off-line');
+                            icon.classList.add('ri-eye-line');
+                        }
+                    } else {
+                        input.type = 'password';
+                        if (icon) {
+                            icon.classList.remove('ri-eye-line');
+                            icon.classList.add('ri-eye-off-line');
+                        }
+                    }
+                });
+            });
+        });
+    </script>
 
 </body>
 </html>
