@@ -598,6 +598,51 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             margin-right: auto;
         }
 
+        /* Action Dropdowns */
+        .dropdown-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        .action-dropdown {
+            position: absolute;
+            top: calc(100% + 0.5rem);
+            right: 0;
+            background: var(--darker);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 0.5rem;
+            min-width: 140px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            display: none;
+            flex-direction: column;
+            gap: 0.25rem;
+            z-index: 50;
+            animation: fadeInDown 0.2s ease-out forwards;
+        }
+
+        .action-dropdown.show {
+            display: flex;
+        }
+
+        .action-dropdown-item {
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .action-dropdown-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+        }
+
         /* Animations */
         @keyframes fadeInDown {
             from { opacity: 0; transform: translateY(-20px); }
@@ -699,12 +744,24 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
                 <button class="btn btn-outline" title="Filter Records">
                     <i class="ri-filter-3-line"></i> Filter
                 </button>
-                <button class="btn btn-outline" title="Export CSV">
-                    <i class="ri-download-line"></i> Export
-                </button>
-                <a href="#" class="btn btn-primary">
-                    <i class="ri-add-line"></i> Register Laptop
-                </a>
+                <div class="dropdown-container">
+                    <button class="btn btn-outline" onclick="toggleActionDropdown(this, event)">
+                        <i class="ri-download-line"></i> Export <i class="ri-arrow-down-s-line" style="margin-left: 4px;"></i>
+                    </button>
+                    <div class="action-dropdown">
+                        <a href="#" class="action-dropdown-item"><i class="ri-file-pdf-line" style="color: var(--danger);"></i> Export PDF</a>
+                        <a href="#" class="action-dropdown-item"><i class="ri-file-excel-line" style="color: var(--success);"></i> Export CSV</a>
+                    </div>
+                </div>
+                <div class="dropdown-container">
+                    <button class="btn btn-primary" onclick="toggleActionDropdown(this, event)">
+                        <i class="ri-add-line"></i> Register Laptop <i class="ri-arrow-down-s-line" style="margin-left: 4px;"></i>
+                    </button>
+                    <div class="action-dropdown">
+                        <a href="#" class="action-dropdown-item"><i class="ri-macbook-line" style="color: var(--primary);"></i> Single Asset</a>
+                        <a href="#" class="action-dropdown-item"><i class="ri-stack-line" style="color: var(--secondary);"></i> Bulk Assets</a>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -850,6 +907,30 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
             element.classList.toggle('open');
             dropdown.classList.toggle('show');
         }
+
+        function toggleActionDropdown(element, event) {
+            event.stopPropagation();
+            const container = element.closest('.dropdown-container');
+            const dropdown = container.querySelector('.action-dropdown');
+            
+            // Close other action dropdowns
+            document.querySelectorAll('.action-dropdown.show').forEach(drop => {
+                if (drop !== dropdown) {
+                    drop.classList.remove('show');
+                }
+            });
+            
+            dropdown.classList.toggle('show');
+        }
+
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.dropdown-container')) {
+                document.querySelectorAll('.action-dropdown.show').forEach(drop => {
+                    drop.classList.remove('show');
+                });
+            }
+        });
     </script>
 </body>
 </html>
