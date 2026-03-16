@@ -821,15 +821,6 @@ $status_meta = [
                     <i class="ri-filter-3-line"></i> Filter
                 </button>
                 <div class="dropdown-container">
-                    <button class="btn btn-outline" onclick="toggleActionDropdown(this, event)">
-                        <i class="ri-download-line"></i> Export <i class="ri-arrow-down-s-line" style="margin-left: 4px;"></i>
-                    </button>
-                    <div class="action-dropdown">
-                        <a href="#" class="action-dropdown-item"><i class="ri-file-pdf-line" style="color: var(--danger);"></i> Export PDF</a>
-                        <a href="#" class="action-dropdown-item"><i class="ri-file-excel-line" style="color: var(--success);"></i> Export CSV</a>
-                    </div>
-                </div>
-                <div class="dropdown-container">
                     <button class="btn btn-primary" onclick="toggleActionDropdown(this, event)">
                         <i class="ri-add-line"></i> Register Laptop <i class="ri-arrow-down-s-line" style="margin-left: 4px;"></i>
                     </button>
