@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 session_start();
 if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
     header('Location: ../auth/login.php');
@@ -595,9 +595,9 @@ $status_meta = [
             color: white;
         }
         
-        .btn-action.edit:hover {
-            background: var(--primary);
-            border-color: var(--primary);
+        .btn-action.handover:hover {
+            background: var(--success);
+            border-color: var(--success);
             color: white;
         }
 
@@ -880,7 +880,11 @@ $status_meta = [
                             <td><span class="badge <?= $meta['cls'] ?>"><i class="<?= $meta['icon'] ?>"></i> <?= htmlspecialchars($row['status_name']) ?></span></td>
                             <td>
                                 <button class="btn-action view" title="View Details"><i class="ri-eye-line"></i></button>
-                                <button class="btn-action edit" title="Edit Device"><i class="ri-edit-line"></i></button>
+                                <?php if ($sid === 1): ?>
+                                    <a href="handoverForm.php?asset_id=<?= urlencode($row['asset_id']) ?>" class="btn-action handover" title="Handover Asset">
+                                        <i class="ri-exchange-line"></i>
+                                    </a>
+                                <?php endif; ?>
                             </td>
                         </tr>
                         <?php endforeach; endif; ?>
