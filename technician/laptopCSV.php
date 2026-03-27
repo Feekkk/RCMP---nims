@@ -402,37 +402,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
 <div class="blob blob-2"></div>
 
 <!-- Sidebar -->
-<aside class="sidebar">
-    <div class="sidebar-logo">
-        <img src="../public/logo-nims.png" alt="RCMP NIMS">
-    </div>
-    <nav class="nav-menu">
-        <a href="dashboard.php" class="nav-item"><i class="ri-dashboard-2-line"></i> Dashboard</a>
-        <div class="nav-group">
-            <a href="#" class="nav-item open" onclick="toggleDropdown(this, event)" style="justify-content:space-between;">
-                <div style="display:flex;align-items:center;gap:1rem;"><i class="ri-macbook-line"></i> Inventory</div>
-                <i class="ri-arrow-down-s-line chevron" style="transition:transform 0.3s ease;font-size:1.2rem;"></i>
-            </a>
-            <div class="nav-dropdown show">
-                <a href="laptop.php" class="nav-dropdown-item active">Laptop</a>
-                <a href="#" class="nav-dropdown-item">AV</a>
-                <a href="#" class="nav-dropdown-item">Network</a>
-            </div>
-        </div>
-        <a href="#" class="nav-item"><i class="ri-delete-bin-line"></i> Disposal</a>
-        <a href="history.php" class="nav-item"><i class="ri-history-line"></i> History</a>
-        <a href="#" class="nav-item"><i class="ri-book-read-line"></i> User Manual</a>
-        <a href="#" class="nav-item"><i class="ri-user-settings-line"></i> Profile</a>
-    </nav>
-    <div class="user-profile" onclick="window.location.href='../auth/logout.php'" title="Logout">
-        <div class="avatar"><?= strtoupper(($_SESSION['user_name'] ?? 'T')[0]) ?></div>
-        <div class="user-info">
-            <div class="user-name"><?= htmlspecialchars($_SESSION['user_name'] ?? 'Technician') ?></div>
-            <div class="user-role">IT Technician</div>
-        </div>
-        <i class="ri-logout-box-r-line" style="color:var(--text-muted);font-size:1.2rem;"></i>
-    </div>
-</aside>
+<?php include __DIR__ . '/../components/sidebarUser.php'; ?>
 
 <!-- Main Content -->
 <main class="main-content">
