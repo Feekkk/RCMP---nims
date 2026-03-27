@@ -1,0 +1,567 @@
+<?php
+session_start();
+if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
+    header('Location: ../auth/login.php');
+    exit;
+}
+
+require_once '../config/database.php';
+
+$assetId = isset($_GET['asset_id']) ? trim($_GET['asset_id']) : '';
+
+// Fetch laptop basic info (optional, for context)
+$laptop = null;
+if ($assetId !== '') {
+    $stmt = db()->prepare('SELECT asset_id, brand, model, serial_num FROM laptop WHERE asset_id = ?');
+    $stmt->execute([$assetId]);
+    $laptop = $stmt->fetch();
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laptop Handover Form - RCMP NIMS</title>
+    <link rel="icon" type="image/png" href="../public/rcmp.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --secondary: #0ea5e9;
+            --bg: #f1f5f9;
+            --card-bg: #ffffff;
+            --card-border: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --input-bg: #f8fafc;
+            --input-border: #cbd5e1;
+            --glass-panel: #f8fafc;
+            --glass-border: #e2e8f0;
+            --danger: #ef4444;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .sidebar {
+            width: 280px;
+            height: 100vh;
+            background: #ffffff;
+            border-right: 1px solid var(--card-border);
+            position: fixed;
+            top: 0;
+            left: 0;
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+            z-index: 100;
+            box-shadow: 4px 0 20px rgba(15,23,42,0.06);
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--glass-border);
+            margin-bottom: 2rem;
+        }
+
+        .sidebar-logo img {
+            height: 45px;
+            width: auto;
+            max-width: 100%;
+            object-fit: contain;
+        }
+
+        .nav-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            flex: 1;
+        }
+
+        .nav-item {
+            padding: 0.85rem 1.25rem;
+            border-radius: 12px;
+            color: var(--text-muted);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .nav-item i {
+            font-size: 1.25rem;
+            color: inherit;
+        }
+
+        .nav-item:hover {
+            color: var(--primary);
+            background: rgba(37, 99, 235, 0.06);
+        }
+
+        .nav-item.active {
+            color: var(--primary);
+            background: rgba(37, 99, 235, 0.1);
+            border: 1px solid rgba(37, 99, 235, 0.2);
+            box-shadow: inset 3px 0 0 var(--primary);
+        }
+
+        .nav-dropdown {
+            display: none;
+            flex-direction: column;
+            gap: 0.25rem;
+            padding-left: 3.25rem;
+            margin-top: -0.25rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .nav-dropdown.show {
+            display: flex;
+        }
+
+        .nav-dropdown-item {
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .nav-dropdown-item::before {
+            content: '';
+            position: absolute;
+            left: -1rem;
+            top: 50%;
+            width: 6px;
+            height: 6px;
+            background: var(--card-border);
+            border-radius: 50%;
+            transform: translateY(-50%);
+            transition: all 0.3s ease;
+        }
+
+        .nav-dropdown-item:hover,
+        .nav-dropdown-item.active {
+            color: var(--primary);
+            background: rgba(37,99,235,0.05);
+        }
+
+        .nav-dropdown-item:hover::before,
+        .nav-dropdown-item.active::before {
+            background: var(--primary);
+        }
+
+        .nav-item.open .chevron {
+            transform: rotate(180deg);
+        }
+
+        .user-profile {
+            margin-top: auto;
+            padding: 1rem;
+            background: var(--glass-panel);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            transition: all 0.25s ease;
+            cursor: pointer;
+        }
+
+        .user-profile:hover {
+            background: rgba(37,99,235,0.06);
+            border-color: rgba(37,99,235,0.2);
+        }
+
+        .avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            color: #fff;
+            font-size: 1.1rem;
+            box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3);
+        }
+
+        .user-info {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .user-name {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .user-role {
+            font-size: 0.75rem;
+            color: var(--primary);
+            margin-top: 0.2rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+
+        .main-content {
+            margin-left: 280px;
+            flex: 1;
+            max-width: calc(100vw - 280px);
+            padding: 2rem 2.5rem 3rem;
+        }
+
+        .wrapper {
+            width: 100%;
+            max-width: 1020px;
+            margin: 0 auto;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .back-link:hover {
+            color: var(--primary);
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 24px;
+            border: 1px solid var(--card-border);
+            box-shadow: 0 8px 30px rgba(15,23,42,0.08);
+            padding: 2.2rem 2.4rem;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1.8rem;
+        }
+
+        .card-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.7rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .card-title i {
+            color: var(--primary);
+            font-size: 1.6rem;
+        }
+
+        .card-subtitle {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        .device-summary {
+            padding: 0.9rem 1.1rem;
+            border-radius: 16px;
+            background: var(--input-bg);
+            border: 1px dashed var(--card-border);
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .device-summary strong {
+            color: var(--text-main);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1.5rem 2rem;
+            margin-top: 1.8rem;
+        }
+
+        .section-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.75rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 0.45rem;
+        }
+
+        .form-control {
+            width: 100%;
+            background: var(--input-bg);
+            border-radius: 12px;
+            border: 1px solid var(--input-border);
+            padding: 0.7rem 0.9rem;
+            font-size: 0.95rem;
+            color: var(--text-main);
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .form-control:focus {
+            border-color: var(--primary);
+            background: #fff;
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+        }
+
+        .form-row-inline {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1rem;
+        }
+
+        .form-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--card-border);
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .footer-note {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .btn {
+            padding: 0.8rem 1.6rem;
+            border-radius: 999px;
+            border: none;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            transition: all 0.25s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: #fff;
+            box-shadow: 0 10px 25px rgba(37,99,235,0.35);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 14px 28px rgba(37,99,235,0.45);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-muted);
+        }
+
+        .btn-ghost:hover {
+            color: var(--primary);
+        }
+
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); width: 260px; }
+            .main-content { margin-left: 0; max-width: 100vw; padding: 1rem; }
+            .card {
+                padding: 1.6rem 1.4rem;
+            }
+            .form-grid {
+                grid-template-columns: minmax(0, 1fr);
+            }
+            .form-row-inline {
+                grid-template-columns: minmax(0, 1fr);
+            }
+            .card-header {
+                flex-direction: column;
+                gap: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <?php include __DIR__ . '/../components/sidebarUser.php'; ?>
+
+    <main class="main-content">
+    <div class="wrapper">
+        <a href="laptop.php" class="back-link">
+            <i class="ri-arrow-left-line"></i> Back to Laptop Inventory
+        </a>
+
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">
+                        <i class="ri-exchange-line"></i>
+                        Laptop Handover Form
+                    </div>
+                    <p class="card-subtitle">
+                        Record the handover details between technician and receiver for asset tracking.
+                    </p>
+                </div>
+                <?php if ($laptop): ?>
+                    <div class="device-summary">
+                        <strong>Asset ID:</strong> <?= htmlspecialchars($laptop['asset_id']) ?> &nbsp;·&nbsp;
+                        <strong>Device:</strong> <?= htmlspecialchars(trim(($laptop['brand'] ?? '') . ' ' . ($laptop['model'] ?? ''))) ?> &nbsp;·&nbsp;
+                        <strong>SN:</strong> <?= htmlspecialchars($laptop['serial_num'] ?? '-') ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <form action="#" method="post">
+                <input type="hidden" name="asset_id" value="<?= htmlspecialchars($assetId) ?>">
+
+                <div class="form-grid">
+                    <!-- Receiver info -->
+                    <div>
+                        <div class="section-title">Receiver Information</div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="receiver_staff_id">Staff ID (Receiver)</label>
+                            <input type="text" id="receiver_staff_id" name="receiver_staff_id" class="form-control" placeholder="e.g. IT-12345" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="receiver_name">Staff Name (Receiver)</label>
+                            <input type="text" id="receiver_name" name="receiver_name" class="form-control" placeholder="Receiver full name" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="receiver_designation">Designation (Receiver)</label>
+                            <input type="text" id="receiver_designation" name="receiver_designation" class="form-control" placeholder="e.g. Lecturer, Officer" required>
+                        </div>
+                    </div>
+
+                    <!-- Handover details + technician info -->
+                    <div>
+                        <div class="section-title">Handover Details</div>
+
+                        <div class="form-row-inline">
+                            <div class="form-group">
+                                <label class="form-label" for="handover_date">Date</label>
+                                <input type="date" id="handover_date" name="handover_date" class="form-control" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="handover_time">Time</label>
+                                <input type="time" id="handover_time" name="handover_time" class="form-control" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="handover_place">Place</label>
+                            <input type="text" id="handover_place" name="handover_place" class="form-control" placeholder="e.g. UniKL RCMP IT Counter, Lab 3" required>
+                        </div>
+
+                        <div class="section-title" style="margin-top: 1.25rem;">Handover By (Technician)</div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="technician_name">Technician Name</label>
+                            <input
+                                type="text"
+                                id="technician_name"
+                                name="technician_name"
+                                class="form-control"
+                                value="<?= htmlspecialchars($_SESSION['user_name'] ?? '') ?>"
+                                placeholder="Technician full name"
+                                required
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="technician_staff_id">Technician Staff ID</label>
+                            <input
+                                type="text"
+                                id="technician_staff_id"
+                                name="technician_staff_id"
+                                class="form-control"
+                                value="<?= htmlspecialchars($_SESSION['staff_id'] ?? '') ?>"
+                                placeholder="e.g. IT-00001"
+                                required
+                            >
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-footer">
+                    <div class="footer-note">
+                        System will automatically email the form to the receiver for approval.
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-ghost" onclick="window.location.href='laptop.php'">
+                            Cancel
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="ri-check-line"></i> Complete Handover
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    </main>
+
+    <script>
+        function toggleDropdown(element, event) {
+            event.preventDefault();
+            const group = element.closest('.nav-group');
+            const dropdown = group.querySelector('.nav-dropdown');
+            element.classList.toggle('open');
+            dropdown.classList.toggle('show');
+        }
+    </script>
+</body>
+</html>
+
