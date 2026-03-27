@@ -3,6 +3,8 @@
 $currentPage = basename($_SERVER['PHP_SELF']);
 $isDashboard = $currentPage === 'dashboard.php';
 $isLaptop    = $currentPage === 'laptop.php';
+$isAV        = $currentPage === 'av.php';
+$isNetwork   = $currentPage === 'network.php';
 ?>
 
 <aside class="sidebar">
@@ -23,8 +25,8 @@ $isLaptop    = $currentPage === 'laptop.php';
             </a>
             <div class="nav-dropdown <?= $isLaptop ? 'show' : '' ?>">
                 <a href="../technician/laptop.php" class="nav-dropdown-item <?= $isLaptop ? 'active' : '' ?>">Laptop</a>
-                <a href="#" class="nav-dropdown-item">AV</a>
-                <a href="#" class="nav-dropdown-item">Network</a>
+                <a href="../technician/av.php" class="nav-dropdown-item <?= $isAV ? 'active' : '' ?>">AV</a>
+                <a href="../technician/network.php" class="nav-dropdown-item <?= $isNetwork ? 'active' : '' ?>">Network</a>
             </div>
         </div>
         <a href="#" class="nav-item">
