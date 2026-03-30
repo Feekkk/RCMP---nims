@@ -5,8 +5,62 @@ if (!isset($_SESSION['staff_id']) || (int)($_SESSION['role_id'] ?? 0) !== 1) {
     exit;
 }
 
-// UI-only page for now (no network_assets table yet).
+require_once __DIR__ . '/../config/database.php';
+
+$stats = [
+    'total'        => 0,
+    'online'       => 0,
+    'offline'      => 0,
+    'maint_faulty' => 0,
+];
 $assets = [];
+$dbError = false;
+
+try {
+    $pdo = db();
+    $stats['total'] = (int)$pdo->query('SELECT COUNT(*) FROM network')->fetchColumn();
+    $stats['online'] = (int)$pdo->query('SELECT COUNT(*) FROM network WHERE status_id = 9')->fetchColumn();
+    $stats['offline'] = (int)$pdo->query('SELECT COUNT(*) FROM network WHERE status_id = 10')->fetchColumn();
+    $stats['maint_faulty'] = (int)$pdo->query(
+        'SELECT COUNT(*) FROM network WHERE status_id IN (5, 6)'
+    )->fetchColumn();
+    $stmt = $pdo->query('
+        SELECT n.asset_id, n.serial_num, n.brand, n.model, n.mac_address, n.ip_address,
+               n.status_id, n.remarks, s.name AS status_name
+        FROM network n
+        JOIN status s ON s.status_id = n.status_id
+        ORDER BY n.asset_id DESC
+    ');
+    $assets = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    $dbError = true;
+    $assets = [];
+}
+
+function network_filter_status(int $statusId): string
+{
+    if ($statusId === 9) {
+        return 'online';
+    }
+    if ($statusId === 10) {
+        return 'offline';
+    }
+    return 'other';
+}
+
+function network_badge_class(int $statusId): string
+{
+    return match ($statusId) {
+        9 => 'badge-online',
+        10 => 'badge-offline',
+        3 => 'badge-deploy',
+        5 => 'badge-maint',
+        6 => 'badge-faulty',
+        7 => 'badge-disposed',
+        8 => 'badge-lost',
+        default => 'badge-unknown',
+    };
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -270,6 +324,40 @@ $assets = [];
         .btn-outline:hover { color: var(--primary); border-color: rgba(37,99,235,0.25); background: rgba(37,99,235,0.06); }
         .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
 
+        .dropdown-container { position: relative; display: inline-block; }
+        .action-dropdown {
+            position: absolute;
+            top: calc(100% + 0.5rem);
+            right: 0;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 0.5rem;
+            min-width: 180px;
+            box-shadow: 0 8px 25px rgba(15,23,42,0.12);
+            display: none;
+            flex-direction: column;
+            gap: 0.25rem;
+            z-index: 50;
+        }
+        .action-dropdown.show { display: flex; }
+        .action-dropdown-item {
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .action-dropdown-item:hover {
+            background: rgba(37, 99, 235, 0.06);
+            color: var(--primary);
+        }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -297,6 +385,25 @@ $assets = [];
         .icon-amber { background: rgba(245,158,11,0.12); color: var(--warning); border: 1px solid rgba(245,158,11,0.25); }
         .stat-num { font-family:'Outfit',sans-serif; font-size: 1.9rem; font-weight: 800; line-height: 1; }
         .stat-label { margin-top: 0.25rem; font-size: 0.78rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; }
+        .stat-schema {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-top: 0.35rem;
+            line-height: 1.35;
+            opacity: 0.9;
+        }
+
+        .alert-db {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #b91c1c;
+            padding: 0.85rem 1.1rem;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            margin-bottom: 1.25rem;
+            font-weight: 500;
+        }
 
         .controls-bar {
             display: flex;
@@ -415,6 +522,11 @@ $assets = [];
         }
         .badge-online { background: rgba(16,185,129,0.12); color: var(--success); border-color: rgba(16,185,129,0.25); }
         .badge-offline { background: rgba(239,68,68,0.12); color: var(--danger); border-color: rgba(239,68,68,0.25); }
+        .badge-deploy { background: rgba(37,99,235,0.12); color: var(--primary); border-color: rgba(37,99,235,0.25); }
+        .badge-maint { background: rgba(245,158,11,0.14); color: var(--warning); border-color: rgba(245,158,11,0.3); }
+        .badge-faulty { background: rgba(239,68,68,0.14); color: var(--danger); border-color: rgba(239,68,68,0.3); }
+        .badge-disposed { background: rgba(100,116,139,0.15); color: #64748b; border-color: rgba(100,116,139,0.35); }
+        .badge-lost { background: rgba(249,115,22,0.12); color: #ea580c; border-color: rgba(249,115,22,0.28); }
         .badge-unknown { background: rgba(148,163,184,0.18); color: #64748b; border-color: rgba(148,163,184,0.35); }
 
         .row-actions { display: flex; gap: 0.4rem; }
@@ -456,6 +568,13 @@ $assets = [];
     <?php include __DIR__ . '/../components/sidebarUser.php'; ?>
 
     <main class="main-content">
+        <?php if ($dbError): ?>
+        <div class="alert-db" role="alert">
+            <i class="ri-error-warning-line"></i>
+            Could not load <code>network</code> data. Ensure <code>db/schema.sql</code> is applied (table <code>network</code> + <code>status</code>).
+        </div>
+        <?php endif; ?>
+
         <header class="page-header">
             <div class="page-title">
                 <h1><i class="ri-router-line"></i> Network Inventory</h1>
@@ -465,39 +584,45 @@ $assets = [];
                 <button class="btn btn-outline" type="button" disabled title="Coming soon">
                     <i class="ri-download-cloud-2-line"></i> Export
                 </button>
-                <button class="btn btn-primary" type="button" disabled title="Coming soon">
-                    <i class="ri-add-line"></i> Register Asset
-                </button>
+                <div class="dropdown-container">
+                    <button type="button" class="btn btn-primary" onclick="toggleRegisterDropdown(this, event)">
+                        <i class="ri-add-line"></i> Register asset <i class="ri-arrow-down-s-line" style="margin-left:4px;"></i>
+                    </button>
+                    <div class="action-dropdown" id="registerDropdown" onclick="event.stopPropagation()">
+                        <a href="networkAdd.php" class="action-dropdown-item"><i class="ri-router-line" style="color:var(--primary);"></i> Single asset</a>
+                        <a href="networkCSV.php" class="action-dropdown-item"><i class="ri-stack-line" style="color:var(--secondary);"></i> Bulk assets</a>
+                    </div>
+                </div>
             </div>
         </header>
 
-        <section class="stats-grid">
-            <div class="stat-card">
+        <section class="stats-grid" aria-label="Network inventory summary">
+            <div class="stat-card" title="All rows in network table">
                 <div class="stat-icon icon-blue"><i class="ri-router-line"></i></div>
                 <div>
-                    <div class="stat-num" id="statTotal">0</div>
-                    <div class="stat-label">Total Assets</div>
+                    <div class="stat-num"><?= (int)$stats['total'] ?></div>
+                    <div class="stat-label">Total network assets</div>
                 </div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" title="status table: Online">
                 <div class="stat-icon icon-green"><i class="ri-wifi-line"></i></div>
                 <div>
-                    <div class="stat-num" id="statOnline">0</div>
+                    <div class="stat-num"><?= (int)$stats['online'] ?></div>
                     <div class="stat-label">Online</div>
                 </div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" title="status table: Offline">
                 <div class="stat-icon icon-red"><i class="ri-wifi-off-line"></i></div>
                 <div>
-                    <div class="stat-num" id="statOffline">0</div>
+                    <div class="stat-num"><?= (int)$stats['offline'] ?></div>
                     <div class="stat-label">Offline</div>
                 </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon icon-amber"><i class="ri-alert-line"></i></div>
+            <div class="stat-card" title="Per network.status_id comment: Maintenance + Faulty">
+                <div class="stat-icon icon-amber"><i class="ri-tools-line"></i></div>
                 <div>
-                    <div class="stat-num" id="statAttention">0</div>
-                    <div class="stat-label">Needs Attention</div>
+                    <div class="stat-num"><?= (int)$stats['maint_faulty'] ?></div>
+                    <div class="stat-label">Maintenance / Faulty</div>
                 </div>
             </div>
         </section>
@@ -505,7 +630,7 @@ $assets = [];
         <div class="controls-bar">
             <div class="search-box">
                 <i class="ri-search-2-line"></i>
-                <input id="searchInput" type="text" placeholder="Search by hostname, IP, MAC, location, or model...">
+                <input id="searchInput" type="text" placeholder="Search asset ID, serial, brand, model, IP, MAC, status, remarks...">
             </div>
             <button class="chip active" type="button" data-filter="all"><i class="ri-apps-line"></i> All</button>
             <button class="chip" type="button" data-filter="online"><i class="ri-wifi-line"></i> Online</button>
@@ -524,29 +649,62 @@ $assets = [];
                 <table id="assetTable">
                     <thead>
                         <tr>
-                            <th>Asset</th>
-                            <th>Type</th>
-                            <th>IP Address</th>
-                            <th>Location</th>
+                            <th>Device</th>
+                            <th>Asset ID</th>
+                            <th>IP address</th>
+                            <th>MAC address</th>
                             <th>Status</th>
                             <th style="text-align:right;">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="assetTbody">
                         <?php if (empty($assets)): ?>
-                            <tr>
+                            <tr class="empty-row">
                                 <td colspan="6">
                                     <div class="empty">
                                         <i class="ri-inbox-line"></i>
                                         <h3>No network assets yet</h3>
                                         <p>
-                                            This page UI is ready. Once you add a network assets table (or confirm the columns you want),
-                                            we can wire this list to real data with filters, pagination, and status badges.
+                                            Add rows to the <code>network</code> table (<code>db/schema.sql</code>). Status must reference <code>status</code>
+                                            (e.g. 9 Online, 10 Offline, 5 Maintenance, 6 Faulty, 3 Deploy, 7 Disposed, 8 Lost).
                                         </p>
                                     </div>
                                 </td>
                             </tr>
-                        <?php endif; ?>
+                        <?php else: foreach ($assets as $row):
+                            $sid = (int)$row['status_id'];
+                            $filterKey = network_filter_status($sid);
+                            $badgeCls = network_badge_class($sid);
+                            $device = trim(($row['brand'] ?? '') . ' ' . ($row['model'] ?? ''));
+                            if ($device === '') {
+                                $device = 'Network device';
+                            }
+                        ?>
+                            <tr class="network-row" data-filter-status="<?= htmlspecialchars($filterKey) ?>">
+                                <td>
+                                    <div class="asset-cell">
+                                        <div class="asset-icon"><i class="ri-router-line"></i></div>
+                                        <div class="asset-meta">
+                                            <div class="asset-name"><?= htmlspecialchars($device) ?></div>
+                                            <div class="asset-sub">SN: <?= htmlspecialchars($row['serial_num'] ?? '—') ?></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><code style="background:var(--glass-panel);padding:2px 8px;border-radius:6px;font-weight:600;color:var(--primary);"><?= htmlspecialchars((string)$row['asset_id']) ?></code></td>
+                                <td><?= htmlspecialchars($row['ip_address'] ?? '—') ?></td>
+                                <td style="font-family:ui-monospace,monospace;font-size:0.85rem;"><?= htmlspecialchars($row['mac_address'] ?? '—') ?></td>
+                                <td>
+                                    <span class="badge <?= $badgeCls ?>">
+                                        <?= htmlspecialchars($row['status_name'] ?? '—') ?>
+                                    </span>
+                                </td>
+                                <td style="text-align:right;">
+                                    <div class="row-actions">
+                                        <button type="button" class="icon-btn" title="View (soon)" disabled><i class="ri-eye-line"></i></button>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; endif; ?>
                     </tbody>
                 </table>
             </div>
@@ -562,6 +720,20 @@ $assets = [];
             dropdown.classList.toggle('show');
         }
 
+        function toggleRegisterDropdown(btn, event) {
+            event.stopPropagation();
+            const wrap = btn.closest('.dropdown-container');
+            const drop = wrap.querySelector('.action-dropdown');
+            document.querySelectorAll('.action-dropdown.show').forEach(d => {
+                if (d !== drop) d.classList.remove('show');
+            });
+            drop.classList.toggle('show');
+        }
+
+        document.addEventListener('click', () => {
+            document.querySelectorAll('#registerDropdown.show').forEach(d => d.classList.remove('show'));
+        });
+
         const chips = Array.from(document.querySelectorAll('.chip[data-filter]'));
         const searchInput = document.getElementById('searchInput');
         const tbody = document.getElementById('assetTbody');
@@ -572,7 +744,7 @@ $assets = [];
         }
 
         function updateCounts() {
-            const rows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.querySelector('td'));
+            const rows = Array.from(tbody.querySelectorAll('tr.network-row'));
             const visible = rows.filter(r => r.style.display !== 'none');
             rowCount.textContent = visible.length.toString();
         }
@@ -580,10 +752,15 @@ $assets = [];
         function applyFilters() {
             const active = chips.find(c => c.classList.contains('active'))?.dataset.filter || 'all';
             const q = (searchInput.value || '').toLowerCase();
-            const rows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.dataset && r.dataset.status);
+            const rows = Array.from(tbody.querySelectorAll('tr.network-row'));
 
             rows.forEach(row => {
-                const statusOk = active === 'all' ? true : row.dataset.status === active;
+                const st = row.dataset.filterStatus || 'other';
+                const statusOk = active === 'all'
+                    ? true
+                    : (active === 'online' || active === 'offline')
+                        ? st === active
+                        : true;
                 const textOk = row.innerText.toLowerCase().includes(q);
                 row.style.display = (statusOk && textOk) ? '' : 'none';
             });
