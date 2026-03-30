@@ -53,7 +53,31 @@ CREATE TABLE IF NOT EXISTS laptop (
     `INVOICE_DATE` DATE DEFAULT NULL,
     `INVOICE_NUM` VARCHAR(50) DEFAULT NULL,
     `PURCHASE_COST` DECIMAL(10,2) DEFAULT NULL,
-    `status_id` INT UNSIGNED NOT NULL,
+    `status_id` INT UNSIGNED NOT NULL COMMENT '1=Active, 2=Non-active, 3=Deploy, 4=Reserved, 5=Maintenance, 6=Faulty, 7=Disposed, 8=Lost',
+    `remarks` TEXT DEFAULT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (asset_id),
+    FOREIGN KEY (status_id) REFERENCES status(status_id),
+    INDEX idx_asset_id (asset_id),
+    INDEX idx_status_id (status_id)
+);
+
+CREATE TABLE IF NOT EXISTS network (
+    `asset_id` INT(11) NOT NULL,
+    `serial_num` VARCHAR(100) DEFAULT NULL,
+    `brand` VARCHAR(100) DEFAULT NULL,
+    `model` VARCHAR(100) DEFAULT NULL,
+    `mac_address` VARCHAR(100) DEFAULT NULL,
+    `ip_address` VARCHAR(100) DEFAULT NULL,
+    `PO_DATE` DATE DEFAULT NULL,
+    `PO_NUM` VARCHAR(50) DEFAULT NULL,
+    `DO_DATE` DATE DEFAULT NULL,
+    `DO_NUM` VARCHAR(50) DEFAULT NULL,
+    `INVOICE_DATE` DATE DEFAULT NULL,
+    `INVOICE_NUM` VARCHAR(50) DEFAULT NULL,
+    `PURCHASE_COST` DECIMAL(10,2) DEFAULT NULL,
+    `status_id` INT UNSIGNED NOT NULL COMMENT '9=Online, 10=Offline, 3=Deploy, 5=Maintenance, 6=Faulty, 7=Disposed, 8=Lost',
     `remarks` TEXT DEFAULT NULL,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -77,6 +101,21 @@ CREATE TABLE IF NOT EXISTS handover (
   INDEX idx_handover_id (handover_id),
   INDEX idx_asset_id (asset_id)
 );
+
+-- CREATE TABLE IF NOT EXISTS deployment (
+--   `deployment_id` INT(11) NOT NULL AUTO_INCREMENT,
+--   `asset_id` INT(11) NOT NULL,
+--   `staff_id` VARCHAR(32) NOT NULL,
+--   `deployment_date` DATE NOT NULL,
+--   `deployment_remarks` TEXT DEFAULT NULL,
+--   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+--   PRIMARY KEY (deployment_id),
+--   FOREIGN KEY (asset_id) REFERENCES laptop(asset_id),
+--   FOREIGN KEY (staff_id) REFERENCES users(staff_id),
+--   INDEX idx_deployment_id (deployment_id),
+--   INDEX idx_asset_id (asset_id)
+-- );
 
 CREATE TABLE IF NOT EXISTS handover_staff(
   `handover_staff_id` INT(11) NOT NULL AUTO_INCREMENT,
