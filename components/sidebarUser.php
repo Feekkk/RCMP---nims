@@ -5,6 +5,7 @@ $isDashboard = $currentPage === 'dashboard.php';
 $isLaptop    = $currentPage === 'laptop.php';
 $isAV        = $currentPage === 'av.php';
 $isNetwork   = $currentPage === 'network.php';
+$isProfile   = $currentPage === 'profile.php';
 ?>
 
 <aside class="sidebar">
@@ -38,8 +39,8 @@ $isNetwork   = $currentPage === 'network.php';
         <a href="#" class="nav-item">
             <i class="ri-book-read-line"></i> User Manual 
         </a>
-        <a href="#" class="nav-item">
-            <i class="ri-user-settings-line"></i> Profile 
+        <a href="profile.php" class="nav-item <?= $isProfile ? 'active' : '' ?>">
+            <i class="ri-user-settings-line"></i> Profile
         </a>
     </nav>
 
