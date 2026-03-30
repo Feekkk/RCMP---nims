@@ -16,7 +16,7 @@ INSERT IGNORE INTO role (id, name) VALUES (1, 'technician'), (2, 'admin');
 CREATE TABLE IF NOT EXISTS users (
   staff_id VARCHAR(32) NOT NULL,
   full_name VARCHAR(128) NOT NULL,
-  email VARCHAR(128) NOT NULL UNIQUE,
+  email VARCHAR(128) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   role_id INT UNSIGNED NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
