@@ -405,33 +405,48 @@ function network_badge_class(int $statusId): string
             font-weight: 500;
         }
 
-        .controls-bar {
+        /* Match laptop.php table list design */
+        .table-controls {
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+            gap: 1rem;
             flex-wrap: wrap;
-            margin-bottom: 1rem;
         }
         .search-box {
+            position: relative;
             flex: 1;
+            max-width: 520px;
             min-width: 260px;
-            display: flex;
-            align-items: center;
-            gap: 0.6rem;
+        }
+        .search-box i {
+            position: absolute;
+            left: 1.2rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+        .search-input {
+            width: 100%;
             background: var(--card-bg);
             border: 1px solid var(--card-border);
             border-radius: 12px;
-            padding: 0.65rem 1rem;
-            transition: border-color 0.2s ease;
-        }
-        .search-box:focus-within { border-color: rgba(37,99,235,0.5); }
-        .search-box i { color: var(--text-muted); font-size: 1.1rem; }
-        .search-box input {
-            border: none; outline: none; background: none;
-            width: 100%;
-            font-size: 0.92rem;
+            padding: 0.85rem 1rem 0.85rem 3rem;
             color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            transition: all 0.25s ease;
+            outline: none;
         }
+        .search-input:focus {
+            background: #fff;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        .action-buttons { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+        .chip-group { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
         .chip {
             background: var(--glass-panel);
@@ -450,52 +465,36 @@ function network_badge_class(int $statusId): string
         .chip:hover { border-color: rgba(37,99,235,0.25); color: var(--primary); background: rgba(37,99,235,0.06); }
         .chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
 
-        .table-card {
+        .glass-card {
             background: var(--card-bg);
             border: 1px solid var(--card-border);
             border-radius: 20px;
-            box-shadow: 0 2px 16px rgba(15,23,42,0.06);
+            padding: 1.75rem;
+            box-shadow: 0 2px 12px rgba(15,23,42,0.06);
             overflow: hidden;
         }
-        .table-header {
-            padding: 1.25rem 1.5rem;
-            border-bottom: 1px solid var(--card-border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 1rem;
-        }
-        .table-title {
-            font-family: 'Outfit', sans-serif;
-            font-weight: 800;
-            font-size: 1.1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.55rem;
-        }
-        .table-title i { color: var(--primary); }
-
-        .table-responsive { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; }
-        thead { background: var(--glass-panel); }
-        th {
+        .table-responsive { overflow-x: auto; width: 100%; }
+        .data-table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+        .data-table th {
             text-align: left;
-            padding: 1rem 1.25rem;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
+            padding: 1.25rem 1rem;
             color: var(--text-muted);
+            font-weight: 800;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
             border-bottom: 1px solid var(--card-border);
-            white-space: nowrap;
         }
-        td {
-            padding: 1rem 1.25rem;
-            border-bottom: 1px solid rgba(226,232,240,0.65);
-            font-size: 0.92rem;
+        .data-table td {
+            padding: 1.25rem 1rem;
+            font-size: 0.95rem;
+            border-bottom: 1px dashed var(--card-border);
             color: var(--text-main);
             vertical-align: middle;
         }
-        tbody tr:hover { background: rgba(37,99,235,0.02); }
+        .data-table tbody tr { transition: background 0.25s ease; }
+        .data-table tbody tr:hover { background: rgba(37,99,235,0.03); }
+        .data-table tr:last-child td { border-bottom: none; }
 
         .asset-cell { display: flex; align-items: center; gap: 0.8rem; }
         .asset-icon {
@@ -551,6 +550,17 @@ function network_badge_class(int $statusId): string
         .empty h3 { font-family:'Outfit',sans-serif; color: var(--text-main); font-size: 1.25rem; margin-bottom: 0.4rem; }
         .empty p { max-width: 560px; margin: 0 auto; line-height: 1.5; }
 
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.5rem;
+            padding-top: 1.25rem;
+            border-top: 1px solid rgba(226,232,240,0.6);
+            margin-top: 1rem;
+        }
+        .page-info { color: var(--text-muted); font-size: 0.9rem; font-weight: 600; }
+
         @media (max-width: 1100px) {
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
         }
@@ -559,6 +569,8 @@ function network_badge_class(int $statusId): string
             .main-content { margin-left: 0; max-width: 100vw; padding: 1.5rem; }
             .page-header { flex-direction: column; align-items: flex-start; gap: 1rem; }
             .header-actions { width: 100%; }
+            .table-controls { flex-direction: column; align-items: stretch; }
+            .search-box { max-width: none; }
         }
     </style>
 </head>
@@ -624,35 +636,32 @@ function network_badge_class(int $statusId): string
             </div>
         </section>
 
-        <div class="controls-bar">
+        <div class="table-controls">
             <div class="search-box">
                 <i class="ri-search-2-line"></i>
-                <input id="searchInput" type="text" placeholder="Search asset ID, serial, brand, model, IP, MAC, status, remarks...">
+                <input id="searchInput" class="search-input" type="text" placeholder="Search asset ID, serial, brand, model, IP, MAC, status, remarks...">
             </div>
-            <button class="chip active" type="button" data-filter="all"><i class="ri-apps-line"></i> All</button>
-            <button class="chip" type="button" data-filter="online"><i class="ri-wifi-line"></i> Online</button>
-            <button class="chip" type="button" data-filter="offline"><i class="ri-wifi-off-line"></i> Offline</button>
-        </div>
-
-        <section class="table-card">
-            <div class="table-header">
-                <div class="table-title"><i class="ri-list-check-2"></i> Network Assets</div>
-                <div style="color:var(--text-muted); font-weight:700; font-size:0.9rem;">
-                    Showing <span id="rowCount">0</span> item(s)
+            <div class="action-buttons">
+                <div class="chip-group" role="group" aria-label="Quick status filters">
+                    <button class="chip active" type="button" data-filter="all"><i class="ri-apps-line"></i> All</button>
+                    <button class="chip" type="button" data-filter="online"><i class="ri-wifi-line"></i> Online</button>
+                    <button class="chip" type="button" data-filter="offline"><i class="ri-wifi-off-line"></i> Offline</button>
                 </div>
             </div>
+        </div>
 
+        <div class="glass-card">
             <div class="table-responsive">
-                <table id="assetTable">
+                <table id="assetTable" class="data-table">
                     <thead>
-                        <tr>
-                            <th>Device</th>
-                            <th>Asset ID</th>
-                            <th>IP address</th>
-                            <th>MAC address</th>
-                            <th>Status</th>
-                            <th style="text-align:right;">Actions</th>
-                        </tr>
+                    <tr>
+                        <th>Device</th>
+                        <th>Asset ID</th>
+                        <th>IP address</th>
+                        <th>MAC address</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
                     </thead>
                     <tbody id="assetTbody">
                         <?php if (empty($assets)): ?>
@@ -705,7 +714,10 @@ function network_badge_class(int $statusId): string
                     </tbody>
                 </table>
             </div>
-        </section>
+            <div class="pagination">
+                <div class="page-info">Showing <strong><span id="rowCount">0</span></strong> item(s)</div>
+            </div>
+        </div>
     </main>
 
     <script>
