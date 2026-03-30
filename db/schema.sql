@@ -27,6 +27,21 @@ CREATE TABLE IF NOT EXISTS users (
   INDEX idx_role_id (role_id)
 );
 
+-- RCMP staff directory (CSV import, handover recipients). Linked from handover_staff.employee_no
+CREATE TABLE IF NOT EXISTS staff (
+  `employee_no` VARCHAR(32) NOT NULL,
+  `full_name` VARCHAR(128) NOT NULL,
+  `department` VARCHAR(128) DEFAULT NULL,
+  `email` VARCHAR(128) DEFAULT NULL,
+  `phone` VARCHAR(64) DEFAULT NULL,
+  `remarks` TEXT DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`employee_no`),
+  INDEX idx_staff_full_name (full_name),
+  INDEX idx_staff_department (department)
+);
+
 CREATE TABLE IF NOT EXISTS status (
   status_id INT UNSIGNED PRIMARY KEY,
   name VARCHAR(128) NOT NULL UNIQUE
@@ -120,24 +135,22 @@ CREATE TABLE IF NOT EXISTS network_deployment (
   INDEX idx_asset_id (asset_id)
 );
 
+-- One row per recipient on a handover; person details live in staff.
 CREATE TABLE IF NOT EXISTS handover_staff(
   `handover_staff_id` INT(11) NOT NULL AUTO_INCREMENT,
-  `full_name` VARCHAR(128) NOT NULL,
-  `email` VARCHAR(128) NOT NULL,
-  `phone` VARCHAR(64) NOT NULL,
-  `department` VARCHAR(128) NOT NULL,
+  `employee_no` VARCHAR(32) NOT NULL,
   `handover_id` INT(11) NOT NULL,
-  `staff_id` VARCHAR(32) NOT NULL COMMENT 'Staff ID for technician manage the handover',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (handover_staff_id),
-  FOREIGN KEY (staff_id) REFERENCES users(staff_id),
-  FOREIGN KEY (handover_id) REFERENCES handover(handover_id),
-  INDEX idx_handover_staff_id (handover_staff_id),
-  INDEX idx_handover_id (handover_id)
+  FOREIGN KEY (`employee_no`) REFERENCES staff(`employee_no`),
+  FOREIGN KEY (`handover_id`) REFERENCES handover(`handover_id`),
+  INDEX idx_handover_staff_employee (`employee_no`),
+  INDEX idx_handover_id (`handover_id`)
 );
 
-CREATE TABLE IF NOT EXISTS warranty(
+  -- Warranty record (optional)
+  CREATE TABLE IF NOT EXISTS warranty(
   `warranty_id` INT(11) NOT NULL AUTO_INCREMENT,
   `asset_id` INT(11) NOT NULL,
   `warranty_start_date` DATE NOT NULL,
