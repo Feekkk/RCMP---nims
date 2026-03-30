@@ -56,5 +56,9 @@ $isProfile   = $currentPage === 'profile.php';
         </div>
         <i class="ri-logout-box-r-line" style="color: var(--text-muted); font-size: 1.2rem;"></i>
     </div>
+
+    <div class="sidebar-copyright" style="padding: 0.85rem 1rem 1.1rem; text-align: center; font-size: 0.68rem; line-height: 1.45; color: var(--text-muted, #64748b); border-top: 1px solid var(--card-border, #e2e8f0);">
+        &copy; <?= (int)date('Y') ?> Universiti Kuala Lumpur RCMP. All rights reserved.
+    </div>
 </aside>
 
