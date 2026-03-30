@@ -84,8 +84,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
         $error_message = 'Invalid status for network assets.';
     } else {
         if ($mac_address !== null && $mac_address !== '') {
-            $norm = preg_replace('/[:-.\s]/', '', $mac_address);
-            if (strlen($norm) !== 12 || !ctype_xdigit($norm)) {
+            $norm = preg_replace('/[:\-\.\s]/', '', (string)$mac_address);
+            if ($norm === null || strlen($norm) !== 12 || !ctype_xdigit($norm)) {
                 $error_message = 'MAC must be 12 hex digits (optional : - . between pairs).';
             }
         }
