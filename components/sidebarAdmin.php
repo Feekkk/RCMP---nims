@@ -1,6 +1,7 @@
 <?php
 $currentPage = basename($_SERVER['PHP_SELF']);
 $isDashboard = $currentPage === 'dashboard.php';
+$isUsers = $currentPage === 'users.php';
 ?>
 
 <aside class="sidebar">
@@ -15,7 +16,7 @@ $isDashboard = $currentPage === 'dashboard.php';
         <a href="../technician/laptop.php" class="nav-item">
             <i class="ri-archive-line"></i> Inventory
         </a>
-        <a href="#" class="nav-item">
+        <a href="users.php" class="nav-item <?= $isUsers ? 'active' : '' ?>">
             <i class="ri-user-3-line"></i> Users
         </a>
         <a href="#" class="nav-item">
@@ -35,7 +36,7 @@ $isDashboard = $currentPage === 'dashboard.php';
     </div>
 
     <div class="sidebar-copyright" style="padding: 0.85rem 1rem 1.1rem; text-align: center; font-size: 0.68rem; line-height: 1.45; color: var(--text-muted, #64748b); border-top: 1px solid var(--card-border, #e2e8f0);">
-        &copy; <?= (int)date('Y') ?> UniKL RCMP. All rights reserved.
+        &copy; <?= (int)date('Y') ?> Universiti Kuala Lumpur RCMP. All rights reserved.
     </div>
 </aside>
 
