@@ -6,13 +6,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $staffId = trim($_POST['staff_id'] ?? '');
     $password = $_POST['password'] ?? '';
 
-    $stmt = db()->prepare('SELECT staff_id, password_hash, role_id FROM users WHERE staff_id = ?');
+    $stmt = db()->prepare('SELECT staff_id, full_name, password_hash, role_id FROM users WHERE staff_id = ?');
     $stmt->execute([$staffId]);
     $user = $stmt->fetch();
 
     if ($user && (password_verify($password, $user['password_hash']) || $password === $user['password_hash'])) {
         $_SESSION['staff_id'] = $user['staff_id'];
         $_SESSION['role_id'] = $user['role_id'];
+        $_SESSION['user_name'] = $user['full_name'] ?? '';
 
         if ((int)$user['role_id'] === 1) {
             header('Location: ../technician/dashboard.php');
