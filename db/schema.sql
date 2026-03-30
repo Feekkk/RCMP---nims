@@ -102,20 +102,20 @@ CREATE TABLE IF NOT EXISTS handover (
   INDEX idx_asset_id (asset_id)
 );
 
--- CREATE TABLE IF NOT EXISTS deployment (
---   `deployment_id` INT(11) NOT NULL AUTO_INCREMENT,
---   `asset_id` INT(11) NOT NULL,
---   `staff_id` VARCHAR(32) NOT NULL,
---   `deployment_date` DATE NOT NULL,
---   `deployment_remarks` TEXT DEFAULT NULL,
---   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
---   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
---   PRIMARY KEY (deployment_id),
---   FOREIGN KEY (asset_id) REFERENCES laptop(asset_id),
---   FOREIGN KEY (staff_id) REFERENCES users(staff_id),
---   INDEX idx_deployment_id (deployment_id),
---   INDEX idx_asset_id (asset_id)
--- );
+CREATE TABLE IF NOT EXISTS deployment (
+  `deployment_id` INT(11) NOT NULL AUTO_INCREMENT,
+  `asset_id` INT(11) NOT NULL,
+  `staff_id` VARCHAR(32) NOT NULL,
+  `deployment_date` DATE NOT NULL,
+  `deployment_remarks` TEXT DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (deployment_id),
+  FOREIGN KEY (asset_id) REFERENCES laptop(asset_id),
+  FOREIGN KEY (staff_id) REFERENCES users(staff_id),
+  INDEX idx_deployment_id (deployment_id),
+  INDEX idx_asset_id (asset_id)
+);
 
 CREATE TABLE IF NOT EXISTS handover_staff(
   `handover_staff_id` INT(11) NOT NULL AUTO_INCREMENT,
