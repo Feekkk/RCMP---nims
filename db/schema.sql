@@ -27,6 +27,21 @@ CREATE TABLE IF NOT EXISTS users (
   INDEX idx_role_id (role_id)
 );
 
+-- Organisation staff directory 
+CREATE TABLE IF NOT EXISTS staff (
+  employee_no INT(32) NOT NULL AUTO_INCREMENT,
+  full_name VARCHAR(128) NOT NULL,
+  department VARCHAR(128) DEFAULT NULL,
+  email VARCHAR(128) DEFAULT NULL,
+  phone VARCHAR(64) DEFAULT NULL,
+  remarks TEXT DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (employee_no),
+  INDEX idx_staff_full_name (full_name),
+  INDEX idx_staff_department (department)
+);
+
 CREATE TABLE IF NOT EXISTS status (
   status_id INT UNSIGNED PRIMARY KEY,
   name VARCHAR(128) NOT NULL UNIQUE
