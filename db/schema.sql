@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS handover_staff(
   `handover_staff_id` INT(11) NOT NULL AUTO_INCREMENT,
   `employee_no` VARCHAR(32) NOT NULL,
   `handover_id` INT(11) NOT NULL,
+  `assignment_type` VARCHAR(128) NOT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (handover_staff_id),
@@ -149,8 +150,7 @@ CREATE TABLE IF NOT EXISTS handover_staff(
   INDEX idx_handover_id (`handover_id`)
 );
 
-  -- Warranty record (optional)
-  CREATE TABLE IF NOT EXISTS warranty(
+CREATE TABLE IF NOT EXISTS warranty(
   `warranty_id` INT(11) NOT NULL AUTO_INCREMENT,
   `asset_id` INT(11) NOT NULL,
   `warranty_start_date` DATE NOT NULL,
