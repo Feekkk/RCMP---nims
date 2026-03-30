@@ -581,9 +581,6 @@ function network_badge_class(int $statusId): string
                 <p>View and manage registered network assets (switches, routers, APs, firewalls).</p>
             </div>
             <div class="header-actions">
-                <button class="btn btn-outline" type="button" disabled title="Coming soon">
-                    <i class="ri-download-cloud-2-line"></i> Export
-                </button>
                 <div class="dropdown-container">
                     <button type="button" class="btn btn-primary" onclick="toggleRegisterDropdown(this, event)">
                         <i class="ri-add-line"></i> Register asset <i class="ri-arrow-down-s-line" style="margin-left:4px;"></i>
