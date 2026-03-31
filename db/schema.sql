@@ -163,3 +163,25 @@ CREATE TABLE IF NOT EXISTS warranty(
   INDEX idx_warranty_id (warranty_id),
   INDEX idx_asset_id (asset_id)
 );
+
+-- Return after a handover (one record per handover recipient)
+CREATE TABLE IF NOT EXISTS handover_return (
+  `return_id` INT(11) NOT NULL AUTO_INCREMENT,
+  `handover_staff_id` INT(11) NOT NULL,
+  `returned_by` VARCHAR(32) NOT NULL,
+  `return_date` DATE NOT NULL,
+  `return_time` TIME DEFAULT NULL,
+  `return_place` VARCHAR(128) DEFAULT NULL,
+  `return_remarks` TEXT DEFAULT NULL,
+  `return_status_id` INT UNSIGNED DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`return_id`),
+  FOREIGN KEY (`handover_staff_id`) REFERENCES `handover_staff`(`handover_staff_id`),
+  FOREIGN KEY (`returned_by`) REFERENCES `users`(`staff_id`),
+  FOREIGN KEY (`return_status_id`) REFERENCES `status`(`status_id`),
+  UNIQUE KEY `uq_handover_staff_id` (`handover_staff_id`),
+  INDEX `idx_returned_by` (`returned_by`),
+  INDEX `idx_return_date` (`return_date`),
+  INDEX `idx_return_status_id` (`return_status_id`)
+);
