@@ -207,3 +207,34 @@ CREATE TABLE IF NOT EXISTS handover_return (
   INDEX `idx_return_date` (`return_date`),
   INDEX `idx_return_status_id` (`return_status_id`)
 );
+
+-- Disposal process (one disposal form can include multiple assets)
+CREATE TABLE IF NOT EXISTS disposal (
+  `disposal_id` INT(11) NOT NULL AUTO_INCREMENT,
+  `requested_by` VARCHAR(32) NOT NULL,
+  `disposal_date` DATE NOT NULL,
+  `disposal_time` TIME DEFAULT NULL,
+  `disposal_remarks` TEXT DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`disposal_id`),
+  FOREIGN KEY (`requested_by`) REFERENCES `users`(`staff_id`),
+  INDEX `idx_disposal_requested_by` (`requested_by`),
+  INDEX `idx_disposal_date` (`disposal_date`)
+);
+
+CREATE TABLE IF NOT EXISTS disposal_item (
+  `disposal_item_id` INT(11) NOT NULL AUTO_INCREMENT,
+  `disposal_id` INT(11) NOT NULL,
+  `asset_id` INT(11) NOT NULL,
+  `asset_type` ENUM('laptop','network') NOT NULL DEFAULT 'laptop',
+  `item_remarks` TEXT DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`disposal_item_id`),
+  FOREIGN KEY (`disposal_id`) REFERENCES `disposal`(`disposal_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`asset_id`) REFERENCES `laptop`(`asset_id`),
+  UNIQUE KEY `uq_disposal_asset` (`disposal_id`, `asset_id`, `asset_type`),
+  INDEX `idx_disposal_item_disposal_id` (`disposal_id`),
+  INDEX `idx_disposal_item_asset_id` (`asset_id`)
+);
