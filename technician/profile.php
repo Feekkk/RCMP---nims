@@ -127,52 +127,7 @@ $created = !empty($user['created_at']) ? date('M j, Y', strtotime($user['created
         .blob { position: fixed; border-radius: 50%; filter: blur(90px); pointer-events: none; z-index: 0; }
         .blob-1 { width: 500px; height: 500px; background: rgba(37,99,235,0.06); top: -120px; right: -100px; }
         .blob-2 { width: 400px; height: 400px; background: rgba(124,58,237,0.05); bottom: -80px; left: -80px; }
-        .sidebar {
-            width: 280px; min-height: 100vh; background: var(--sidebar-bg);
-            border-right: 1px solid var(--card-border);
-            display: flex; flex-direction: column;
-            position: fixed; top: 0; left: 0; bottom: 0;
-            z-index: 100; box-shadow: 2px 0 20px rgba(15,23,42,0.06);
-        }
-        .nav-group { display: flex; flex-direction: column; gap: 0.25rem; }
-        .sidebar-logo { padding: 1.5rem 1.75rem 1.25rem; border-bottom: 1px solid var(--card-border); text-align: center; }
-        .sidebar-logo img { height: 42px; object-fit: contain; }
-        .nav-menu { flex: 1; padding: 1.25rem 1rem; display: flex; flex-direction: column; gap: 0.25rem; overflow-y: auto; }
-        .nav-item {
-            display: flex; align-items: center; gap: 1rem;
-            padding: 0.75rem 1.25rem; border-radius: 12px;
-            color: var(--text-muted); text-decoration: none;
-            font-weight: 500; font-size: 0.95rem;
-            transition: all 0.2s ease;
-        }
-        .nav-item:hover, .nav-item.open { background: rgba(37,99,235,0.06); color: var(--primary); }
-        .nav-item.active { background: rgba(37,99,235,0.1); color: var(--primary); font-weight: 600; }
-        .nav-item i { font-size: 1.25rem; }
-        .nav-dropdown { display: none; flex-direction: column; gap: 0.25rem; padding-left: 3.25rem; margin-top: -0.25rem; margin-bottom: 0.25rem; }
-        .nav-dropdown.show { display: flex; }
-        .nav-dropdown-item {
-            padding: 0.6rem 1rem; border-radius: 8px;
-            color: var(--text-muted); text-decoration: none;
-            font-size: 0.85rem; font-weight: 500;
-        }
-        .nav-dropdown-item:hover { color: var(--primary); background: rgba(37,99,235,0.06); }
-        .nav-dropdown-item.active { color: var(--primary); }
-        .nav-item.open .chevron { transform: rotate(180deg); }
-        .user-profile {
-            padding: 1.25rem 1.75rem; border-top: 1px solid var(--card-border);
-            display: flex; align-items: center; gap: 0.75rem;
-            cursor: pointer; margin-top: auto;
-        }
-        .user-profile:hover { background: rgba(37,99,235,0.04); }
-        .avatar {
-            width: 38px; height: 38px; border-radius: 10px;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            display: flex; align-items: center; justify-content: center;
-            font-family: 'Outfit', sans-serif; font-weight: 700; color: #fff; font-size: 1rem;
-        }
-        .user-info { flex: 1; overflow: hidden; }
-        .user-name { font-size: 0.9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .user-role { font-size: 0.75rem; color: var(--primary); margin-top: 0.2rem; text-transform: uppercase; font-weight: 600; }
+        /* Sidebar styling is shared in components/sidebarUser.php */
         .main-content {
             margin-left: 280px; flex: 1;
             padding: 2.5rem 3.5rem 5rem;
