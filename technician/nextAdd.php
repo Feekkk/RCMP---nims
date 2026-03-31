@@ -139,6 +139,192 @@ if ($suggest_q !== '') {
         exit;
     }
 }
+
+const CHECKOUT_PIPELINE_STATUS_IDS = [11, 12, 13];
+/** Active (nextcheck) — applied when technician confirms checkout */
+const CHECKOUT_CONFIRM_TARGET_STATUS_ID = 11;
+const CHECKOUT_MAX_SELECTION = 200;
+
+function checkout_table_exists(PDO $pdo, string $table): bool
+{
+    static $cache = [];
+    if (array_key_exists($table, $cache)) {
+        return $cache[$table];
+    }
+    $stmt = $pdo->prepare('SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1');
+    $stmt->execute([$table]);
+    $cache[$table] = (bool)$stmt->fetchColumn();
+    return $cache[$table];
+}
+
+/** Laptop / network / av rows whose status is Active, Pending, or Checkout (nextcheck) */
+function checkout_fetch_pipeline_assets(PDO $pdo): array
+{
+    $ids = array_map('intval', CHECKOUT_PIPELINE_STATUS_IDS);
+    $ids = array_values(array_unique(array_filter($ids)));
+    if ($ids === []) {
+        return [];
+    }
+    $ph = implode(',', array_fill(0, count($ids), '?'));
+    $out = [];
+
+    foreach (['laptop' => 'laptop', 'network' => 'network'] as $tbl => $cls) {
+        $stmt = $pdo->prepare("
+            SELECT t.asset_id, t.serial_num, t.brand, t.model, t.status_id, s.name AS status_name
+            FROM `{$tbl}` t
+            JOIN status s ON s.status_id = t.status_id
+            WHERE t.status_id IN ($ph)
+            ORDER BY t.asset_id DESC
+        ");
+        $stmt->execute($ids);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $out[] = [
+                'asset_class' => $cls,
+                'asset_id' => (int)$r['asset_id'],
+                'serial' => (string)($r['serial_num'] ?? ''),
+                'brand' => (string)($r['brand'] ?? ''),
+                'model' => (string)($r['model'] ?? ''),
+                'status_id' => (int)$r['status_id'],
+                'status' => (string)($r['status_name'] ?? ''),
+            ];
+        }
+    }
+
+    if (checkout_table_exists($pdo, 'av')) {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT a.asset_id, a.serial_num, a.brand, a.model, a.status_id, s.name AS status_name
+                FROM av a
+                JOIN status s ON s.status_id = a.status_id
+                WHERE a.status_id IN ($ph)
+                ORDER BY a.asset_id DESC
+            ");
+            $stmt->execute($ids);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $out[] = [
+                    'asset_class' => 'av',
+                    'asset_id' => (int)$r['asset_id'],
+                    'serial' => (string)($r['serial_num'] ?? ''),
+                    'brand' => (string)($r['brand'] ?? ''),
+                    'model' => (string)($r['model'] ?? ''),
+                    'status_id' => (int)$r['status_id'],
+                    'status' => (string)($r['status_name'] ?? ''),
+                ];
+            }
+        } catch (Throwable $e) {
+        }
+    }
+
+    usort($out, static fn ($a, $b) => $b['asset_id'] <=> $a['asset_id']);
+    return $out;
+}
+
+/** @param int[] $ids */
+function checkout_lock_and_update(PDO $pdo, string $table, array $ids, int $statusId): void
+{
+    if ($ids === []) {
+        return;
+    }
+    $ids = array_values(array_unique(array_map('intval', $ids)));
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $stmt = $pdo->prepare("SELECT asset_id FROM `{$table}` WHERE asset_id IN ($placeholders) FOR UPDATE");
+    $stmt->execute($ids);
+    $found = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN, 0));
+    sort($ids);
+    sort($found);
+    if ($found !== $ids) {
+        $missing = array_values(array_diff($ids, $found));
+        throw new RuntimeException('Missing ' . $table . ' asset(s): ' . implode(', ', $missing));
+    }
+    $stmtU = $pdo->prepare("UPDATE `{$table}` SET status_id = ? WHERE asset_id IN ($placeholders)");
+    $stmtU->execute(array_merge([(int)$statusId], $ids));
+}
+
+$checkout_error = '';
+$success_checkout = isset($_GET['checkout_ok']) && (string)$_GET['checkout_ok'] === '1';
+$initial_checkout_items = [];
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_checkout'])) {
+    $raw = (string)($_POST['asset_ids'] ?? '[]');
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded) || $decoded === []) {
+        $checkout_error = 'No items in the list.';
+    } elseif (count($decoded) > CHECKOUT_MAX_SELECTION) {
+        $checkout_error = 'Too many items (max ' . CHECKOUT_MAX_SELECTION . ').';
+    } else {
+        $buckets = ['laptop' => [], 'network' => [], 'av' => []];
+        foreach ($decoded as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $cls = strtolower(trim((string)($row['asset_class'] ?? 'laptop')));
+            if (!in_array($cls, ['laptop', 'network', 'av'], true)) {
+                $checkout_error = 'Invalid asset type in list.';
+                break;
+            }
+            $aid = $row['asset_id'] ?? '';
+            $aid = is_int($aid) ? (string)$aid : trim((string)$aid);
+            if ($aid === '' || !ctype_digit($aid)) {
+                $checkout_error = 'Invalid asset id in list.';
+                break;
+            }
+            $buckets[$cls][] = (int)$aid;
+        }
+        foreach (array_keys($buckets) as $k) {
+            $buckets[$k] = array_values(array_unique($buckets[$k]));
+        }
+        if ($checkout_error === '' && $buckets['av'] !== [] && !checkout_table_exists(db(), 'av')) {
+            $checkout_error = 'AV inventory table is not available. Remove AV items or contact IT.';
+        }
+        if ($checkout_error === '') {
+            $total = count($buckets['laptop']) + count($buckets['network']) + count($buckets['av']);
+            if ($total === 0) {
+                $checkout_error = 'No items in the list.';
+            } else {
+                $pdo = null;
+                try {
+                    $pdo = db();
+                    $pdo->beginTransaction();
+                    $target = CHECKOUT_CONFIRM_TARGET_STATUS_ID;
+                    checkout_lock_and_update($pdo, 'laptop', $buckets['laptop'], $target);
+                    checkout_lock_and_update($pdo, 'network', $buckets['network'], $target);
+                    if ($buckets['av'] !== []) {
+                        checkout_lock_and_update($pdo, 'av', $buckets['av'], $target);
+                    }
+                    $pdo->commit();
+                    header('Location: nextAdd.php?checkout_ok=1');
+                    exit;
+                } catch (Throwable $e) {
+                    if ($pdo instanceof PDO && $pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+                    $checkout_error = 'Could not update inventory: ' . $e->getMessage();
+                }
+            }
+        }
+    }
+    if ($checkout_error !== '') {
+        $tmp = json_decode((string)($_POST['asset_ids'] ?? '[]'), true);
+        if (is_array($tmp)) {
+            $initial_checkout_items = $tmp;
+        }
+    }
+}
+
+$pipeline_assets = [];
+try {
+    $pipeline_assets = checkout_fetch_pipeline_assets(db());
+} catch (Throwable $e) {
+    $pipeline_assets = [];
+}
+
+$pipeline_by_class = ['laptop' => 0, 'av' => 0, 'network' => 0];
+foreach ($pipeline_assets as $pa) {
+    $c = (string)($pa['asset_class'] ?? '');
+    if (isset($pipeline_by_class[$c])) {
+        $pipeline_by_class[$c]++;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -231,6 +417,29 @@ if ($suggest_q !== '') {
         }
         .card-hd h2 i{color:var(--primary)}
         .card-bd{padding:1.25rem}
+        .card-inset-section{
+            margin-top:1.15rem;
+            padding-top:1.15rem;
+            border-top:1px solid var(--card-border);
+        }
+        .card-inset-head{
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap:1rem;
+            flex-wrap:wrap;
+            margin-bottom:0.65rem;
+        }
+        .card-subtitle{
+            font-family:'Outfit',sans-serif;
+            font-size:0.98rem;
+            font-weight:800;
+            display:flex;
+            align-items:center;
+            gap:0.45rem;
+        }
+        .card-subtitle i{color:var(--primary)}
+        .pill.status-id{font-size:0.65rem;letter-spacing:0.02em}
 
         .stat-cards{
             display:grid;
@@ -285,7 +494,6 @@ if ($suggest_q !== '') {
             font-weight:600;
             color:var(--text-muted);
         }
-
         .search{
             display:flex;
             gap:0.75rem;
@@ -575,6 +783,30 @@ if ($suggest_q !== '') {
         @media (max-width: 900px){
             .main-content{margin-left:0;max-width:100vw}
         }
+        @keyframes spin{to{transform:rotate(360deg)}}
+
+        .banner{
+            display:flex;
+            align-items:flex-start;
+            gap:10px;
+            padding:0.85rem 1rem;
+            border-radius:14px;
+            font-size:0.9rem;
+            line-height:1.45;
+            margin-bottom:1rem;
+            font-weight:600;
+        }
+        .banner>i{flex-shrink:0;margin-top:0.12rem;font-size:1.1rem}
+        .banner-success{
+            background:rgba(16,185,129,0.1);
+            border:1px solid rgba(16,185,129,0.28);
+            color:#047857;
+        }
+        .banner-error{
+            background:rgba(239,68,68,0.08);
+            border:1px solid rgba(239,68,68,0.22);
+            color:#b91c1c;
+        }
     </style>
 </head>
 <body>
@@ -591,24 +823,24 @@ if ($suggest_q !== '') {
             </button>
         </header>
 
+        <?php if ($success_checkout): ?>
+        <div class="banner banner-success"><i class="ri-checkbox-circle-line"></i><span>Checkout saved. Selected assets are now <strong>Active (nextcheck)</strong> (status id <?= (int)CHECKOUT_CONFIRM_TARGET_STATUS_ID ?>).</span></div>
+        <?php endif; ?>
+        <?php if ($checkout_error !== ''): ?>
+        <div class="banner banner-error"><i class="ri-error-warning-line"></i><span><?= htmlspecialchars($checkout_error) ?></span></div>
+        <?php endif; ?>
+
         <div class="layout">
             <section class="card">
                 <div class="card-hd">
-                    <h2><i class="ri-barcode-line"></i> Add assets</h2>
+                    <h2><i class="ri-shopping-cart-2-line"></i> Add &amp; review</h2>
                     <div class="muted" style="font-weight:700;font-size:0.9rem">
                         In list: <span id="selectedCount">0</span>
                     </div>
                 </div>
+                <form method="post" action="" id="checkoutForm" autocomplete="off">
+                <input type="hidden" name="confirm_checkout" value="1">
                 <div class="card-bd">
-                    <div class="notice">
-                        <i class="ri-information-line"></i>
-                        <div>
-                            <div style="font-weight:900;font-family:'Outfit',sans-serif">NextCheck checkout</div>
-                            <div class="muted" style="margin-top:0.1rem">Suggestions appear as you type digits. Pick a row or enter the full ID and press Add.</div>
-                            <div class="status-hint">Planned status after save: <code>Checkout (nextcheck)</code> — UI only for now.</div>
-                        </div>
-                    </div>
-
                     <div class="asset-class-tabs" role="tablist" aria-label="Asset type for search">
                         <button type="button" class="active" data-asset-class="laptop" id="tabClassLaptop"><i class="ri-macbook-line"></i> Laptop</button>
                         <button type="button" data-asset-class="av" id="tabClassAv"><i class="ri-film-line"></i> AV</button>
@@ -627,56 +859,121 @@ if ($suggest_q !== '') {
                             <i class="ri-close-circle-line"></i> Clear list
                         </button>
                     </div>
+
+                    <div class="card-inset-section">
+                        <div class="card-inset-head">
+                            <h3 class="card-subtitle"><i class="ri-list-check-2"></i> Today’s checkout list</h3>
+                            <div class="muted" style="font-weight:700;font-size:0.88rem;text-align:right">
+                                <div>Total: <span id="listCount">0</span></div>
+                                <div style="font-weight:600;font-size:0.78rem;margin-top:0.15rem" id="filterSummary"></div>
+                            </div>
+                        </div>
+                        <div class="type-filters checkout-type-filters" role="group" aria-label="Filter checkout list by type">
+                            <span class="filter-label">Show</span>
+                            <button type="button" class="on" data-filter="all">All</button>
+                            <button type="button" data-filter="laptop">Laptop</button>
+                            <button type="button" data-filter="av">AV</button>
+                            <button type="button" data-filter="network">Network</button>
+                        </div>
+                        <div id="listEmpty" class="muted" style="padding:0.5rem 0.1rem 0.75rem">
+                            No assets yet. Use the search field above to add items for daily checkout.
+                        </div>
+                        <div id="listEmptyFilter" class="muted" style="display:none;padding:0.5rem 0.1rem 0.75rem">
+                            No items in this category. Switch filter or add assets above.
+                        </div>
+                        <div class="table-wrap" id="tableWrap" style="display:none">
+                            <table class="checkout-table">
+                                <thead>
+                                    <tr>
+                                        <th>Type</th>
+                                        <th>Asset ID</th>
+                                        <th>Device</th>
+                                        <th>Serial</th>
+                                        <th>Status</th>
+                                        <th style="width:52px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="checkoutTableBody"></tbody>
+                            </table>
+                        </div>
+
+                        <div class="summary">
+                            <div>
+                                <div class="muted">Total selected</div>
+                                <strong><span id="listCount2">0</span> asset(s)</strong>
+                            </div>
+                            <button class="btn btn-primary" type="submit" id="confirmCheckoutBtn" disabled>
+                                <i class="ri-shopping-bag-3-line"></i> Confirm checkout
+                            </button>
+                        </div>
+                        <p class="footer-hint" id="checkoutFooterHint">
+                            Submits the list as JSON in <code style="font-size:0.8em">asset_ids</code> and updates each row to status id <code style="font-size:0.8em"><?= (int)CHECKOUT_CONFIRM_TARGET_STATUS_ID ?></code> in the correct inventory table.
+                        </p>
+                        <input type="hidden" name="asset_ids" id="asset_ids" value="<?= htmlspecialchars((string)($_POST['asset_ids'] ?? '[]')) ?>">
+                    </div>
                 </div>
+                </form>
             </section>
 
-            <div class="stat-cards" aria-label="Checkout totals by type">
+            <p class="muted" style="font-size:0.78rem;margin:0 0 0.35rem;line-height:1.35">
+                Pipeline totals by type (status <strong>11–13</strong>). Numbers update when you change pipeline filters below.
+            </p>
+            <div class="stat-cards" aria-label="NextCheck pipeline counts by asset type">
                 <div class="stat-card stat-card--laptop">
                     <div class="stat-card-icon" aria-hidden="true"><i class="ri-macbook-line"></i></div>
                     <div class="stat-card-text">
-                        <span class="stat-card-value" id="countLaptop">0</span>
-                        <span class="stat-card-label">Total Laptop</span>
+                        <span class="stat-card-value" id="countLaptop"><?= (int)$pipeline_by_class['laptop'] ?></span>
+                        <span class="stat-card-label">Laptop</span>
                     </div>
                 </div>
                 <div class="stat-card stat-card--av">
                     <div class="stat-card-icon" aria-hidden="true"><i class="ri-film-line"></i></div>
                     <div class="stat-card-text">
-                        <span class="stat-card-value" id="countAv">0</span>
-                        <span class="stat-card-label">Total AV</span>
+                        <span class="stat-card-value" id="countAv"><?= (int)$pipeline_by_class['av'] ?></span>
+                        <span class="stat-card-label">AV</span>
                     </div>
                 </div>
                 <div class="stat-card stat-card--network">
                     <div class="stat-card-icon" aria-hidden="true"><i class="ri-router-line"></i></div>
                     <div class="stat-card-text">
-                        <span class="stat-card-value" id="countNetwork">0</span>
-                        <span class="stat-card-label">Total Network</span>
+                        <span class="stat-card-value" id="countNetwork"><?= (int)$pipeline_by_class['network'] ?></span>
+                        <span class="stat-card-label">Network</span>
                     </div>
                 </div>
             </div>
 
-            <section class="card">
+            <section class="card" aria-labelledby="pipeline-title">
                 <div class="card-hd">
-                    <h2><i class="ri-list-check-2"></i> Today’s checkout list</h2>
-                    <div class="muted" style="font-weight:700;font-size:0.9rem;text-align:right">
-                        <div>Total: <span id="listCount">0</span></div>
-                        <div style="font-weight:600;font-size:0.82rem;margin-top:0.2rem" id="filterSummary"></div>
+                    <h2 id="pipeline-title"><i class="ri-git-branch-line"></i> NextCheck pipeline</h2>
+                    <div class="muted" style="font-weight:700;font-size:0.82rem;text-align:right">
+                        <?= count($pipeline_assets) ?> in DB
                     </div>
                 </div>
                 <div class="card-bd">
-                    <div class="type-filters" role="group" aria-label="Filter list by type">
-                        <span class="filter-label">Show</span>
-                        <button type="button" class="on" data-filter="all">All</button>
-                        <button type="button" data-filter="laptop">Laptop</button>
-                        <button type="button" data-filter="av">AV</button>
-                        <button type="button" data-filter="network">Network</button>
+                    <p class="muted" style="font-size:0.84rem;margin-bottom:0.75rem;line-height:1.45">
+                        Live inventory rows with <strong>Active (nextcheck)</strong>, <strong>Pending (nextcheck)</strong>, or <strong>Checkout (nextcheck)</strong> — status ids <code>11</code>, <code>12</code>, <code>13</code>.
+                    </p>
+                    <div class="type-filters pipeline-status-filters" role="group" aria-label="Filter by NextCheck status">
+                        <span class="filter-label">Status</span>
+                        <button type="button" class="on" data-pl-status="all">All</button>
+                        <button type="button" data-pl-status="11">11 · Active</button>
+                        <button type="button" data-pl-status="12">12 · Pending</button>
+                        <button type="button" data-pl-status="13">13 · Checkout</button>
                     </div>
-                    <div id="listEmpty" class="muted" style="padding:0.5rem 0.1rem 0.75rem">
-                        No assets yet. Use the search field above to add items for daily checkout.
+                    <div class="type-filters pipeline-type-filters" role="group" aria-label="Filter pipeline by asset type">
+                        <span class="filter-label">Type</span>
+                        <button type="button" class="on" data-pl-type="all">All</button>
+                        <button type="button" data-pl-type="laptop">Laptop</button>
+                        <button type="button" data-pl-type="av">AV</button>
+                        <button type="button" data-pl-type="network">Network</button>
                     </div>
-                    <div id="listEmptyFilter" class="muted" style="display:none;padding:0.5rem 0.1rem 0.75rem">
-                        No items in this category. Switch filter or add assets above.
+                    <div id="pipelineEmpty" class="muted" style="padding:0.35rem 0 0.65rem;<?= count($pipeline_assets) ? 'display:none' : '' ?>">
+                        No assets in statuses 11–13 right now.
                     </div>
-                    <div class="table-wrap" id="tableWrap" style="display:none">
+                    <div id="pipelineEmptyFilter" class="muted" style="display:none;padding:0.35rem 0 0.65rem">
+                        Nothing matches the current filters.
+                    </div>
+                    <div class="table-wrap" id="pipelineTableWrap" style="<?= count($pipeline_assets) ? '' : 'display:none;' ?>margin-top:0.35rem">
                         <table class="checkout-table">
                             <thead>
                                 <tr>
@@ -685,32 +982,37 @@ if ($suggest_q !== '') {
                                     <th>Device</th>
                                     <th>Serial</th>
                                     <th>Status</th>
-                                    <th style="width:52px"></th>
+                                    <th>ID</th>
                                 </tr>
                             </thead>
-                            <tbody id="checkoutTableBody"></tbody>
+                            <tbody id="pipelineTableBody">
+                                <?php foreach ($pipeline_assets as $pa):
+                                    $pcls = $pa['asset_class'];
+                                    $ptl = $pcls === 'network' ? 'Network' : ($pcls === 'av' ? 'AV' : 'Laptop');
+                                    $ptp = $pcls === 'network' ? 'type-network' : ($pcls === 'av' ? 'type-av' : 'type-laptop');
+                                    $ptitle = trim(($pa['brand'] ?? '') . ' ' . ($pa['model'] ?? '')) ?: $ptl;
+                                    $sid = (int)$pa['status_id'];
+                                ?>
+                                <tr data-pl-row="1" data-status-id="<?= $sid ?>" data-asset-type="<?= htmlspecialchars($pcls) ?>">
+                                    <td><span class="pill <?= htmlspecialchars($ptp) ?>"><?= htmlspecialchars($ptl) ?></span></td>
+                                    <td><span class="cell-main"><?= (int)$pa['asset_id'] ?></span></td>
+                                    <td><div class="cell-main"><?= htmlspecialchars($ptitle) ?></div></td>
+                                    <td><?= htmlspecialchars($pa['serial'] !== '' ? $pa['serial'] : '—') ?></td>
+                                    <td><span class="pill nextcheck"><?= htmlspecialchars($pa['status'] !== '' ? $pa['status'] : '—') ?></span></td>
+                                    <td><span class="pill muted status-id"><?= $sid ?></span></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
                         </table>
                     </div>
-
-                    <div class="summary">
-                        <div>
-                            <div class="muted">Total selected</div>
-                            <strong><span id="listCount2">0</span> asset(s)</strong>
-                        </div>
-                        <button class="btn btn-primary" type="button" id="confirmCheckoutBtn" disabled title="Scrolls to implementation note until save is wired">
-                            <i class="ri-shopping-bag-3-line"></i> Confirm checkout
-                        </button>
-                    </div>
-                    <p class="footer-hint" id="checkoutFooterHint">
-                        <strong style="color:var(--text-main)">UI preview:</strong> Confirm checkout is not wired to the database yet. <code style="font-size:0.8em">#asset_ids</code> is JSON like <code style="font-size:0.8em">[{&quot;asset_id&quot;:&quot;…&quot;,&quot;asset_class&quot;:&quot;laptop|av|network&quot;}]</code> for the save step (e.g. status <code style="font-size:0.8em">Checkout (nextcheck)</code>).
-                    </p>
-                    <input type="hidden" id="asset_ids" value="[]">
                 </div>
             </section>
         </div>
     </main>
 
     <script>
+        const INITIAL_CHECKOUT_ITEMS = <?= json_encode($initial_checkout_items, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
         function toggleDropdown(element, event) {
             event.preventDefault();
             const group = element.closest('.nav-group');
@@ -734,7 +1036,7 @@ if ($suggest_q !== '') {
         const filterSummary = document.getElementById('filterSummary');
         const suggestBox = document.getElementById('suggestBox');
         const assetClassTabButtons = document.querySelectorAll('.asset-class-tabs [data-asset-class]');
-        const filterButtons = document.querySelectorAll('.type-filters [data-filter]');
+        const filterButtons = document.querySelectorAll('.checkout-type-filters [data-filter]');
         const countLaptop = document.getElementById('countLaptop');
         const countAv = document.getElementById('countAv');
         const countNetwork = document.getElementById('countNetwork');
@@ -769,14 +1071,22 @@ if ($suggest_q !== '') {
             return 'muted';
         }
 
-        function updateStatCards(items) {
+        function updatePipelineStatCards() {
+            const rows = document.querySelectorAll('#pipelineTableBody tr[data-pl-row]');
             let nL = 0, nA = 0, nN = 0;
-            for (const it of items) {
-                const c = it.asset_class || 'laptop';
-                if (c === 'network') nN++;
-                else if (c === 'av') nA++;
-                else nL++;
-            }
+            rows.forEach((tr) => {
+                if (tr.style.display === 'none') {
+                    return;
+                }
+                const t = tr.getAttribute('data-asset-type') || 'laptop';
+                if (t === 'network') {
+                    nN++;
+                } else if (t === 'av') {
+                    nA++;
+                } else {
+                    nL++;
+                }
+            });
             if (countLaptop) countLaptop.textContent = String(nL);
             if (countAv) countAv.textContent = String(nA);
             if (countNetwork) countNetwork.textContent = String(nN);
@@ -787,7 +1097,6 @@ if ($suggest_q !== '') {
             selectedCount.textContent = String(items.length);
             listCount.textContent = String(items.length);
             listCount2.textContent = String(items.length);
-            updateStatCards(items);
             confirmCheckoutBtn.disabled = items.length === 0;
             if (hiddenAssetIds) {
                 hiddenAssetIds.value = JSON.stringify(items.map(x => ({
@@ -888,9 +1197,9 @@ if ($suggest_q !== '') {
             renderSelectedList();
         });
 
-        const checkoutFooterHint = document.getElementById('checkoutFooterHint');
-        confirmCheckoutBtn.addEventListener('click', () => {
-            checkoutFooterHint?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        document.getElementById('checkoutForm')?.addEventListener('submit', () => {
+            renderSelectedList();
+            confirmCheckoutBtn.innerHTML = '<i class="ri-loader-4-line" style="animation:spin 0.8s linear infinite"></i> Saving…';
         });
 
         async function addByAssetId(assetId, classOverride) {
@@ -1020,7 +1329,89 @@ if ($suggest_q !== '') {
             addByAssetId(id, ac);
         });
 
-        renderSelectedList();
+        const pipelineStatusButtons = document.querySelectorAll('.pipeline-status-filters [data-pl-status]');
+        const pipelineTypeButtons = document.querySelectorAll('.pipeline-type-filters [data-pl-type]');
+        let plStatusFilter = 'all';
+        let plTypeFilter = 'all';
+
+        function applyPipelineFilters() {
+            const tbody = document.getElementById('pipelineTableBody');
+            if (!tbody) return;
+            const rows = tbody.querySelectorAll('tr[data-pl-row]');
+            const total = rows.length;
+            let visible = 0;
+            rows.forEach((tr) => {
+                const sid = String(tr.getAttribute('data-status-id') || '');
+                const typ = tr.getAttribute('data-asset-type') || 'laptop';
+                const okS = plStatusFilter === 'all' || sid === plStatusFilter;
+                const okT = plTypeFilter === 'all' || typ === plTypeFilter;
+                const show = okS && okT;
+                tr.style.display = show ? '' : 'none';
+                if (show) visible++;
+            });
+            const empty = document.getElementById('pipelineEmpty');
+            const emptyF = document.getElementById('pipelineEmptyFilter');
+            const wrap = document.getElementById('pipelineTableWrap');
+            if (total === 0) {
+                if (empty) empty.style.display = '';
+                if (emptyF) emptyF.style.display = 'none';
+                if (wrap) wrap.style.display = 'none';
+                return;
+            }
+            if (empty) empty.style.display = 'none';
+            if (visible === 0) {
+                if (emptyF) emptyF.style.display = '';
+                if (wrap) wrap.style.display = 'none';
+            } else {
+                if (emptyF) emptyF.style.display = 'none';
+                if (wrap) wrap.style.display = '';
+            }
+            updatePipelineStatCards();
+        }
+
+        pipelineStatusButtons.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const v = btn.getAttribute('data-pl-status');
+                if (!v) return;
+                plStatusFilter = v;
+                pipelineStatusButtons.forEach((b) => b.classList.toggle('on', b.getAttribute('data-pl-status') === v));
+                applyPipelineFilters();
+            });
+        });
+        pipelineTypeButtons.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const v = btn.getAttribute('data-pl-type');
+                if (!v) return;
+                plTypeFilter = v;
+                pipelineTypeButtons.forEach((b) => b.classList.toggle('on', b.getAttribute('data-pl-type') === v));
+                applyPipelineFilters();
+            });
+        });
+        applyPipelineFilters();
+
+        (async function bootstrapCheckoutList() {
+            if (!Array.isArray(INITIAL_CHECKOUT_ITEMS) || INITIAL_CHECKOUT_ITEMS.length === 0) {
+                renderSelectedList();
+                return;
+            }
+            for (const row of INITIAL_CHECKOUT_ITEMS) {
+                const id = String(row.asset_id ?? '').trim();
+                const cls = row.asset_class || 'laptop';
+                if (!ctypeDigit(id)) continue;
+                const data = await lookupAsset(id, cls);
+                if (!data) continue;
+                const ac = data.asset_class || cls;
+                selected.set(rowKey(ac, id), {
+                    asset_id: id,
+                    asset_class: ac,
+                    serial: data.serial || '—',
+                    brand: data.brand || '',
+                    model: data.model || '',
+                    status: data.status || '—',
+                });
+            }
+            renderSelectedList();
+        })();
     </script>
 </body>
 </html>
