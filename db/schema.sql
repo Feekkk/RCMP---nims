@@ -164,6 +164,28 @@ CREATE TABLE IF NOT EXISTS warranty(
   INDEX idx_asset_id (asset_id)
 );
 
+-- Warranty claim log (multiple claims allowed until warranty_end_date)
+CREATE TABLE IF NOT EXISTS warranty_claim (
+  `claim_id` INT(11) NOT NULL AUTO_INCREMENT,
+  `asset_id` INT(11) NOT NULL,
+  `warranty_id` INT(11) DEFAULT NULL,
+  `claim_date` DATE NOT NULL,
+  `claim_time` TIME DEFAULT NULL,
+  `issue_summary` VARCHAR(255) NOT NULL,
+  `claim_remarks` TEXT DEFAULT NULL,
+  `claimed_by` VARCHAR(32) NOT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`claim_id`),
+  FOREIGN KEY (`asset_id`) REFERENCES `laptop`(`asset_id`),
+  FOREIGN KEY (`warranty_id`) REFERENCES `warranty`(`warranty_id`),
+  FOREIGN KEY (`claimed_by`) REFERENCES `users`(`staff_id`),
+  INDEX `idx_claim_asset_id` (`asset_id`),
+  INDEX `idx_claim_warranty_id` (`warranty_id`),
+  INDEX `idx_claim_date` (`claim_date`),
+  INDEX `idx_claimed_by` (`claimed_by`)
+);
+
 -- Return after a handover (one record per handover recipient)
 CREATE TABLE IF NOT EXISTS handover_return (
   `return_id` INT(11) NOT NULL AUTO_INCREMENT,
