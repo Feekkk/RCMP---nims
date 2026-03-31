@@ -5,7 +5,7 @@ $isDashboard = $currentPage === 'dashboard.php';
 $isLaptop    = $currentPage === 'laptop.php';
 $isAV        = $currentPage === 'av.php';
 $isNetwork   = $currentPage === 'network.php';
-$isNextCheck = str_starts_with($currentPage, 'nextcheck');
+$isNextCheck = str_starts_with($currentPage, 'nextcheck') || $currentPage === 'nextAdd.php';
 $isProfile   = $currentPage === 'profile.php';
 ?>
 
@@ -241,7 +241,7 @@ $isProfile   = $currentPage === 'profile.php';
                 <i class="ri-arrow-down-s-line chevron" style="transition: transform 0.3s ease; font-size: 1.2rem;"></i>
             </a>
             <div class="nav-dropdown <?= $isNextCheck ? 'show' : '' ?>">
-                <a href="../technician/nextcheckManageItem.php" class="nav-dropdown-item <?= $currentPage === 'nextcheckManageItem.php' ? 'active' : '' ?>">Manage Item</a>
+                <a href="../technician/nextAdd.php" class="nav-dropdown-item <?= $currentPage === 'nextAdd.php' ? 'active' : '' ?>">Manage Item</a>
                 <a href="../technician/nextcheckCheckout.php" class="nav-dropdown-item <?= $currentPage === 'nextcheckCheckout.php' ? 'active' : '' ?>">Checkout</a>
             </div>
         </div>
