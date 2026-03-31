@@ -7,6 +7,20 @@ if (!isset($_SESSION['staff_id']) || (int)($_SESSION['role_id'] ?? 0) !== 2) {
 
 require_once __DIR__ . '/../config/database.php';
 
+function users_page_url(string $filter, int $page): string
+{
+    $q = [];
+    if ($filter !== 'all') {
+        $q['filter'] = $filter;
+    }
+    if ($page > 1) {
+        $q['page'] = $page;
+    }
+    $s = http_build_query($q);
+
+    return 'users.php' . ($s !== '' ? '?' . $s : '');
+}
+
 $pdo = db();
 $dbError = '';
 $admins = [];
@@ -34,7 +48,7 @@ try {
 
 try {
     $staffDirectory = $pdo->query("
-        SELECT id, employee_no, full_name, email, department, phone, created_at
+        SELECT employee_no, full_name, email, department, phone, created_at
         FROM staff
         ORDER BY full_name
     ")->fetchAll(PDO::FETCH_ASSOC);
@@ -47,43 +61,70 @@ $peopleRows = [];
 foreach ($admins as $u) {
     $peopleRows[] = [
         'kind' => 'admin',
-        'name' => $u['full_name'],
-        'identifier' => $u['staff_id'],
+        'role_id' => 2,
+        'full_name' => $u['full_name'],
+        'staff_id' => $u['staff_id'],
+        'employee_no' => '',
         'email' => $u['email'] ?? '',
-        'notes' => 'System account',
-        'since' => $u['created_at'] ?? null,
+        'department' => '',
+        'phone' => '',
+        'created_at' => $u['created_at'] ?? null,
     ];
 }
 foreach ($technicians as $u) {
     $peopleRows[] = [
         'kind' => 'technician',
-        'name' => $u['full_name'],
-        'identifier' => $u['staff_id'],
+        'role_id' => 1,
+        'full_name' => $u['full_name'],
+        'staff_id' => $u['staff_id'],
+        'employee_no' => '',
         'email' => $u['email'] ?? '',
-        'notes' => 'System account',
-        'since' => $u['created_at'] ?? null,
+        'department' => '',
+        'phone' => '',
+        'created_at' => $u['created_at'] ?? null,
     ];
 }
 if ($staffTableOk) {
     foreach ($staffDirectory as $s) {
-        $ident = ($s['employee_no'] ?? '') !== '' ? $s['employee_no'] : ('#' . (int)$s['id']);
-        $notesParts = array_filter([trim((string)($s['department'] ?? '')), trim((string)($s['phone'] ?? ''))], fn($x) => $x !== '');
         $peopleRows[] = [
             'kind' => 'staff',
-            'name' => $s['full_name'],
-            'identifier' => $ident,
+            'role_id' => null,
+            'full_name' => $s['full_name'],
+            'staff_id' => '',
+            'employee_no' => (string)($s['employee_no'] ?? ''),
             'email' => $s['email'] ?? '',
-            'notes' => $notesParts ? implode(' · ', $notesParts) : '—',
-            'since' => $s['created_at'] ?? null,
+            'department' => trim((string)($s['department'] ?? '')),
+            'phone' => trim((string)($s['phone'] ?? '')),
+            'created_at' => $s['created_at'] ?? null,
         ];
     }
 }
-usort($peopleRows, fn($a, $b) => strcasecmp($a['name'], $b['name']));
+usort($peopleRows, fn($a, $b) => strcasecmp($a['full_name'], $b['full_name']));
 
 $countAll = count($peopleRows);
 $countAdmin = count($admins);
 $countTech = count($technicians);
 $countStaff = $staffTableOk ? count($staffDirectory) : 0;
+
+$filter = $_GET['filter'] ?? 'all';
+if (!in_array($filter, ['all', 'admin', 'technician', 'staff'], true)) {
+    $filter = 'all';
+}
+$filteredPeople = array_values(array_filter(
+    $peopleRows,
+    static fn(array $p): bool => $filter === 'all' || ($p['kind'] ?? '') === $filter
+));
+$perPage = 10;
+$totalFiltered = count($filteredPeople);
+$totalPages = max(1, (int)ceil($totalFiltered / $perPage));
+$page = max(1, (int)($_GET['page'] ?? 1));
+if ($page > $totalPages) {
+    $page = $totalPages;
+}
+$offset = ($page - 1) * $perPage;
+$pageRows = array_slice($filteredPeople, $offset, $perPage);
+$showFrom = $totalFiltered === 0 ? 0 : $offset + 1;
+$showTo = $totalFiltered === 0 ? 0 : min($offset + $perPage, $totalFiltered);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -340,6 +381,7 @@ $countStaff = $staffTableOk ? count($staffDirectory) : 0;
         }
         .filter-btn:hover { border-color: rgba(37,99,235,0.28); color: var(--primary); background: rgba(37,99,235,0.06); }
         .filter-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+        a.filter-btn { text-decoration: none; }
         .filter-btn .ct {
             font-family: 'Outfit', sans-serif;
             font-size: 0.78rem;
@@ -350,8 +392,42 @@ $countStaff = $staffTableOk ? count($staffDirectory) : 0;
             font-size: 0.85rem;
             color: var(--text-muted);
             font-weight: 700;
+            text-align: right;
+            line-height: 1.4;
         }
         .table-meta strong { color: var(--text-main); }
+        .pager {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            padding: 1rem 1.35rem;
+            border-top: 1px solid var(--card-border);
+            background: var(--glass-panel);
+        }
+        .pager-info { font-size: 0.85rem; color: var(--text-muted); font-weight: 700; }
+        .pager-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.5rem 1rem;
+            border-radius: 10px;
+            border: 1px solid var(--card-border);
+            background: var(--card-bg);
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 0.88rem;
+            font-weight: 700;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+        a.pager-btn:hover { border-color: rgba(37,99,235,0.35); color: var(--primary); background: rgba(37,99,235,0.06); }
+        .pager-btn.disabled {
+            opacity: 0.45;
+            pointer-events: none;
+            cursor: not-allowed;
+        }
 
         .table-responsive { overflow-x: auto; width: 100%; }
         .data-table { width: 100%; border-collapse: collapse; white-space: nowrap; }
@@ -375,24 +451,9 @@ $countStaff = $staffTableOk ? count($staffDirectory) : 0;
         .data-table tbody tr { transition: background 0.2s ease; }
         .data-table tbody tr:hover { background: rgba(37,99,235,0.03); }
         .data-table tr:last-child td { border-bottom: none; }
-        .data-table tr.is-hidden { display: none; }
         .mono { font-family: ui-monospace, monospace; font-size: 0.82rem; }
         .cell-main { font-weight: 800; color: var(--text-main); }
         .cell-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem; font-weight: 600; }
-        .type-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            padding: 0.35rem 0.72rem;
-            border-radius: 999px;
-            font-size: 0.72rem;
-            font-weight: 900;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-        }
-        .type-pill.admin { background: rgba(239,68,68,0.1); color: #dc2626; border: 1px solid rgba(239,68,68,0.25); }
-        .type-pill.technician { background: rgba(37,99,235,0.1); color: var(--primary); border: 1px solid rgba(37,99,235,0.22); }
-        .type-pill.staff { background: rgba(16,185,129,0.1); color: #059669; border: 1px solid rgba(16,185,129,0.25); }
         .empty-cell {
             text-align: center;
             padding: 2.5rem 1rem !important;
@@ -444,7 +505,7 @@ $countStaff = $staffTableOk ? count($staffDirectory) : 0;
                             <i class="ri-tools-line" style="color:var(--primary);"></i> Add technician
                         </button>
                         <div class="action-dropdown-hint">Directory</div>
-                        <button type="button" class="action-dropdown-item" onclick="showUiNotice('Add staff (directory) — form wiring comes next (UI preview only).')">
+                        <button type="button" class="action-dropdown-item" onclick="window.location.href='../admin/importStaff.php'">
                             <i class="ri-user-follow-line" style="color:var(--success);"></i> Add staff
                         </button>
                     </div>
@@ -456,50 +517,62 @@ $countStaff = $staffTableOk ? count($staffDirectory) : 0;
             <div class="card-toolbar">
                 <div class="toolbar-title"><i class="ri-table-line"></i> Directory</div>
                 <div class="filter-bar" role="toolbar" aria-label="Filter by role">
-                    <button type="button" class="filter-btn active" data-filter="all">All <span class="ct"><?= (int)$countAll ?></span></button>
-                    <button type="button" class="filter-btn" data-filter="admin">Administrator <span class="ct"><?= (int)$countAdmin ?></span></button>
-                    <button type="button" class="filter-btn" data-filter="technician">Technician <span class="ct"><?= (int)$countTech ?></span></button>
-                    <button type="button" class="filter-btn" data-filter="staff">Staff <span class="ct"><?= (int)$countStaff ?></span></button>
+                    <a class="filter-btn <?= $filter === 'all' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('all', 1)) ?>">All <span class="ct"><?= (int)$countAll ?></span></a>
+                    <a class="filter-btn <?= $filter === 'admin' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('admin', 1)) ?>">Administrator <span class="ct"><?= (int)$countAdmin ?></span></a>
+                    <a class="filter-btn <?= $filter === 'technician' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('technician', 1)) ?>">Technician <span class="ct"><?= (int)$countTech ?></span></a>
+                    <a class="filter-btn <?= $filter === 'staff' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('staff', 1)) ?>">Staff <span class="ct"><?= (int)$countStaff ?></span></a>
                 </div>
-                <div class="table-meta">Showing <strong id="visibleCount"><?= (int)$countAll ?></strong> of <strong><?= (int)$countAll ?></strong></div>
+                <div class="table-meta">
+                    <?php if ($totalFiltered > 0): ?>
+                        Showing <strong><?= (int)$showFrom ?></strong>–<strong><?= (int)$showTo ?></strong> of <strong><?= (int)$totalFiltered ?></strong><br>
+                        Page <strong><?= (int)$page ?></strong> of <strong><?= (int)$totalPages ?></strong> · <?= (int)$perPage ?> per page
+                    <?php else: ?>
+                        No rows in this view
+                    <?php endif; ?>
+                </div>
             </div>
             <div class="table-responsive">
                 <table class="data-table" id="peopleTable">
                     <thead>
                         <tr>
-                            <th>Type</th>
-                            <th>Name</th>
-                            <th>ID</th>
-                            <th>Email</th>
-                            <th>Notes</th>
-                            <th>Since</th>
+                            <th><span class="mono">full_name</span></th>
+                            <th><span class="mono">employee_no</span></th>
+                            <th><span class="mono">email</span></th>
+                            <th><span class="mono">role</span></th>
                         </tr>
                     </thead>
                     <tbody id="peopleTbody">
-                        <?php if (empty($peopleRows)): ?>
-                            <tr><td colspan="6" class="empty-cell">No people to show.</td></tr>
-                        <?php else: foreach ($peopleRows as $p):
-                            $kind = $p['kind'];
-                            $typeLabel = match ($kind) {
-                                'admin' => 'Administrator',
-                                'technician' => 'Technician',
-                                'staff' => 'Staff',
-                                default => $kind,
-                            };
-                            $since = !empty($p['since']) ? date('M j, Y', strtotime($p['since'])) : '—';
+                        <?php if ($totalFiltered === 0): ?>
+                            <tr><td colspan="4" class="empty-cell">No people to show for this filter.</td></tr>
+                        <?php else: foreach ($pageRows as $p):
+                            $kind = $p['kind'] ?? '';
+                            $roleDisp = $kind === 'admin' ? 'Administrator'
+                                : ($kind === 'technician' ? 'Technician'
+                                : ($kind === 'staff' ? 'Staff' : '—'));
                         ?>
-                            <tr data-kind="<?= htmlspecialchars($kind) ?>">
-                                <td><span class="type-pill <?= htmlspecialchars($kind === 'technician' ? 'technician' : ($kind === 'staff' ? 'staff' : 'admin')) ?>"><?= htmlspecialchars($typeLabel) ?></span></td>
-                                <td><div class="cell-main"><?= htmlspecialchars($p['name']) ?></div></td>
-                                <td class="mono"><?= htmlspecialchars($p['identifier']) ?></td>
-                                <td><?= htmlspecialchars($p['email'] !== '' ? $p['email'] : '—') ?></td>
-                                <td><span class="cell-sub" style="display:block;max-width:280px;white-space:normal;"><?= htmlspecialchars($p['notes']) ?></span></td>
-                                <td class="cell-sub"><?= htmlspecialchars($since) ?></td>
+                            <tr>
+                                <td><div class="cell-main"><?= htmlspecialchars($p['full_name']) ?></div></td>
+                                <td class="mono"><?= $p['employee_no'] !== '' ? htmlspecialchars($p['employee_no']) : '—' ?></td>
+                                <td><?= $p['email'] !== '' ? htmlspecialchars($p['email']) : '—' ?></td>
+                                <td class="mono"><?= htmlspecialchars($roleDisp) ?></td>
                             </tr>
                         <?php endforeach; endif; ?>
                     </tbody>
                 </table>
             </div>
+            <nav class="pager" aria-label="Table pages">
+                <?php if ($page > 1): ?>
+                    <a class="pager-btn" href="<?= htmlspecialchars(users_page_url($filter, $page - 1)) ?>"><i class="ri-arrow-left-s-line"></i> Previous</a>
+                <?php else: ?>
+                    <span class="pager-btn disabled"><i class="ri-arrow-left-s-line"></i> Previous</span>
+                <?php endif; ?>
+                <span class="pager-info"><?= (int)$page ?> / <?= (int)$totalPages ?></span>
+                <?php if ($page < $totalPages): ?>
+                    <a class="pager-btn" href="<?= htmlspecialchars(users_page_url($filter, $page + 1)) ?>">Next <i class="ri-arrow-right-s-line"></i></a>
+                <?php else: ?>
+                    <span class="pager-btn disabled">Next <i class="ri-arrow-right-s-line"></i></span>
+                <?php endif; ?>
+            </nav>
         </section>
     </main>
 
@@ -520,26 +593,6 @@ $countStaff = $staffTableOk ? count($staffDirectory) : 0;
         document.addEventListener('click', () => {
             document.querySelectorAll('.action-dropdown.show').forEach(d => d.classList.remove('show'));
         });
-
-        (function () {
-            const tbody = document.getElementById('peopleTbody');
-            if (!tbody) return;
-            const rows = Array.from(tbody.querySelectorAll('tr[data-kind]'));
-            const filters = Array.from(document.querySelectorAll('.filter-btn[data-filter]'));
-            const visibleEl = document.getElementById('visibleCount');
-            function applyFilter(kind) {
-                let n = 0;
-                rows.forEach(r => {
-                    const show = kind === 'all' || r.getAttribute('data-kind') === kind;
-                    r.classList.toggle('is-hidden', !show);
-                    if (show) n++;
-                });
-                if (visibleEl) visibleEl.textContent = String(n);
-                filters.forEach(b => b.classList.toggle('active', b.getAttribute('data-filter') === kind));
-            }
-            filters.forEach(b => b.addEventListener('click', () => applyFilter(b.getAttribute('data-filter'))));
-            applyFilter('all');
-        })();
     </script>
 </body>
 </html>
