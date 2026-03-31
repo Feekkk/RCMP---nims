@@ -24,9 +24,27 @@ $status_counts = db()->query("
 // Total laptops
 $total_laptops = (int)db()->query("SELECT COUNT(*) FROM laptop")->fetchColumn();
 
+// Stock / Out-stock totals (for summary cards + filter dropdown)
+$stock_ids = [1, 2, 4, 5, 6];     // Active, Non-active, Reserved, Maintenance, Faulty
+$out_stock_ids = [3, 7, 8];       // Deploy, Disposed, Lost
+
+$countsById = [];
+$statusNameById = [];
+foreach ($status_counts as $sc) {
+    $sid = (int)$sc['status_id'];
+    $countsById[$sid] = (int)$sc['total'];
+    $statusNameById[$sid] = (string)$sc['name'];
+}
+
+$stock_total = 0;
+foreach ($stock_ids as $sid) $stock_total += $countsById[$sid] ?? 0;
+$out_total = 0;
+foreach ($out_stock_ids as $sid) $out_total += $countsById[$sid] ?? 0;
+
 //  Laptop list (+ warranty info for maintenance view)
 $sql = "
     SELECT l.asset_id, l.serial_num, l.brand, l.model,
+           l.category, l.processor, l.memory, l.os, l.storage,
            l.PO_DATE, l.status_id, s.name AS status_name,
            st.full_name AS assignee_name,
            st.department AS department,
@@ -355,6 +373,68 @@ $status_meta = [
             font-size: 1rem;
         }
 
+        /* Stock summary cards */
+        .stock-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            animation: fadeInUp 0.65s ease-out;
+        }
+        .stock-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 18px;
+            padding: 1.15rem 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            box-shadow: 0 2px 12px rgba(15,23,42,0.06);
+        }
+        .stock-left {
+            display: flex;
+            align-items: center;
+            gap: 0.9rem;
+            min-width: 0;
+        }
+        .stock-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            border: 1px solid transparent;
+            font-size: 1.3rem;
+        }
+        .stock-icon.in { background: rgba(16,185,129,0.12); color: var(--success); border-color: rgba(16,185,129,0.22); }
+        .stock-icon.out { background: rgba(37,99,235,0.12); color: var(--primary); border-color: rgba(37,99,235,0.22); }
+        .stock-meta { min-width: 0; }
+        .stock-label {
+            font-size: 0.78rem;
+            font-weight: 800;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .stock-sub {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-top: 0.15rem;
+        }
+        .stock-count {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2rem;
+            font-weight: 800;
+            line-height: 1;
+            color: var(--text-main);
+        }
+
         /* Status Filter Cards */
         .status-cards {
             display: grid;
@@ -405,6 +485,73 @@ $status_meta = [
         .status-card-all { border-color: var(--primary); }
         .status-card-all .status-card-icon { color: var(--primary); }
         .status-card-all.active-filter { background: rgba(37,99,235,0.06); }
+
+        /* Filter dropdown (sub-filters moved to the Filter button) */
+        .filter-dropdown {
+            min-width: 320px;
+            padding: 0.6rem;
+        }
+        .filter-section {
+            padding: 0.35rem 0.35rem 0.25rem;
+        }
+        .filter-section + .filter-section {
+            border-top: 1px solid var(--card-border);
+            margin-top: 0.4rem;
+            padding-top: 0.6rem;
+        }
+        .filter-title {
+            font-size: 0.75rem;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin: 0.15rem 0.4rem 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .filter-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            padding: 0.6rem 0.75rem;
+            border-radius: 10px;
+            text-decoration: none;
+            color: var(--text-muted);
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+        .filter-item:hover {
+            background: rgba(37,99,235,0.06);
+            color: var(--primary);
+            border-color: rgba(37,99,235,0.12);
+        }
+        .filter-item.active {
+            background: rgba(37,99,235,0.10);
+            color: var(--primary);
+            border-color: rgba(37,99,235,0.20);
+        }
+        .filter-left {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.6rem;
+            min-width: 0;
+        }
+        .filter-left span {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .filter-count {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 800;
+            color: var(--text-main);
+            background: var(--glass-panel);
+            border: 1px solid var(--card-border);
+            padding: 0.15rem 0.55rem;
+            border-radius: 999px;
+        }
 
         /* Controls / Actions */
 
@@ -613,6 +760,12 @@ $status_meta = [
             color: white;
         }
 
+        .btn-action.warranty:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: white;
+        }
+
         /* Pagination */
         .pagination {
             display: flex;
@@ -750,29 +903,30 @@ $status_meta = [
             </div>
         </header>
 
-        <!-- Status Filter Cards -->
-        <div class="status-cards">
-            <!-- All -->
-            <a href="laptop.php"
-               class="status-card status-card-all <?= $filter_status === null ? 'active-filter' : '' ?>">
-                <span class="status-card-icon"><i class="ri-macbook-line"></i></span>
-                <span class="status-card-count"><?= $total_laptops ?></span>
-                <span class="status-card-label">All Assets</span>
-            </a>
-            <?php foreach ($status_counts as $sc):
-                $sid  = (int)$sc['status_id'];
-                $meta = $status_meta[$sid] ?? ['icon'=>'ri-question-line','cls'=>'','colour'=>'#64748b','bg'=>'rgba(100,116,139,0.1)','border'=>'rgba(100,116,139,0.3)'];
-                $active = ($filter_status === $sid);
-            ?>
-            <a href="laptop.php?status_id=<?= $sid ?>"
-               class="status-card <?= $active ? 'active-filter' : '' ?>"
-               style="color:<?= $meta['colour'] ?>;<?= $active ? "border-color:{$meta['colour']};background:{$meta['bg']};" : '' ?>">
-                <span class="status-card-icon"><i class="<?= $meta['icon'] ?>"></i></span>
-                <span class="status-card-count" style="color:var(--text-main)"><?= (int)$sc['total'] ?></span>
-                <span class="status-card-label"><?= htmlspecialchars($sc['name']) ?></span>
-            </a>
-            <?php endforeach; ?>
-        </div>
+        <section class="stock-summary" aria-label="Stock summary">
+            <div class="stock-card" title="In-stock: Active, Non-active, Reserved, Maintenance, Faulty">
+                <div class="stock-left">
+                    <div class="stock-icon in"><i class="ri-box-3-line"></i></div>
+                    <div class="stock-meta">
+                        <div class="stock-label">In-stock</div>
+                        <div class="stock-sub">Active, Non-active, Reserved, Maintenance, Faulty</div>
+                    </div>
+                </div>
+                <div class="stock-count"><?= (int)$stock_total ?></div>
+            </div>
+            <div class="stock-card" title="Out-stock: Deploy, Disposed, Lost">
+                <div class="stock-left">
+                    <div class="stock-icon out"><i class="ri-truck-line"></i></div>
+                    <div class="stock-meta">
+                        <div class="stock-label">Out-stock</div>
+                        <div class="stock-sub">Deploy, Disposed, Lost</div>
+                    </div>
+                </div>
+                <div class="stock-count"><?= (int)$out_total ?></div>
+            </div>
+        </section>
+
+        <!-- Sub-filters moved into Filter dropdown (top-right) -->
 
         <!-- Tool & Search Bar -->
         <div class="table-controls">
@@ -781,9 +935,59 @@ $status_meta = [
                 <input type="text" id="searchInput" class="search-input" placeholder="Search by Model, Serial No, or Assignee...">
             </div>
             <div class="action-buttons">
-                <button class="btn btn-outline" title="Filter Records">
-                    <i class="ri-filter-3-line"></i> Filter
-                </button>
+                <?php /* stock/out totals prepared above */ ?>
+
+                <div class="dropdown-container">
+                    <button class="btn btn-outline" title="Filter Records" onclick="toggleActionDropdown(this, event)">
+                        <i class="ri-filter-3-line"></i>
+                        <?= $filter_status === null ? 'Filter' : 'Filtered' ?>
+                        <i class="ri-arrow-down-s-line" style="margin-left: 4px;"></i>
+                    </button>
+                    <div class="action-dropdown filter-dropdown">
+                        <div class="filter-section">
+                            <div class="filter-title"><i class="ri-macbook-line"></i> All Assets</div>
+                            <a class="filter-item <?= $filter_status === null ? 'active' : '' ?>" href="laptop.php">
+                                <span class="filter-left">
+                                    <i class="ri-layout-grid-line" style="color: var(--primary)"></i>
+                                    <span>All Assets</span>
+                                </span>
+                                <span class="filter-count"><?= (int)$total_laptops ?></span>
+                            </a>
+                        </div>
+
+                        <div class="filter-section">
+                            <div class="filter-title"><i class="ri-box-3-line" style="color: var(--success)"></i> Stock</div>
+                            <?php foreach ($stock_ids as $sid):
+                                $meta = $status_meta[$sid] ?? ['icon'=>'ri-question-line','colour'=>'#64748b'];
+                                $active = ($filter_status === $sid);
+                            ?>
+                                <a class="filter-item <?= $active ? 'active' : '' ?>" href="laptop.php?status_id=<?= (int)$sid ?>">
+                                    <span class="filter-left">
+                                        <i class="<?= $meta['icon'] ?>" style="color: <?= htmlspecialchars((string)$meta['colour']) ?>"></i>
+                                        <span><?= htmlspecialchars($statusNameById[$sid] ?? ('Status ' . $sid)) ?></span>
+                                    </span>
+                                    <span class="filter-count"><?= (int)($countsById[$sid] ?? 0) ?></span>
+                                </a>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <div class="filter-section">
+                            <div class="filter-title"><i class="ri-truck-line" style="color: var(--primary)"></i> Out-stock</div>
+                            <?php foreach ($out_stock_ids as $sid):
+                                $meta = $status_meta[$sid] ?? ['icon'=>'ri-question-line','colour'=>'#64748b'];
+                                $active = ($filter_status === $sid);
+                            ?>
+                                <a class="filter-item <?= $active ? 'active' : '' ?>" href="laptop.php?status_id=<?= (int)$sid ?>">
+                                    <span class="filter-left">
+                                        <i class="<?= $meta['icon'] ?>" style="color: <?= htmlspecialchars((string)$meta['colour']) ?>"></i>
+                                        <span><?= htmlspecialchars($statusNameById[$sid] ?? ('Status ' . $sid)) ?></span>
+                                    </span>
+                                    <span class="filter-count"><?= (int)($countsById[$sid] ?? 0) ?></span>
+                                </a>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
                 <div class="dropdown-container">
                     <button class="btn btn-primary" onclick="toggleActionDropdown(this, event)">
                         <i class="ri-add-line"></i> Register Laptop <i class="ri-arrow-down-s-line" style="margin-left: 4px;"></i>
@@ -805,6 +1009,9 @@ $status_meta = [
                             <th>Device Identity</th>
                             <?php if ($filter_status === 5): ?>
                                 <th>Warranty Details</th>
+                            <?php elseif ($filter_status === null): ?>
+                                <th>Asset Information</th>
+                                <th>Purchase Date</th>
                             <?php else: ?>
                                 <th>Department</th>
                                 <th>Assigned To</th>
@@ -817,7 +1024,10 @@ $status_meta = [
                     <tbody id="laptopTableBody">
                         <?php if (empty($laptops)): ?>
                         <tr>
-                            <td colspan="6" style="text-align:center; padding: 3rem; color: var(--text-muted);">
+                            <?php
+                                $colspan = ($filter_status === 5) ? 4 : (($filter_status === null) ? 5 : 6);
+                            ?>
+                            <td colspan="<?= (int)$colspan ?>" style="text-align:center; padding: 3rem; color: var(--text-muted);">
                                 <i class="ri-inbox-line" style="font-size:2rem; display:block; margin-bottom:0.5rem;"></i>
                                 No laptops found<?= $filter_status !== null ? ' for this status' : '' ?>.
                             </td>
@@ -831,6 +1041,14 @@ $status_meta = [
                             $assignee   = htmlspecialchars($row['assignee_name'] ?? '—');
                             $department = htmlspecialchars($row['department'] ?? '—');
                             $po_date    = $row['PO_DATE'] ? date('d M Y', strtotime($row['PO_DATE'])) : 'â€”';
+
+                            $assetInfoParts = [];
+                            if (!empty($row['category']))  $assetInfoParts[] = htmlspecialchars((string)$row['category']);
+                            if (!empty($row['processor'])) $assetInfoParts[] = 'CPU: ' . htmlspecialchars((string)$row['processor']);
+                            if (!empty($row['memory']))    $assetInfoParts[] = 'RAM: ' . htmlspecialchars((string)$row['memory']);
+                            if (!empty($row['os']))        $assetInfoParts[] = 'OS: ' . htmlspecialchars((string)$row['os']);
+                            if (!empty($row['storage']))   $assetInfoParts[] = 'Storage: ' . htmlspecialchars((string)$row['storage']);
+                            $assetInfoText = $assetInfoParts ? implode(' • ', $assetInfoParts) : '—';
 
                             // Warranty display (for maintenance view)
                             $wStartRaw = $row['warranty_start_date'] ?? null;
@@ -867,6 +1085,13 @@ $status_meta = [
                                         <?= htmlspecialchars($warrantyText) ?>
                                     </span>
                                 </td>
+                            <?php elseif ($filter_status === null): ?>
+                                <td>
+                                    <span style="font-size:0.85rem; color: var(--text-muted);">
+                                        <?= $assetInfoText ?>
+                                    </span>
+                                </td>
+                                <td><?= $po_date ?></td>
                             <?php else: ?>
                                 <td><?= $department ?></td>
                                 <td><?= $assignee ?></td>
@@ -884,6 +1109,12 @@ $status_meta = [
                                 <?php if ($sid === 3): ?>
                                     <a href="returnForm.php?asset_id=<?= urlencode($row['asset_id']) ?>" class="btn-action return" title="Return Asset">
                                         <i class="ri-arrow-go-back-line"></i>
+                                    </a>
+                                <?php endif; ?>
+
+                                <?php if ($sid === 5): ?>
+                                    <a href="warranty.php?asset_id=<?= urlencode($row['asset_id']) ?>" class="btn-action warranty" title="Warranty Claim">
+                                        <i class="ri-shield-check-line"></i>
                                     </a>
                                 <?php endif; ?>
                             </td>
