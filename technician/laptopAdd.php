@@ -18,6 +18,12 @@ $max_val = (int)$max_row->fetchColumn(); // 0 if no records yet this year
 $next_seq = ($max_val === 0) ? 1 : ($max_val % 10000) + 1;
 $next_asset_id = (int)($prefix . str_pad($next_seq, 4, '0', STR_PAD_LEFT));
 
+$staffForHandover = [];
+try {
+    $staffForHandover = db()->query('SELECT employee_no, full_name, department FROM staff ORDER BY full_name')->fetchAll();
+} catch (PDOException $e) {
+    $staffForHandover = [];
+}
 
 $success_message = '';
 $error_message   = '';
@@ -54,12 +60,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $remarks       = $str('remarks');
 
     // ── Handover (only when status = 3 Deploy) ──────────────────────────────
-    $is_deploy      = ($status_id === 3);
-    $ho_staff_id    = $str('staff_id');
-    $ho_department  = $str('department');
-    $ho_assign_type = $str('assignment_type');
-    $ho_date        = $date('handover_date');
-    $ho_remarks     = $str('handover_remarks');
+    $is_deploy        = ($status_id === 3);
+    $ho_employee_no   = $str('employee_no');
+    $ho_assign_type   = $str('assignment_type');
+    $ho_date          = $date('handover_date');
+    $ho_remarks       = $str('handover_remarks');
+    $sessionStaff     = isset($_SESSION['staff_id']) ? trim((string)$_SESSION['staff_id']) : '';
 
     // ── Warranty (optional) ─────────────────────────────────────────────────
     $w_start   = $date('warranty_start_date');
@@ -70,8 +76,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ── Validation ──────────────────────────────────────────────────────────
     if (!$asset_id || !$serial_num || !$status_id) {
         $error_message = 'Asset ID, Serial Number, and Status are required.';
-    } elseif ($is_deploy && (!$ho_staff_id || !$ho_department || !$ho_assign_type || !$ho_date)) {
-        $error_message = 'Handover details (Staff ID, Department, Assignment Type, Date) are required for Deploy status.';
+    } elseif ($is_deploy && (!$ho_employee_no || !$ho_assign_type || !$ho_date)) {
+        $error_message = 'Handover details (assignee from staff list, assignment type, date) are required for Deploy status.';
+    } elseif ($is_deploy && $sessionStaff === '') {
+        $error_message = 'Session staff ID missing; log in again to record a handover.';
     } else {
         try {
             $pdo = db();
@@ -121,22 +129,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ");
                 $stmt2->execute([
                     ':asset_id'        => $asset_id,
-                    ':staff_id'        => $ho_staff_id,
+                    ':staff_id'        => $sessionStaff,
                     ':handover_date'   => $ho_date,
                     ':handover_remarks'=> $ho_remarks,
                 ]);
                 $handover_id = (int)$pdo->lastInsertId();
 
-                // 3. Handover Staff record
-                $stmt3 = $pdo->prepare("
-                    INSERT INTO handover_staff (staff_id, handover_id, department, assignment_type)
-                    VALUES (:staff_id, :handover_id, :department, :assignment_type)
-                ");
+                $stmt3 = $pdo->prepare('
+                    INSERT INTO handover_staff (employee_no, handover_id, assignment_type)
+                    VALUES (:employee_no, :handover_id, :assignment_type)
+                ');
                 $stmt3->execute([
-                    ':staff_id'       => $ho_staff_id,
-                    ':handover_id'    => $handover_id,
-                    ':department'     => $ho_department,
-                    ':assignment_type'=> $ho_assign_type,
+                    ':employee_no'     => $ho_employee_no,
+                    ':handover_id'     => $handover_id,
+                    ':assignment_type' => $ho_assign_type,
                 ]);
             }
 
@@ -851,13 +857,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">If the laptop is being immediately assigned, fill out the handover details below. (Requires "Deploy" Status)</p>
                 <div class="form-grid grid-3">
-                    <div class="form-group">
-                        <label class="form-label">Staff ID</label>
-                        <input type="text" name="staff_id" class="form-input handover-input" placeholder="Enter Staff ID" disabled>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Department</label>
-                        <input type="text" name="department" class="form-input handover-input" placeholder="e.g. Academic" disabled>
+                    <div class="form-group" style="grid-column: span 2;">
+                        <label class="form-label">Assign to (imported staff directory)</label>
+                        <select name="employee_no" class="form-select handover-input" disabled>
+                            <option value="" disabled selected>Select employee</option>
+                            <?php foreach ($staffForHandover as $sm): ?>
+                                <option value="<?= htmlspecialchars($sm['employee_no'], ENT_QUOTES, 'UTF-8') ?>">
+                                    <?= htmlspecialchars($sm['full_name']) ?>
+                                    <?php if (!empty($sm['department'])): ?> — <?= htmlspecialchars($sm['department']) ?><?php endif; ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if (empty($staffForHandover)): ?>
+                            <p style="font-size:0.8rem;color:var(--danger);margin-top:0.35rem;">No <code>staff</code> rows. Admin must import the staff CSV first.</p>
+                        <?php endif; ?>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Assignment Type</label>

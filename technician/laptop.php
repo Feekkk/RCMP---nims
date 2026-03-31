@@ -28,11 +28,14 @@ $total_laptops = (int)db()->query("SELECT COUNT(*) FROM laptop")->fetchColumn();
 $sql = "
     SELECT l.asset_id, l.serial_num, l.brand, l.model,
            l.PO_DATE, l.status_id, s.name AS status_name,
-           h.staff_id AS assignee_id, hs.department
+           st.full_name AS assignee_name,
+           st.department AS department,
+           hs.employee_no AS assignee_employee_no
     FROM laptop l
     JOIN status s ON s.status_id = l.status_id
     LEFT JOIN handover h ON h.asset_id = l.asset_id
     LEFT JOIN handover_staff hs ON hs.handover_id = h.handover_id
+    LEFT JOIN staff st ON st.employee_no = hs.employee_no
 ";
 $params = [];
 if ($filter_status !== null) {
@@ -812,8 +815,8 @@ $status_meta = [
                             $icon_style = "color:{$meta['colour']};background:{$meta['bg']};border:1px solid {$meta['border']};";
                             $device = trim(htmlspecialchars($row['brand'] ?? '') . ' ' . htmlspecialchars($row['model'] ?? ''));
                             if (!$device) $device = 'Unknown Device';
-                            $assignee   = htmlspecialchars($row['assignee_id'] ?? '-');
-                            $department = htmlspecialchars($row['department']  ?? '-');
+                            $assignee   = htmlspecialchars($row['assignee_name'] ?? '—');
+                            $department = htmlspecialchars($row['department'] ?? '—');
                             $po_date    = $row['PO_DATE'] ? date('d M Y', strtotime($row['PO_DATE'])) : 'â€”';
                         ?>
                         <tr>

@@ -16,6 +16,18 @@ if ($assetId !== '') {
     $stmt->execute([$assetId]);
     $laptop = $stmt->fetch();
 }
+
+// Staff directory lookup for receiver auto-fill
+$staffForLookup = [];
+try {
+    $staffForLookup = db()->query("
+        SELECT employee_no, full_name, department
+        FROM staff
+        ORDER BY full_name
+    ")->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    $staffForLookup = [];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -471,7 +483,27 @@ if ($assetId !== '') {
 
                         <div class="form-group">
                             <label class="form-label" for="receiver_staff_id">Staff ID (Receiver)</label>
-                            <input type="text" id="receiver_staff_id" name="receiver_staff_id" class="form-control" placeholder="e.g. IT-12345" required>
+                            <input
+                                type="text"
+                                id="receiver_staff_id"
+                                name="receiver_staff_id"
+                                class="form-control"
+                                placeholder="e.g. IT-12345"
+                                list="staffDirectory"
+                                autocomplete="off"
+                                required
+                            >
+                            <datalist id="staffDirectory">
+                                <?php foreach ($staffForLookup as $st): ?>
+                                    <option value="<?= htmlspecialchars($st['employee_no'], ENT_QUOTES, 'UTF-8') ?>">
+                                        <?= htmlspecialchars($st['full_name'], ENT_QUOTES, 'UTF-8') ?>
+                                        <?php if (!empty($st['department'])): ?>
+                                            — <?= htmlspecialchars($st['department'], ENT_QUOTES, 'UTF-8') ?>
+                                        <?php endif; ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </datalist>
+                            <div id="receiver_lookup_status" style="margin-top: 0.4rem; font-size: 0.8rem; color: var(--text-muted);"></div>
                         </div>
 
                         <div class="form-group">
@@ -480,8 +512,18 @@ if ($assetId !== '') {
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label" for="receiver_designation">Designation (Receiver)</label>
+                            <label class="form-label" for="receiver_designation">Designation / Department (Receiver)</label>
                             <input type="text" id="receiver_designation" name="receiver_designation" class="form-control" placeholder="e.g. Lecturer, Officer" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="receiver_email">Email (Receiver)</label>
+                            <input type="email" id="receiver_email" name="receiver_email" class="form-control" placeholder="Receiver email" readonly>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="receiver_phone">Phone (Receiver)</label>
+                            <input type="text" id="receiver_phone" name="receiver_phone" class="form-control" placeholder="Receiver phone" readonly>
                         </div>
                     </div>
 
@@ -561,6 +603,88 @@ if ($assetId !== '') {
             element.classList.toggle('open');
             dropdown.classList.toggle('show');
         }
+
+        async function fetchReceiverStaff(employeeNo) {
+            const res = await fetch(`getStaffDetails.php?employee_no=${encodeURIComponent(employeeNo)}`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                cache: 'no-store'
+            });
+
+            const text = await res.text();
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                return { ok: false, error: 'Invalid server response' };
+            }
+        }
+
+        function setReceiverLookupStatus(msg, isError) {
+            const status = document.getElementById('receiver_lookup_status');
+            if (!status) return;
+            status.textContent = msg || '';
+            status.style.color = isError ? 'var(--danger)' : 'var(--text-muted)';
+        }
+
+        function fillReceiverFields(staff) {
+            const nameEl = document.getElementById('receiver_name');
+            const desEl = document.getElementById('receiver_designation');
+            const emailEl = document.getElementById('receiver_email');
+            const phoneEl = document.getElementById('receiver_phone');
+
+            nameEl.value = staff.full_name ?? '';
+            desEl.value = staff.department ?? '';
+            emailEl.value = staff.email ?? '';
+            phoneEl.value = staff.phone ?? '';
+        }
+
+        function clearReceiverFields() {
+            const nameEl = document.getElementById('receiver_name');
+            const desEl = document.getElementById('receiver_designation');
+            const emailEl = document.getElementById('receiver_email');
+            const phoneEl = document.getElementById('receiver_phone');
+
+            nameEl.value = '';
+            desEl.value = '';
+            emailEl.value = '';
+            phoneEl.value = '';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const staffIdEl = document.getElementById('receiver_staff_id');
+            if (!staffIdEl) return;
+
+            async function onReceiverStaffChange() {
+                const employeeNo = (staffIdEl.value || '').trim();
+                if (!employeeNo) {
+                    setReceiverLookupStatus('', false);
+                    return;
+                }
+
+                setReceiverLookupStatus('Looking up staff...', false);
+
+                const data = await fetchReceiverStaff(employeeNo);
+                if (!data || !data.ok) {
+                    clearReceiverFields();
+                    setReceiverLookupStatus(data?.error || 'Staff lookup failed.', true);
+                    return;
+                }
+
+                if (!data.staff) {
+                    clearReceiverFields();
+                    setReceiverLookupStatus('Staff not found for this Staff ID.', true);
+                    return;
+                }
+
+                fillReceiverFields(data.staff);
+                setReceiverLookupStatus('', false);
+            }
+
+            staffIdEl.addEventListener('change', onReceiverStaffChange);
+            staffIdEl.addEventListener('blur', onReceiverStaffChange);
+            staffIdEl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') onReceiverStaffChange();
+            });
+        });
     </script>
 </body>
 </html>
