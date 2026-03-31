@@ -24,18 +24,21 @@ $status_counts = db()->query("
 // Total laptops
 $total_laptops = (int)db()->query("SELECT COUNT(*) FROM laptop")->fetchColumn();
 
-//  Laptop list
+//  Laptop list (+ warranty info for maintenance view)
 $sql = "
     SELECT l.asset_id, l.serial_num, l.brand, l.model,
            l.PO_DATE, l.status_id, s.name AS status_name,
            st.full_name AS assignee_name,
            st.department AS department,
-           hs.employee_no AS assignee_employee_no
+           hs.employee_no AS assignee_employee_no,
+           w.warranty_start_date,
+           w.warranty_end_date
     FROM laptop l
     JOIN status s ON s.status_id = l.status_id
     LEFT JOIN handover h ON h.asset_id = l.asset_id
     LEFT JOIN handover_staff hs ON hs.handover_id = h.handover_id
     LEFT JOIN staff st ON st.employee_no = hs.employee_no
+    LEFT JOIN warranty w ON w.asset_id = l.asset_id
 ";
 $params = [];
 if ($filter_status !== null) {
@@ -800,9 +803,13 @@ $status_meta = [
                     <thead>
                         <tr>
                             <th>Device Identity</th>
-                            <th>Department</th>
-                            <th>Assigned To</th>
-                            <th>Purchase Date</th>
+                            <?php if ($filter_status === 5): ?>
+                                <th>Warranty Details</th>
+                            <?php else: ?>
+                                <th>Department</th>
+                                <th>Assigned To</th>
+                                <th>Purchase Date</th>
+                            <?php endif; ?>
                             <th>Status</th>
                             <th>Actions</th>
                         </tr>
@@ -824,6 +831,24 @@ $status_meta = [
                             $assignee   = htmlspecialchars($row['assignee_name'] ?? '—');
                             $department = htmlspecialchars($row['department'] ?? '—');
                             $po_date    = $row['PO_DATE'] ? date('d M Y', strtotime($row['PO_DATE'])) : 'â€”';
+
+                            // Warranty display (for maintenance view)
+                            $wStartRaw = $row['warranty_start_date'] ?? null;
+                            $wEndRaw   = $row['warranty_end_date'] ?? null;
+                            $warrantyText = 'No warranty record';
+                            $inWarranty = false;
+                            if ($wStartRaw && $wEndRaw) {
+                                $today = new DateTimeImmutable('today');
+                                $start = new DateTimeImmutable($wStartRaw);
+                                $end   = new DateTimeImmutable($wEndRaw);
+                                $inWarranty = ($today >= $start && $today <= $end);
+                                $warrantyText = sprintf(
+                                    '%s → %s%s',
+                                    $start->format('d M Y'),
+                                    $end->format('d M Y'),
+                                    $inWarranty ? ' (Active)' : ' (Expired)'
+                                );
+                            }
                         ?>
                         <tr>
                             <td>
@@ -835,9 +860,18 @@ $status_meta = [
                                     </div>
                                 </div>
                             </td>
-                            <td><?= $department ?></td>
-                            <td><?= $assignee ?></td>
-                            <td><?= $po_date ?></td>
+
+                            <?php if ($filter_status === 5): ?>
+                                <td>
+                                    <span style="font-size:0.85rem; color: <?= $inWarranty ? '#16a34a' : 'var(--text-muted)' ?>;">
+                                        <?= htmlspecialchars($warrantyText) ?>
+                                    </span>
+                                </td>
+                            <?php else: ?>
+                                <td><?= $department ?></td>
+                                <td><?= $assignee ?></td>
+                                <td><?= $po_date ?></td>
+                            <?php endif; ?>
                             <td><span class="badge <?= $meta['cls'] ?>"><i class="<?= $meta['icon'] ?>"></i> <?= htmlspecialchars($row['status_name']) ?></span></td>
                             <td>
                                 <button class="btn-action view" title="View Details"><i class="ri-eye-line"></i></button>
