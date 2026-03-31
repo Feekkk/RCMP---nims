@@ -232,7 +232,7 @@ $isProfile   = $currentPage === 'profile.php';
                 <a href="../technician/network.php" class="nav-dropdown-item <?= $isNetwork ? 'active' : '' ?>">Network</a>
             </div>
         </div>
-        <a href="#" class="nav-item">
+        <a href="disposal.php" class="nav-item">
             <i class="ri-delete-bin-line"></i> Disposal
         </a>
         <a href="history.php" class="nav-item">
