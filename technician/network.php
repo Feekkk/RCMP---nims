@@ -7,6 +7,10 @@ if (!isset($_SESSION['staff_id']) || (int)($_SESSION['role_id'] ?? 0) !== 1) {
 
 require_once __DIR__ . '/../config/database.php';
 
+$filter_status = isset($_GET['status_id']) && is_numeric($_GET['status_id'])
+    ? (int)$_GET['status_id']
+    : null;
+
 $stats = [
     'total'        => 0,
     'online'       => 0,
@@ -14,6 +18,7 @@ $stats = [
     'maint_faulty' => 0,
 ];
 $assets = [];
+$status_counts = [];
 $dbError = false;
 
 try {
@@ -24,17 +29,34 @@ try {
     $stats['maint_faulty'] = (int)$pdo->query(
         'SELECT COUNT(*) FROM network WHERE status_id IN (5, 6)'
     )->fetchColumn();
-    $stmt = $pdo->query('
+    $status_counts = $pdo->query("
+        SELECT s.status_id, s.name, COUNT(n.asset_id) AS total
+        FROM status s
+        LEFT JOIN network n ON n.status_id = s.status_id
+        WHERE s.status_id IN (3,5,6,7,8,9,10)
+        GROUP BY s.status_id, s.name
+        ORDER BY s.status_id
+    ")->fetchAll(PDO::FETCH_ASSOC);
+
+    $sql = '
         SELECT n.asset_id, n.serial_num, n.brand, n.model, n.mac_address, n.ip_address,
                n.status_id, n.remarks, s.name AS status_name
         FROM network n
         JOIN status s ON s.status_id = n.status_id
-        ORDER BY n.asset_id DESC
-    ');
+    ';
+    $params = [];
+    if ($filter_status !== null) {
+        $sql .= ' WHERE n.status_id = :status_id';
+        $params[':status_id'] = $filter_status;
+    }
+    $sql .= ' ORDER BY n.asset_id DESC';
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
     $assets = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
     $dbError = true;
     $assets = [];
+    $status_counts = [];
 }
 
 function network_filter_status(int $statusId): string
@@ -446,24 +468,59 @@ function network_badge_class(int $statusId): string
             box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
         .action-buttons { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
-        .chip-group { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
-        .chip {
+        /* Filter dropdown (status sub-filter) */
+        .filter-dropdown { min-width: 320px; padding: 0.6rem; }
+        .filter-section { padding: 0.35rem 0.35rem 0.25rem; }
+        .filter-section + .filter-section {
+            border-top: 1px solid var(--card-border);
+            margin-top: 0.4rem;
+            padding-top: 0.6rem;
+        }
+        .filter-title {
+            font-size: 0.75rem;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin: 0.15rem 0.4rem 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .filter-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            padding: 0.6rem 0.75rem;
+            border-radius: 10px;
+            text-decoration: none;
+            color: var(--text-muted);
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+        .filter-item:hover {
+            background: rgba(37,99,235,0.06);
+            color: var(--primary);
+            border-color: rgba(37,99,235,0.12);
+        }
+        .filter-item.active {
+            background: rgba(37,99,235,0.10);
+            color: var(--primary);
+            border-color: rgba(37,99,235,0.20);
+        }
+        .filter-left { display: inline-flex; align-items: center; gap: 0.6rem; min-width: 0; }
+        .filter-left span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .filter-count {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 800;
+            color: var(--text-main);
             background: var(--glass-panel);
             border: 1px solid var(--card-border);
-            color: var(--text-muted);
+            padding: 0.15rem 0.55rem;
             border-radius: 999px;
-            padding: 0.55rem 0.9rem;
-            font-size: 0.85rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
         }
-        .chip:hover { border-color: rgba(37,99,235,0.25); color: var(--primary); background: rgba(37,99,235,0.06); }
-        .chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
 
         .glass-card {
             background: var(--card-bg);
@@ -642,10 +699,88 @@ function network_badge_class(int $statusId): string
                 <input id="searchInput" class="search-input" type="text" placeholder="Search asset ID, serial, brand, model, IP, MAC, status, remarks...">
             </div>
             <div class="action-buttons">
-                <div class="chip-group" role="group" aria-label="Quick status filters">
-                    <button class="chip active" type="button" data-filter="all"><i class="ri-apps-line"></i> All</button>
-                    <button class="chip" type="button" data-filter="online"><i class="ri-wifi-line"></i> Online</button>
-                    <button class="chip" type="button" data-filter="offline"><i class="ri-wifi-off-line"></i> Offline</button>
+                <?php
+                    $stock_ids = [9, 10, 5, 6];   // Online, Offline, Maintenance, Faulty
+                    $out_stock_ids = [3, 7, 8];   // Deploy, Disposed, Lost
+
+                    $countsById = [];
+                    $nameById = [];
+                    foreach ($status_counts as $sc) {
+                        $countsById[(int)$sc['status_id']] = (int)$sc['total'];
+                        $nameById[(int)$sc['status_id']] = (string)$sc['name'];
+                    }
+                ?>
+
+                <div class="dropdown-container">
+                    <button class="btn btn-outline" type="button" title="Filter Records" onclick="toggleFilterDropdown(this, event)">
+                        <i class="ri-filter-3-line"></i>
+                        <?= $filter_status === null ? 'Filter' : 'Filtered' ?>
+                        <i class="ri-arrow-down-s-line" style="margin-left: 4px;"></i>
+                    </button>
+                    <div class="action-dropdown filter-dropdown" onclick="event.stopPropagation()">
+                        <div class="filter-section">
+                            <div class="filter-title"><i class="ri-router-line"></i> All</div>
+                            <a class="filter-item <?= $filter_status === null ? 'active' : '' ?>" href="network.php">
+                                <span class="filter-left">
+                                    <i class="ri-apps-line" style="color: var(--primary)"></i>
+                                    <span>All assets</span>
+                                </span>
+                                <span class="filter-count"><?= (int)$stats['total'] ?></span>
+                            </a>
+                        </div>
+
+                        <div class="filter-section">
+                            <div class="filter-title"><i class="ri-box-3-line" style="color: var(--success)"></i> Stock</div>
+                            <?php foreach ($stock_ids as $sid):
+                                $active = ($filter_status === $sid);
+                                $label = $nameById[$sid] ?? ('Status ' . $sid);
+                                $icon = match ($sid) {
+                                    9 => 'ri-wifi-line',
+                                    10 => 'ri-wifi-off-line',
+                                    5 => 'ri-tools-line',
+                                    6 => 'ri-alert-line',
+                                    default => 'ri-question-line',
+                                };
+                                $iconColor = match ($sid) {
+                                    9 => 'var(--success)',
+                                    10 => 'var(--danger)',
+                                    5 => 'var(--warning)',
+                                    6 => 'var(--danger)',
+                                    default => 'var(--text-muted)',
+                                };
+                            ?>
+                                <a class="filter-item <?= $active ? 'active' : '' ?>" href="network.php?status_id=<?= (int)$sid ?>">
+                                    <span class="filter-left">
+                                        <i class="<?= $icon ?>" style="color: <?= $iconColor ?>"></i>
+                                        <span><?= htmlspecialchars($label) ?></span>
+                                    </span>
+                                    <span class="filter-count"><?= (int)($countsById[$sid] ?? 0) ?></span>
+                                </a>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <div class="filter-section">
+                            <div class="filter-title"><i class="ri-truck-line" style="color: var(--primary)"></i> Out-stock</div>
+                            <?php foreach ($out_stock_ids as $sid):
+                                $active = ($filter_status === $sid);
+                                $label = $nameById[$sid] ?? ('Status ' . $sid);
+                                $icon = match ($sid) {
+                                    3 => 'ri-user-received-2-line',
+                                    7 => 'ri-delete-bin-line',
+                                    8 => 'ri-map-pin-line',
+                                    default => 'ri-question-line',
+                                };
+                            ?>
+                                <a class="filter-item <?= $active ? 'active' : '' ?>" href="network.php?status_id=<?= (int)$sid ?>">
+                                    <span class="filter-left">
+                                        <i class="<?= $icon ?>" style="color: var(--primary)"></i>
+                                        <span><?= htmlspecialchars($label) ?></span>
+                                    </span>
+                                    <span class="filter-count"><?= (int)($countsById[$sid] ?? 0) ?></span>
+                                </a>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -739,18 +874,23 @@ function network_badge_class(int $statusId): string
             drop.classList.toggle('show');
         }
 
+        function toggleFilterDropdown(btn, event) {
+            event.stopPropagation();
+            const wrap = btn.closest('.dropdown-container');
+            const drop = wrap.querySelector('.action-dropdown');
+            document.querySelectorAll('.action-dropdown.show').forEach(d => {
+                if (d !== drop) d.classList.remove('show');
+            });
+            drop.classList.toggle('show');
+        }
+
         document.addEventListener('click', () => {
-            document.querySelectorAll('#registerDropdown.show').forEach(d => d.classList.remove('show'));
+            document.querySelectorAll('.action-dropdown.show').forEach(d => d.classList.remove('show'));
         });
 
-        const chips = Array.from(document.querySelectorAll('.chip[data-filter]'));
         const searchInput = document.getElementById('searchInput');
         const tbody = document.getElementById('assetTbody');
         const rowCount = document.getElementById('rowCount');
-
-        function setActiveChip(filter) {
-            chips.forEach(c => c.classList.toggle('active', c.dataset.filter === filter));
-        }
 
         function updateCounts() {
             const rows = Array.from(tbody.querySelectorAll('tr.network-row'));
@@ -759,28 +899,17 @@ function network_badge_class(int $statusId): string
         }
 
         function applyFilters() {
-            const active = chips.find(c => c.classList.contains('active'))?.dataset.filter || 'all';
             const q = (searchInput.value || '').toLowerCase();
             const rows = Array.from(tbody.querySelectorAll('tr.network-row'));
 
             rows.forEach(row => {
-                const st = row.dataset.filterStatus || 'other';
-                const statusOk = active === 'all'
-                    ? true
-                    : (active === 'online' || active === 'offline')
-                        ? st === active
-                        : true;
                 const textOk = row.innerText.toLowerCase().includes(q);
-                row.style.display = (statusOk && textOk) ? '' : 'none';
+                row.style.display = textOk ? '' : 'none';
             });
 
             updateCounts();
         }
 
-        chips.forEach(chip => chip.addEventListener('click', () => {
-            setActiveChip(chip.dataset.filter);
-            applyFilters();
-        }));
         searchInput.addEventListener('input', applyFilters);
 
         updateCounts();
