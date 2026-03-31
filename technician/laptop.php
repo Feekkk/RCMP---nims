@@ -604,6 +604,12 @@ $status_meta = [
             color: white;
         }
 
+        .btn-action.return:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
         /* Pagination */
         .pagination {
             display: flex;
@@ -838,6 +844,12 @@ $status_meta = [
                                 <?php if ($sid === 1): ?>
                                     <a href="handoverForm.php?asset_id=<?= urlencode($row['asset_id']) ?>" class="btn-action handover" title="Handover Asset">
                                         <i class="ri-exchange-line"></i>
+                                    </a>
+                                <?php endif; ?>
+
+                                <?php if ($sid === 3): ?>
+                                    <a href="returnForm.php?asset_id=<?= urlencode($row['asset_id']) ?>" class="btn-action return" title="Return Asset">
+                                        <i class="ri-arrow-go-back-line"></i>
                                     </a>
                                 <?php endif; ?>
                             </td>
