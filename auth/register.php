@@ -2,23 +2,60 @@
 session_start();
 require_once __DIR__ . '/../config/database.php';
 
+/** role.id for self-service NextCheck (checkout) accounts — see db/schema.sql */
+const REGISTER_ROLE_ID_NEXTCHECK = 3;
+
+function register_error_message(PDOException $e): string
+{
+    $info = $e->errorInfo;
+    $driverErr = isset($info[1]) ? (int)$info[1] : 0;
+    $detail = (string)($info[2] ?? '');
+
+    if ($driverErr === 1452) {
+        return 'The NextCheck role is missing in the database (role id 3). Run the latest db/schema.sql INSERT for roles, or ask IT.';
+    }
+    if ($driverErr === 1062) {
+        if (stripos($detail, 'email') !== false || preg_match("/for key\\s+['`]?email['`]?/i", $detail)) {
+            return 'This email is already registered. Sign in with User, or use a different email.';
+        }
+        return 'This Student / Staff ID is already in use. Choose a different ID.';
+    }
+    return 'Registration failed. Please try again.';
+}
+
 $msg = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name     = trim($_POST['full_name'] ?? '');
-    $email    = trim($_POST['email']     ?? '');
-    $staffId  = trim($_POST['staff_id']  ?? '');
-    $password = $_POST['password']       ?? '';
-    if (strlen($password) < 6) {
+    $email    = strtolower(trim($_POST['email'] ?? ''));
+    $phone    = trim($_POST['phone'] ?? '');
+    $staffId  = trim($_POST['staff_id'] ?? '');
+    $password = $_POST['password'] ?? '';
+
+    if ($name === '' || $email === '' || $phone === '' || $staffId === '') {
+        $msg = 'Full name, email, phone number, and Student / Staff ID are required.';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $msg = 'Please enter a valid email address.';
+    } elseif (strlen(preg_replace('/\D/', '', $phone)) < 8) {
+        $msg = 'Please enter a valid phone number (at least 8 digits).';
+    } elseif (strlen($password) < 6) {
         $msg = 'Password must be at least 6 characters.';
+    } elseif (strlen($staffId) > 32) {
+        $msg = 'Student / Staff ID is too long (max 32 characters).';
     } else {
-        $hash = password_hash($password, PASSWORD_DEFAULT);
-        $stmt = db()->prepare('INSERT INTO users (staff_id, full_name, email, password_hash, role_id) VALUES (?, ?, ?, ?, ?)');
-        try {
-            $stmt->execute([$staffId, $name, $email, $hash, 1]);
-            header('Location: login.php?registered=1');
-            exit;
-        } catch (PDOException $e) {
-            $msg = $e->getCode() == 23000 ? 'Staff ID or email already exists.' : 'Registration failed. Please try again.';
+        $pdo = db();
+        $roleOk = $pdo->query('SELECT 1 FROM role WHERE id = ' . (int)REGISTER_ROLE_ID_NEXTCHECK . ' LIMIT 1')->fetchColumn();
+        if (!$roleOk) {
+            $msg = 'NextCheck registration is not available: role id ' . REGISTER_ROLE_ID_NEXTCHECK . ' is missing. Contact IT.';
+        } else {
+            $hash = password_hash($password, PASSWORD_DEFAULT);
+            $stmt = $pdo->prepare('INSERT INTO users (staff_id, full_name, email, phone, password_hash, role_id) VALUES (?, ?, ?, ?, ?, ?)');
+            try {
+                $stmt->execute([$staffId, $name, $email, $phone, $hash, REGISTER_ROLE_ID_NEXTCHECK]);
+                header('Location: login.php?registered=1');
+                exit;
+            } catch (PDOException $e) {
+                $msg = register_error_message($e);
+            }
         }
     }
 }
@@ -28,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IT Staff Registration — RCMP NIMS</title>
+    <title>NextCheck User Registration — RCMP NIMS</title>
     <link rel="icon" type="image/png" href="../public/rcmp.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -111,7 +148,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .pw-toggle{position:absolute;right:0.85rem;background:none;border:none;color:var(--text-subtle);cursor:pointer;font-size:0.95rem;padding:0;transition:color 0.2s;}
         .pw-toggle:hover{color:var(--text-main);}
 
-        .alert{display:flex;align-items:center;gap:8px;padding:0.7rem 1rem;border-radius:8px;font-size:0.82rem;margin-bottom:1rem;font-family:var(--mono);}
+        .alert{display:flex;align-items:flex-start;gap:10px;padding:0.75rem 1rem;border-radius:8px;font-size:0.82rem;margin-bottom:1rem;line-height:1.45;}
+        .alert>i{flex-shrink:0;font-size:1.05rem;line-height:1.35;margin-top:0.1rem;}
+        .alert-body{flex:1;min-width:0;font-family:var(--mono);}
         .alert-error{background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.16);color:#dc2626;}
 
         .divider{display:flex;align-items:center;gap:10px;margin:0.5rem 0 1rem;font-family:var(--mono);font-size:0.65rem;color:var(--text-subtle);letter-spacing:1px;text-transform:uppercase;}
@@ -148,16 +187,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="split-left">
     <div class="brand-area">
         <img src="../public/logo-nims.png" alt="NIMS" class="brand-logo">
-        <div class="brand-eyebrow"><span class="eyebrow-line"></span> New Staff Onboarding</div>
-        <h1 class="brand-headline">Join the<br>IT Team</h1>
-        <p class="brand-sub">Create your NIMS account to start managing UniKL RCMP's IT assets. Registration requires a valid Staff ID issued by IT management.</p>
+        <div class="brand-eyebrow"><span class="eyebrow-line"></span> NextCheck · Checkout users</div>
+        <h1 class="brand-headline">Create your<br>User Account</h1>
+        <p class="brand-sub">Self-registration is for NextCheck checkout users only. IT technicians and administrators are created by IT — use users login instead.</p>
         <div class="steps">
             <div class="step">
                 <div class="step-connector">
                     <div class="step-num" style="background:rgba(139,92,246,0.1);color:#8b5cf6;">01</div>
                     <div class="step-line"></div>
                 </div>
-                <div class="step-body"><div class="step-title">Fill in your details</div><div class="step-desc">Provide your full name, UniKL email, and assigned Staff ID.</div></div>
+                <div class="step-body"><div class="step-title">Fill in your details</div><div class="step-desc">Full name, UniKL email, phone, and your Student / Staff ID — all required.</div></div>
             </div>
             <div class="step">
                 <div class="step-connector">
@@ -171,7 +210,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="step-num" style="background:rgba(16,185,129,0.1);color:#10b981;">03</div>
                     <div class="step-line"></div>
                 </div>
-                <div class="step-body"><div class="step-title">Access the dashboard</div><div class="step-desc">Log in with your new credentials to start tracking assets immediately.</div></div>
+                <div class="step-body"><div class="step-title">Sign in as User</div><div class="step-desc">On the login page choose <strong>User</strong> to open your NextCheck dashboard.</div></div>
             </div>
         </div>
     </div>
@@ -182,18 +221,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="form-card">
         <div class="form-header">
             <div class="form-title">Create Account</div>
-            <div class="form-sub">// rcmp-nims · new staff registration</div>
+            <div class="form-sub">// rcmp-nims · nextcheck user only</div>
         </div>
 
         <?php if($msg): ?>
-        <div class="alert alert-error"><i class="ri-error-warning-line"></i><?= htmlspecialchars($msg) ?></div>
+        <div class="alert alert-error"><i class="ri-error-warning-line"></i><span class="alert-body"><?= htmlspecialchars($msg) ?></span></div>
         <?php endif; ?>
 
         <form action="" method="POST" id="regForm">
             <div class="form-group">
                 <label class="form-label" for="full_name">Full Name</label>
                 <div class="input-wrap">
-                    <input type="text" id="full_name" name="full_name" class="form-input" placeholder="As per staff records" required>
+                    <input type="text" id="full_name" name="full_name" class="form-input" placeholder="As per your NRIC / Passport" required maxlength="128" value="<?= htmlspecialchars((string)($_POST['full_name'] ?? '')) ?>">
                     <i class="ri-user-smile-line input-icon"></i>
                 </div>
             </div>
@@ -201,8 +240,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="form-group">
                 <label class="form-label" for="email">UniKL Email</label>
                 <div class="input-wrap">
-                    <input type="email" id="email" name="email" class="form-input" placeholder="name@unikl.edu.my" required>
+                    <input type="email" id="email" name="email" class="form-input" placeholder="name@unikl.edu.my" required maxlength="128" value="<?= htmlspecialchars((string)($_POST['email'] ?? '')) ?>">
                     <i class="ri-mail-line input-icon"></i>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="phone">Phone Number</label>
+                <div class="input-wrap">
+                    <input type="tel" id="phone" name="phone" class="form-input" placeholder="e.g. 012-345 6789" required maxlength="64" autocomplete="tel" inputmode="tel" value="<?= htmlspecialchars((string)($_POST['phone'] ?? '')) ?>">
+                    <i class="ri-phone-line input-icon"></i>
                 </div>
             </div>
 
@@ -210,9 +257,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label" for="staff_id">Staff ID</label>
+                    <label class="form-label" for="staff_id">Student / Staff ID</label>
                     <div class="input-wrap">
-                        <input type="text" id="staff_id" name="staff_id" class="form-input" placeholder="IT-123" required>
+                        <input type="text" id="staff_id" name="staff_id" class="form-input" maxlength="32" placeholder="Your assigned ID" required autocomplete="username" value="<?= htmlspecialchars((string)($_POST['staff_id'] ?? '')) ?>">
                         <i class="ri-id-card-line input-icon"></i>
                     </div>
                 </div>
@@ -234,7 +281,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <button type="submit" class="btn-submit"><i class="ri-user-add-line"></i> Create Account</button>
         </form>
-        <div class="form-footer">Already registered? <a href="login.php">Sign in here</a></div>
+        <div class="form-footer">Already registered? <a href="login.php">Sign in</a> (choose <strong>User</strong>)</div>
     </div>
 </div>
 

@@ -2,20 +2,53 @@
 session_start();
 require_once __DIR__ . '/../config/database.php';
 
+$posted_role = ($_SERVER['REQUEST_METHOD'] === 'POST' && (($_POST['role'] ?? '') === 'user')) ? 'user' : 'staff';
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $staffId = trim($_POST['staff_id'] ?? '');
+    $identifier = trim((string)($_POST['login'] ?? ''));
     $password = $_POST['password'] ?? '';
-    $stmt = db()->prepare('SELECT staff_id, full_name, password_hash, role_id FROM users WHERE staff_id = ?');
-    $stmt->execute([$staffId]);
-    $user = $stmt->fetch();
-    if ($user && (password_verify($password, $user['password_hash']) || $password === $user['password_hash'])) {
-        $_SESSION['staff_id'] = $user['staff_id'];
-        $_SESSION['role_id']  = $user['role_id'];
-        $_SESSION['user_name']= $user['full_name'] ?? '';
-        header((int)$user['role_id'] === 1 ? 'Location: ../technician/dashboard.php' : 'Location: ../admin/dashboard.php');
-        exit;
+    $loginAs = $_POST['role'] ?? 'staff';
+    $loginAs = ($loginAs === 'user') ? 'user' : 'staff';
+
+    if ($identifier === '') {
+        $err = $loginAs === 'user' ? 'Please enter your email.' : 'Please enter your Staff ID.';
     } else {
-        $err = 'Invalid staff ID or password.';
+        $pdo = db();
+        if ($loginAs === 'user') {
+            $email = strtolower($identifier);
+            $stmt = $pdo->prepare('SELECT staff_id, full_name, password_hash, role_id FROM users WHERE LOWER(TRIM(email)) = ? LIMIT 1');
+            $stmt->execute([$email]);
+        } else {
+            $stmt = $pdo->prepare('SELECT staff_id, full_name, password_hash, role_id FROM users WHERE staff_id = ? LIMIT 1');
+            $stmt->execute([$identifier]);
+        }
+        $user = $stmt->fetch();
+        $ok = $user && (password_verify($password, $user['password_hash']) || $password === $user['password_hash']);
+
+        if (!$ok) {
+            $err = $loginAs === 'user' ? 'Invalid email or password.' : 'Invalid Staff ID or password.';
+        } else {
+            $rid = (int)$user['role_id'];
+            if ($loginAs === 'staff') {
+                if ($rid !== 1 && $rid !== 2) {
+                    $err = 'This account is a NextCheck user. Select User to sign in.';
+                } else {
+                    $_SESSION['staff_id'] = $user['staff_id'];
+                    $_SESSION['role_id']  = $rid;
+                    $_SESSION['user_name']= $user['full_name'] ?? '';
+                    header('Location: ' . ($rid === 1 ? '../technician/dashboard.php' : '../admin/dashboard.php'));
+                    exit;
+                }
+            } elseif ($rid !== 3) {
+                $err = 'This account is for staff only. Select Staff to sign in.';
+            } else {
+                $_SESSION['staff_id'] = $user['staff_id'];
+                $_SESSION['role_id']  = $rid;
+                $_SESSION['user_name']= $user['full_name'] ?? '';
+                header('Location: ../users/dashboard.php');
+                exit;
+            }
+        }
     }
 }
 ?>
@@ -24,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IT Staff Login — RCMP NIMS</title>
+    <title>Sign in — RCMP NIMS</title>
     <link rel="icon" type="image/png" href="../public/rcmp.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -109,9 +142,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .pw-toggle{position:absolute;right:0.85rem;background:none;border:none;color:var(--text-subtle);cursor:pointer;font-size:1rem;padding:0;transition:color 0.2s;}
         .pw-toggle:hover{color:var(--text-main);}
 
-        /* Alert */
-        .alert{display:flex;align-items:center;gap:8px;padding:0.7rem 1rem;border-radius:8px;font-size:0.83rem;margin-bottom:1.25rem;font-family:var(--mono);}
+        /* Alert — icon + single text wrapper (avoid flex splitting each <strong> / text node) */
+        .alert{display:flex;align-items:flex-start;gap:10px;padding:0.75rem 1rem;border-radius:8px;font-size:0.88rem;margin-bottom:1.25rem;line-height:1.45;}
+        .alert>i{flex-shrink:0;font-size:1.05rem;line-height:1.35;margin-top:0.1rem;}
+        .alert-body{flex:1;min-width:0;font-family:'Outfit',sans-serif;font-weight:500;}
+        .alert-body strong{font-weight:700;}
         .alert-error{background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.18);color:#dc2626;}
+        .alert-error .alert-body{font-family:var(--mono);font-size:0.83rem;}
         .alert-success{background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.18);color:#059669;}
 
         /* Options */
@@ -158,7 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <img src="../public/logo-nims.png" alt="NIMS" class="brand-logo">
         <div class="brand-eyebrow"><span class="eyebrow-line"></span> UniKL RCMP IT Dept</div>
         <h1 class="brand-headline">Secure<br>Access<br>Portal</h1>
-        <p class="brand-sub">Authorized IT staff access only. Manage assets, monitor infrastructure, and track department resources from one dashboard.</p>
+        <p class="brand-sub"><strong>Staff</strong> — technicians and administrators. <strong>User</strong> — NextCheck checkout accounts (register to create).</p>
         <div class="info-cards">
             <div class="info-card">
                 <div class="info-icon" style="background:rgba(37,99,235,0.1);color:#2563eb;"><i class="ri-shield-keyhole-line"></i></div>
@@ -181,27 +218,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="form-card">
         <div class="form-header">
             <div class="form-title">Welcome Back</div>
-            <div class="form-sub">// rcmp-nims · staff authentication</div>
+            <div class="form-sub">// rcmp-nims · staff or nextcheck user</div>
         </div>
 
         <?php if(isset($err)): ?>
-        <div class="alert alert-error"><i class="ri-error-warning-line"></i><?= htmlspecialchars($err) ?></div>
+        <div class="alert alert-error"><i class="ri-error-warning-line"></i><span class="alert-body"><?= htmlspecialchars($err) ?></span></div>
         <?php endif; ?>
         <?php if(!empty($_GET['registered'])): ?>
-        <div class="alert alert-success"><i class="ri-checkbox-circle-line"></i>Account created. You may now log in.</div>
+        <div class="alert alert-success"><i class="ri-checkbox-circle-line"></i><span class="alert-body">Account created. Sign in as <strong>User</strong> with your <strong>email</strong> and password.</span></div>
         <?php endif; ?>
 
-        <form action="" method="POST">
+        <form action="" method="POST" id="loginForm">
             <div class="role-toggle">
-                <div class="role-opt"><input type="radio" id="r_tech" name="role" value="1" checked><label for="r_tech"><i class="ri-tools-line"></i> Technician</label></div>
-                <div class="role-opt"><input type="radio" id="r_admin" name="role" value="2"><label for="r_admin"><i class="ri-shield-user-line"></i> Administrator</label></div>
+                <div class="role-opt"><input type="radio" id="r_staff" name="role" value="staff" <?= $posted_role === 'staff' ? 'checked' : '' ?>><label for="r_staff"><i class="ri-team-line"></i> Staff</label></div>
+                <div class="role-opt"><input type="radio" id="r_user" name="role" value="user" <?= $posted_role === 'user' ? 'checked' : '' ?>><label for="r_user"><i class="ri-user-smile-line"></i> User</label></div>
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="staff_id">Staff ID</label>
+                <label class="form-label" for="loginField" id="loginLabel"><?= $posted_role === 'user' ? 'Email' : 'Staff ID' ?></label>
                 <div class="input-wrap">
-                    <input type="text" id="staff_id" name="staff_id" class="form-input" placeholder="e.g. IT-12345" required>
-                    <i class="ri-id-card-line input-icon"></i>
+                    <input type="<?= $posted_role === 'user' ? 'email' : 'text' ?>" id="loginField" name="login" class="form-input" value="<?= isset($_POST['login']) ? htmlspecialchars((string)$_POST['login']) : '' ?>" placeholder="<?= $posted_role === 'user' ? 'name@unikl.edu.my' : 'e.g. IT-12345' ?>" required autocomplete="<?= $posted_role === 'user' ? 'email' : 'username' ?>">
+                    <i class="<?= $posted_role === 'user' ? 'ri-mail-line' : 'ri-id-card-line' ?> input-icon" id="loginInputIcon"></i>
                 </div>
             </div>
 
@@ -224,7 +261,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <button type="submit" class="btn-submit"><i class="ri-login-circle-line"></i> Access System</button>
         </form>
-        <div class="form-footer">No account? <a href="register.php">Register here</a></div>
+        <div class="form-footer">NextCheck user without an account? <a href="register.php">Register</a></div>
     </div>
 </div>
 
@@ -236,6 +273,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <script>
 document.addEventListener('DOMContentLoaded',()=>{
+    const rStaff=document.getElementById('r_staff');
+    const rUser=document.getElementById('r_user');
+    const loginLabel=document.getElementById('loginLabel');
+    const loginField=document.getElementById('loginField');
+    const loginIcon=document.getElementById('loginInputIcon');
+    function syncLoginRoleUI(){
+        const user=rUser.checked;
+        loginLabel.textContent=user?'Email':'Staff ID';
+        loginField.type=user?'email':'text';
+        loginField.placeholder=user?'name@unikl.edu.my':'e.g. IT-12345';
+        loginField.autocomplete=user?'email':'username';
+        loginIcon.className=(user?'ri-mail-line':'ri-id-card-line')+' input-icon';
+    }
+    rStaff.addEventListener('change',syncLoginRoleUI);
+    rUser.addEventListener('change',syncLoginRoleUI);
+
     document.querySelectorAll('.pw-toggle').forEach(btn=>{
         btn.addEventListener('click',()=>{
             const input=document.getElementById(btn.dataset.target);
@@ -248,7 +301,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         input.addEventListener('focus',()=>{ const ic=input.parentElement.querySelector('.input-icon'); if(ic)ic.style.color='var(--primary)'; });
         input.addEventListener('blur', ()=>{ const ic=input.parentElement.querySelector('.input-icon'); if(ic)ic.style.color=''; });
     });
-    const form=document.querySelector('form'),btn=document.querySelector('.btn-submit');
+    const form=document.getElementById('loginForm'),btn=document.querySelector('.btn-submit');
     form.addEventListener('submit',()=>{ btn.innerHTML='<i class="ri-loader-4-line" style="animation:spin 0.8s linear infinite"></i> Authenticating…'; btn.style.opacity='0.8'; btn.disabled=true; });
 });
 </script>
