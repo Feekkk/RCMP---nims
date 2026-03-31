@@ -7,7 +7,11 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
 
 require_once '../config/database.php';
 
-$assetId = isset($_GET['asset_id']) ? trim($_GET['asset_id']) : '';
+$DEPLOY_STATUS_ID = 3;
+
+$assetId = isset($_POST['asset_id'])
+    ? trim((string)$_POST['asset_id'])
+    : (isset($_GET['asset_id']) ? trim((string)$_GET['asset_id']) : '');
 
 // Fetch laptop basic info (optional, for context)
 $laptop = null;
@@ -15,6 +19,110 @@ if ($assetId !== '') {
     $stmt = db()->prepare('SELECT asset_id, brand, model, serial_num FROM laptop WHERE asset_id = ?');
     $stmt->execute([$assetId]);
     $laptop = $stmt->fetch();
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $str = fn(string $k): ?string => isset($_POST[$k]) && $_POST[$k] !== '' ? trim((string)$_POST[$k]) : null;
+    $date = fn(string $k): ?string => isset($_POST[$k]) && $_POST[$k] !== '' ? trim((string)$_POST[$k]) : null;
+
+    $asset_id = isset($_POST['asset_id']) ? (int)$_POST['asset_id'] : 0;
+    $receiver_staff_id = $str('receiver_staff_id') ?? '';
+    $receiver_designation = $str('receiver_designation') ?? '';
+    $handover_date = $date('handover_date');
+    $handover_time = $str('handover_time') ?? '';
+    $handover_place = $str('handover_place') ?? '';
+
+    $technician_staff_id = $str('technician_staff_id') ?? '';
+    $session_staff_id = isset($_SESSION['staff_id']) ? trim((string)$_SESSION['staff_id']) : '';
+
+    $receiver_email = $str('receiver_email') ?? '';
+    $receiver_phone = $str('receiver_phone') ?? '';
+    $receiver_name = $str('receiver_name') ?? '';
+
+    $error_message = '';
+
+    if (!$asset_id || $receiver_staff_id === '' || !$handover_date || $handover_time === '' || $handover_place === '') {
+        $error_message = 'Missing required handover fields.';
+    } elseif ($technician_staff_id === '' || $technician_staff_id !== $session_staff_id) {
+        $error_message = 'Technician identity mismatch; please log in again.';
+    } else {
+        try {
+            $pdo = db();
+            $pdo->beginTransaction();
+
+            $stmtAsset = $pdo->prepare('SELECT asset_id, status_id FROM laptop WHERE asset_id = ? LIMIT 1');
+            $stmtAsset->execute([$asset_id]);
+            $assetRow = $stmtAsset->fetch(PDO::FETCH_ASSOC);
+            if (!$assetRow) {
+                throw new RuntimeException('Asset not found.');
+            }
+
+            $stmtReceiver = $pdo->prepare('
+                SELECT employee_no, full_name, department, email, phone
+                FROM staff
+                WHERE employee_no = ?
+                LIMIT 1
+            ');
+            $stmtReceiver->execute([$receiver_staff_id]);
+            $receiverRow = $stmtReceiver->fetch(PDO::FETCH_ASSOC);
+            if (!$receiverRow) {
+                throw new RuntimeException('Receiver staff ID not found.');
+            }
+
+            // assignment_type is required; for this form we reuse receiver department.
+            $assignmentType = trim((string)($receiverRow['department'] ?? ''));
+            if ($assignmentType === '') {
+                $assignmentType = trim($receiver_designation) !== '' ? trim($receiver_designation) : 'Receiver';
+            }
+
+            $handover_remarks = trim($handover_place);
+            $handover_remarks .= ' | Time: ' . trim((string)$handover_time);
+            if ($receiver_email !== '' && $receiver_phone !== '') {
+                $handover_remarks .= ' | Receiver Contact: ' . trim($receiver_email) . ' / ' . trim($receiver_phone);
+            }
+
+            $stmtHandover = $pdo->prepare('
+                INSERT INTO handover (asset_id, staff_id, handover_date, handover_remarks)
+                VALUES (:asset_id, :staff_id, :handover_date, :handover_remarks)
+            ');
+            $stmtHandover->execute([
+                ':asset_id' => $asset_id,
+                ':staff_id' => $session_staff_id,
+                ':handover_date' => $handover_date,
+                ':handover_remarks' => $handover_remarks,
+            ]);
+            $handover_id = (int)$pdo->lastInsertId();
+
+            $stmtHandoverStaff = $pdo->prepare('
+                INSERT INTO handover_staff (employee_no, handover_id, assignment_type)
+                VALUES (:employee_no, :handover_id, :assignment_type)
+            ');
+            $stmtHandoverStaff->execute([
+                ':employee_no' => $receiver_staff_id,
+                ':handover_id' => $handover_id,
+                ':assignment_type' => $assignmentType,
+            ]);
+
+            $stmtUpdateAsset = $pdo->prepare('
+                UPDATE laptop
+                SET status_id = :status_id
+                WHERE asset_id = :asset_id
+            ');
+            $stmtUpdateAsset->execute([
+                ':status_id' => $DEPLOY_STATUS_ID,
+                ':asset_id' => $asset_id,
+            ]);
+
+            $pdo->commit();
+            header('Location: laptop.php?status_id=' . $DEPLOY_STATUS_ID);
+            exit;
+        } catch (Throwable $e) {
+            if (isset($pdo) && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $error_message = 'Database error: ' . $e->getMessage();
+        }
+    }
 }
 
 // Staff directory lookup for receiver auto-fill
@@ -473,7 +581,13 @@ try {
                 <?php endif; ?>
             </div>
 
-            <form action="#" method="post">
+            <?php if (!empty($error_message)): ?>
+                <div class="alert alert-error" style="margin-bottom: 1.2rem; padding: 1rem 1.25rem; border-radius: 14px; border: 1px solid rgba(239,68,68,0.35); background: rgba(239,68,68,0.12); color: #ef4444; font-size: 0.95rem;">
+                    <?= htmlspecialchars($error_message) ?>
+                </div>
+            <?php endif; ?>
+
+            <form action="" method="post">
                 <input type="hidden" name="asset_id" value="<?= htmlspecialchars($assetId) ?>">
 
                 <div class="form-grid">
