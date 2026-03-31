@@ -5,21 +5,14 @@ require_once __DIR__ . '/../config/database.php';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $staffId = trim($_POST['staff_id'] ?? '');
     $password = $_POST['password'] ?? '';
-
     $stmt = db()->prepare('SELECT staff_id, full_name, password_hash, role_id FROM users WHERE staff_id = ?');
     $stmt->execute([$staffId]);
     $user = $stmt->fetch();
-
     if ($user && (password_verify($password, $user['password_hash']) || $password === $user['password_hash'])) {
         $_SESSION['staff_id'] = $user['staff_id'];
-        $_SESSION['role_id'] = $user['role_id'];
-        $_SESSION['user_name'] = $user['full_name'] ?? '';
-
-        if ((int)$user['role_id'] === 1) {
-            header('Location: ../technician/dashboard.php');
-        } else {
-            header('Location: ../admin/dashboard.php');
-        }
+        $_SESSION['role_id']  = $user['role_id'];
+        $_SESSION['user_name']= $user['full_name'] ?? '';
+        header((int)$user['role_id'] === 1 ? 'Location: ../technician/dashboard.php' : 'Location: ../admin/dashboard.php');
         exit;
     } else {
         $err = 'Invalid staff ID or password.';
@@ -31,440 +24,233 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IT Staff Login - RCMP NIMS</title>
+    <title>IT Staff Login — RCMP NIMS</title>
     <link rel="icon" type="image/png" href="../public/rcmp.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <style>
         :root {
-            --primary: #2563eb;
-            --primary-hover: #1d4ed8;
+            --primary:   #2563eb;
             --secondary: #0ea5e9;
-            --bg: #f0f4f8;
-            --card-bg: #ffffff;
-            --card-border: #e2e8f0;
-            --text-main: #0f172a;
-            --text-muted: #64748b;
-            --input-bg: #f8fafc;
-            --input-border: #cbd5e1;
+            --accent:    #f59e0b;
+            --green:     #10b981;
+            --bg:        #f0f5ff;
+            --surface:   #ffffff;
+            --card-border: rgba(37,99,235,0.1);
+            --text-main:   #0f172a;
+            --text-muted:  #64748b;
+            --text-subtle: #94a3b8;
+            --input-bg:    #f8faff;
+            --input-border: rgba(37,99,235,0.14);
+            --mono: 'JetBrains Mono', monospace;
         }
+        *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+        html{scroll-behavior:smooth;}
+        body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text-main);min-height:100vh;display:flex;overflow:hidden;}
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        /* Background */
+        .bg-layer{position:fixed;inset:0;z-index:0;background:radial-gradient(ellipse 80% 60% at 10% 5%,rgba(37,99,235,0.08) 0%,transparent 65%),radial-gradient(ellipse 70% 55% at 90% 90%,rgba(14,165,233,0.07) 0%,transparent 65%),linear-gradient(160deg,#eef4ff 0%,#f0f5ff 60%,#e9f4fd 100%);}
+        .grid-layer{position:fixed;inset:0;z-index:1;background-image:linear-gradient(rgba(37,99,235,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(37,99,235,0.05) 1px,transparent 1px);background-size:56px 56px;animation:gridMove 22s linear infinite;}
+        @keyframes gridMove{to{background-position:56px 56px;}}
 
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg);
-            background-image: linear-gradient(135deg, #dbeafe 0%, #f0f4f8 50%, #e0f2fe 100%);
-            color: var(--text-main);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            overflow: hidden;
-        }
+        /* Split */
+        .split-left{width:42%;display:flex;flex-direction:column;justify-content:center;padding:4rem 5%;position:relative;z-index:10;border-right:1px solid rgba(37,99,235,0.08);}
+        .split-right{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:4rem 5%;position:relative;z-index:10;}
 
-        .page-bg { display: none; }
+        /* Left panel */
+        .brand-area{opacity:0;transform:translateY(24px);animation:riseIn 0.8s cubic-bezier(0.16,1,0.3,1) 0.05s forwards;}
+        @keyframes riseIn{to{opacity:1;transform:translateY(0);}}
 
-        .bg-overlay { display: none; }
+        .brand-logo{height:52px;object-fit:contain;filter:drop-shadow(0 2px 8px rgba(37,99,235,0.15));margin-bottom:2.5rem;transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1);}
+        .brand-logo:hover{transform:scale(1.06);}
 
-        /* Decorative glowing orbs */
-        .blob {
-            position: absolute;
-            border-radius: 50%;
-            filter: blur(80px);
-            z-index: 0;
-            opacity: 0.2;
-        }
+        .brand-eyebrow{font-family:var(--mono);font-size:0.7rem;letter-spacing:2.5px;text-transform:uppercase;color:var(--primary);margin-bottom:1rem;display:flex;align-items:center;gap:8px;}
+        .eyebrow-line{height:1px;width:30px;background:var(--primary);opacity:0.4;}
 
-        .blob-1 {
-            width: 500px;
-            height: 500px;
-            background: var(--primary);
-            top: -150px;
-            left: -150px;
-        }
+        .brand-headline{font-size:3.2rem;font-weight:900;line-height:1;letter-spacing:-2px;margin-bottom:1rem;background:linear-gradient(135deg,#0f172a 40%,#2563eb 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+        .brand-sub{font-size:0.95rem;color:var(--text-muted);line-height:1.7;max-width:300px;margin-bottom:3rem;}
 
-        .blob-2 {
-            width: 400px;
-            height: 400px;
-            background: var(--secondary);
-            bottom: -100px;
-            right: -100px;
-        }
+        .info-cards{display:flex;flex-direction:column;gap:0.75rem;}
+        .info-card{display:flex;align-items:center;gap:12px;padding:0.85rem 1.1rem;background:rgba(255,255,255,0.7);border:1px solid rgba(37,99,235,0.1);border-radius:12px;opacity:0;transform:translateX(-16px);animation:slideRight 0.6s cubic-bezier(0.16,1,0.3,1) forwards;box-shadow:0 2px 10px rgba(37,99,235,0.05);}
+        .info-card:nth-child(1){animation-delay:0.5s;} .info-card:nth-child(2){animation-delay:0.65s;} .info-card:nth-child(3){animation-delay:0.8s;}
+        @keyframes slideRight{to{opacity:1;transform:translateX(0);}}
+        .info-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;}
+        .info-text{font-size:0.82rem;color:var(--text-muted);line-height:1.4;}
+        .info-text strong{color:var(--text-main);display:block;font-weight:600;font-size:0.88rem;}
 
-        /* Login Container */
-        .auth-container {
-            width: 100%;
-            max-width: 420px;
-            padding: 2.5rem;
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 24px;
-            box-shadow: 0 20px 60px rgba(37, 99, 235, 0.1), 0 4px 16px rgba(0,0,0,0.06);
-            animation: fadeIn 0.6s ease-out forwards;
-            position: relative;
-            z-index: 1;
-        }
+        /* Form card */
+        .form-card{width:100%;max-width:420px;background:rgba(255,255,255,0.85);border:1px solid rgba(37,99,235,0.1);border-radius:24px;padding:2.5rem;backdrop-filter:blur(24px);box-shadow:0 24px 60px rgba(37,99,235,0.1),0 4px 16px rgba(37,99,235,0.06),inset 0 1px 0 rgba(255,255,255,1);position:relative;overflow:hidden;opacity:0;transform:translateY(32px) scale(0.98);animation:cardIn 0.9s cubic-bezier(0.16,1,0.3,1) 0.2s forwards;}
+        .form-card::before{content:'';position:absolute;top:0;left:20%;right:20%;height:1px;background:linear-gradient(90deg,transparent,var(--primary),transparent);opacity:0.35;}
+        @keyframes cardIn{to{opacity:1;transform:translateY(0) scale(1);}}
 
-        .auth-header {
-            text-align: center;
-            margin-bottom: 2.5rem;
-        }
+        .form-header{text-align:center;margin-bottom:2rem;}
+        .form-title{font-size:1.5rem;font-weight:800;letter-spacing:-0.5px;color:var(--text-main);margin-bottom:0.3rem;}
+        .form-sub{font-size:0.8rem;color:var(--text-muted);font-family:var(--mono);}
 
-        .auth-logo {
-            height: 60px;
-            margin-bottom: 1.25rem;
-            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
-        }
+        /* Role toggle */
+        .role-toggle{display:flex;background:rgba(37,99,235,0.04);border:1px solid rgba(37,99,235,0.12);border-radius:10px;overflow:hidden;margin-bottom:1.75rem;}
+        .role-opt{flex:1;}
+        .role-opt input[type="radio"]{display:none;}
+        .role-opt label{display:flex;align-items:center;justify-content:center;gap:6px;padding:0.65rem;font-size:0.83rem;font-weight:600;color:var(--text-muted);cursor:pointer;transition:all 0.25s;border-right:1px solid rgba(37,99,235,0.1);}
+        .role-opt:last-child label{border-right:none;}
+        .role-opt input:checked+label{background:linear-gradient(135deg,rgba(37,99,235,0.12),rgba(14,165,233,0.08));color:var(--primary);}
 
-        .auth-title {
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: var(--text-main);
-            margin-bottom: 0.5rem;
-        }
+        /* Form groups */
+        .form-group{margin-bottom:1.25rem;position:relative;}
+        .form-label{display:block;font-family:var(--mono);font-size:0.68rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-muted);margin-bottom:0.5rem;}
+        .input-wrap{position:relative;display:flex;align-items:center;}
+        .input-icon{position:absolute;left:0.9rem;color:var(--text-subtle);font-size:1rem;pointer-events:none;transition:color 0.25s;z-index:1;}
+        .form-input{width:100%;background:var(--input-bg);border:1px solid var(--input-border);border-radius:10px;padding:0.8rem 1rem 0.8rem 2.6rem;color:var(--text-main);font-family:'Outfit',sans-serif;font-size:0.95rem;transition:all 0.25s;outline:none;}
+        .form-input::placeholder{color:var(--text-subtle);font-size:0.9rem;}
+        .form-input:focus{background:white;border-color:rgba(37,99,235,0.4);box-shadow:0 0 0 3px rgba(37,99,235,0.1);}
+        .form-input:focus~.input-icon{color:var(--primary);}
+        .pw-toggle{position:absolute;right:0.85rem;background:none;border:none;color:var(--text-subtle);cursor:pointer;font-size:1rem;padding:0;transition:color 0.2s;}
+        .pw-toggle:hover{color:var(--text-main);}
 
-        .auth-subtitle {
-            font-size: 0.95rem;
-            color: var(--text-muted);
-        }
+        /* Alert */
+        .alert{display:flex;align-items:center;gap:8px;padding:0.7rem 1rem;border-radius:8px;font-size:0.83rem;margin-bottom:1.25rem;font-family:var(--mono);}
+        .alert-error{background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.18);color:#dc2626;}
+        .alert-success{background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.18);color:#059669;}
 
-        /* Form Elements */
-        .form-group {
-            margin-bottom: 1.5rem;
-            position: relative;
-        }
+        /* Options */
+        .form-options{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;}
+        .remember{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.82rem;color:var(--text-muted);}
+        .remember input{display:none;}
+        .checkmark{width:16px;height:16px;border-radius:4px;border:1px solid rgba(37,99,235,0.2);background:var(--input-bg);display:flex;align-items:center;justify-content:center;transition:all 0.2s;}
+        .remember input:checked+.checkmark{background:var(--primary);border-color:var(--primary);}
+        .remember input:checked+.checkmark::after{content:'';width:8px;height:5px;border-left:2px solid white;border-bottom:2px solid white;transform:rotate(-45deg) translate(1px,-1px);display:block;}
 
-        .form-label {
-            display: block;
-            font-size: 0.85rem;
-            font-weight: 500;
-            color: var(--text-muted);
-            margin-bottom: 0.5rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
+        /* Submit */
+        .btn-submit{width:100%;padding:0.85rem;border-radius:10px;border:none;background:linear-gradient(135deg,var(--primary),var(--secondary));color:white;font-family:'Outfit',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;transition:all 0.3s;box-shadow:0 6px 20px rgba(37,99,235,0.28);display:flex;align-items:center;justify-content:center;gap:8px;position:relative;overflow:hidden;}
+        .btn-submit::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.25),transparent);transition:left 0.5s;}
+        .btn-submit:hover::before{left:100%;}
+        .btn-submit:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(37,99,235,0.36);}
 
-        .form-input-wrapper {
-            position: relative;
-            display: flex;
-            align-items: center;
-        }
+        .form-footer{text-align:center;margin-top:1.5rem;font-size:0.82rem;color:var(--text-muted);}
+        .form-footer a{color:var(--primary);text-decoration:none;font-weight:600;transition:color 0.2s;}
+        .form-footer a:hover{color:var(--primary-hover);}
 
-        .form-icon {
-            position: absolute;
-            left: 1rem;
-            color: var(--text-muted);
-            font-size: 1.2rem;
-            pointer-events: none;
-            transition: color 0.3s ease;
-        }
+        /* Back link */
+        .back-link{position:absolute;top:2rem;left:2rem;display:flex;align-items:center;gap:6px;color:var(--text-muted);text-decoration:none;font-size:0.8rem;font-family:var(--mono);letter-spacing:0.5px;transition:color 0.2s;z-index:20;}
+        .back-link:hover{color:var(--primary);}
 
-        .password-toggle {
-            position: absolute;
-            right: 0.9rem;
-            background: transparent;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
-            font-size: 1.1rem;
-        }
+        /* Status strip */
+        .status-strip{position:absolute;bottom:1.5rem;left:0;right:0;display:flex;justify-content:center;gap:1.5rem;font-family:var(--mono);font-size:0.68rem;color:var(--text-muted);z-index:20;}
+        .status-item{display:flex;align-items:center;gap:5px;}
+        .s-dot{width:5px;height:5px;border-radius:50%;}
 
-        .form-input {
-            width: 100%;
-            background: var(--input-bg);
-            border: 1px solid var(--input-border);
-            border-radius: 12px;
-            padding: 0.85rem 1rem 0.85rem 3rem;
-            color: var(--text-main);
-            font-family: 'Inter', sans-serif;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            outline: none;
-        }
-
-        .form-input:focus {
-            background: #fff;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
-        }
-
-        .form-input:focus + .form-icon,
-        .form-input:not(:placeholder-shown) + .form-icon {
-            color: var(--secondary);
-        }
-
-        .role-selector {
-            display: flex;
-            background: var(--input-bg);
-            border: 1px solid var(--input-border);
-            border-radius: 12px;
-            overflow: hidden;
-            margin-bottom: 0.5rem;
-        }
-
-        .role-option {
-            flex: 1;
-            text-align: center;
-        }
-
-        .role-option input[type="radio"] {
-            display: none;
-        }
-
-        .role-label {
-            display: block;
-            padding: 0.75rem;
-            color: var(--text-muted);
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            font-family: 'Inter', sans-serif;
-            border-right: 1px solid var(--input-border);
-        }
-
-        .role-option:last-child .role-label {
-            border-right: none;
-        }
-
-        .role-option input[type="radio"]:checked + .role-label {
-            background: rgba(37, 99, 235, 0.12);
-            color: var(--primary);
-            font-weight: 600;
-        }
-
-        .form-options {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2rem;
-            font-size: 0.9rem;
-        }
-
-        .checkbox-wrapper {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            cursor: pointer;
-        }
-
-        .custom-checkbox {
-            width: 18px;
-            height: 18px;
-            border: 1px solid var(--input-border);
-            border-radius: 4px;
-            background: var(--input-bg);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-        }
-
-        .checkbox-wrapper input:checked + .custom-checkbox {
-            background: var(--primary);
-            border-color: var(--primary);
-        }
-
-        .checkbox-wrapper input:checked + .custom-checkbox::after {
-            content: '\EB7A'; /* Remix icon check mark line */
-            font-family: 'remixicon';
-            color: white;
-            font-size: 0.9rem;
-        }
-
-        .checkbox-wrapper input {
-            display: none;
-        }
-
-        .text-link {
-            color: var(--secondary);
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.3s ease;
-        }
-
-        .text-link:hover {
-            color: #38bdf8;
-            text-decoration: underline;
-        }
-
-        .btn-submit {
-            width: 100%;
-            padding: 0.9rem;
-            border-radius: 12px;
-            border: none;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            color: white;
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 10px 20px -5px rgba(37, 99, 235, 0.4);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-        }
-
-        .btn-submit:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 15px 25px -5px rgba(37, 99, 235, 0.5);
-            filter: brightness(1.1);
-        }
-
-        .auth-footer {
-            margin-top: 2rem;
-            text-align: center;
-            font-size: 0.95rem;
-            color: var(--text-muted);
-        }
-
-        .back-home {
-            position: absolute;
-            top: 2rem;
-            left: 2rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            color: var(--text-muted);
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.3s ease;
-            z-index: 10;
-        }
-
-        .back-home:hover {
-            color: var(--primary);
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        @media (max-width: 480px) {
-            .auth-container {
-                padding: 2rem;
-                width: 90%;
-            }
-            .back-home {
-                top: 1rem;
-                left: 1rem;
-            }
-        }
+        @media(max-width:900px){.split-left{display:none;}.split-right{padding:2rem;}body{overflow:auto;}}
+        @media(max-width:480px){.form-card{padding:1.75rem;border-radius:20px;}}
+        @keyframes spin{to{transform:rotate(360deg);}}
     </style>
 </head>
 <body>
+<div class="bg-layer"></div>
+<div class="grid-layer"></div>
 
-    <div class="page-bg"></div>
-    <div class="bg-overlay"></div>
-    
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
+<a href="../index.php" class="back-link"><i class="ri-arrow-left-line"></i> Back</a>
 
-    <a href="../index.php" class="back-home">
-        <i class="ri-arrow-left-line"></i> Back to Homepage
-    </a>
+<!-- Left -->
+<div class="split-left">
+    <div class="brand-area">
+        <img src="../public/logo-nims.png" alt="NIMS" class="brand-logo">
+        <div class="brand-eyebrow"><span class="eyebrow-line"></span> UniKL RCMP IT Dept</div>
+        <h1 class="brand-headline">Secure<br>Access<br>Portal</h1>
+        <p class="brand-sub">Authorized IT staff access only. Manage assets, monitor infrastructure, and track department resources from one dashboard.</p>
+        <div class="info-cards">
+            <div class="info-card">
+                <div class="info-icon" style="background:rgba(37,99,235,0.1);color:#2563eb;"><i class="ri-shield-keyhole-line"></i></div>
+                <div class="info-text"><strong>Encrypted Sessions</strong>All data is secured end-to-end</div>
+            </div>
+            <div class="info-card">
+                <div class="info-icon" style="background:rgba(16,185,129,0.1);color:#10b981;"><i class="ri-database-2-line"></i></div>
+                <div class="info-text"><strong>1,542 Assets Online</strong>Live tracking across all departments</div>
+            </div>
+            <div class="info-card">
+                <div class="info-icon" style="background:rgba(245,158,11,0.1);color:#f59e0b;"><i class="ri-time-line"></i></div>
+                <div class="info-text"><strong>24/7 Monitoring</strong>System health checked continuously</div>
+            </div>
+        </div>
+    </div>
+</div>
 
-    <div class="auth-container">
-        <div class="auth-header">
-            <img src="../public/logo-nims.png" alt="RCMP NIMS" class="auth-logo">
-            <h1 class="auth-title">Staff Login</h1>
-            <p class="auth-subtitle">Welcome back to the IT Control Center</p>
+<!-- Right -->
+<div class="split-right">
+    <div class="form-card">
+        <div class="form-header">
+            <div class="form-title">Welcome Back</div>
+            <div class="form-sub">// rcmp-nims · staff authentication</div>
         </div>
 
-        <?php if (isset($err)): ?><p style="color:#ef4444;margin-bottom:1rem;font-size:0.9rem;"><?= htmlspecialchars($err) ?></p><?php endif; ?>
-        <?php if (!empty($_GET['registered'])): ?><p style="color:#10b981;margin-bottom:1rem;font-size:0.9rem;">Registration successful. Please log in.</p><?php endif; ?>
+        <?php if(isset($err)): ?>
+        <div class="alert alert-error"><i class="ri-error-warning-line"></i><?= htmlspecialchars($err) ?></div>
+        <?php endif; ?>
+        <?php if(!empty($_GET['registered'])): ?>
+        <div class="alert alert-success"><i class="ri-checkbox-circle-line"></i>Account created. You may now log in.</div>
+        <?php endif; ?>
+
         <form action="" method="POST">
-            <div class="form-group">
-                <label class="form-label">Choose your role</label>
-                <div class="role-selector">
-                    <div class="role-option">
-                        <input type="radio" id="role_technician" name="role" value="1" checked>
-                        <label for="role_technician" class="role-label"><i class="ri-user-line" style="margin-right: 5px;"></i> Technician</label>
-                    </div>
-                    <div class="role-option">
-                        <input type="radio" id="role_admin" name="role" value="2">
-                        <label for="role_admin" class="role-label"><i class="ri-shield-user-line" style="margin-right: 5px;"></i> Administrator</label>
-                    </div>
-                </div>
+            <div class="role-toggle">
+                <div class="role-opt"><input type="radio" id="r_tech" name="role" value="1" checked><label for="r_tech"><i class="ri-tools-line"></i> Technician</label></div>
+                <div class="role-opt"><input type="radio" id="r_admin" name="role" value="2"><label for="r_admin"><i class="ri-shield-user-line"></i> Administrator</label></div>
             </div>
 
             <div class="form-group">
                 <label class="form-label" for="staff_id">Staff ID</label>
-                <div class="form-input-wrapper">
+                <div class="input-wrap">
                     <input type="text" id="staff_id" name="staff_id" class="form-input" placeholder="e.g. IT-12345" required>
-                    <i class="ri-user-line form-icon"></i>
+                    <i class="ri-id-card-line input-icon"></i>
                 </div>
             </div>
 
             <div class="form-group">
                 <label class="form-label" for="password">Password</label>
-                <div class="form-input-wrapper">
+                <div class="input-wrap">
                     <input type="password" id="password" name="password" class="form-input" placeholder="Enter your password" required>
-                    <i class="ri-lock-line form-icon"></i>
-                    <button type="button" class="password-toggle" data-target="password" aria-label="Toggle password visibility">
-                        <i class="ri-eye-off-line"></i>
-                    </button>
+                    <i class="ri-lock-line input-icon"></i>
+                    <button type="button" class="pw-toggle" data-target="password"><i class="ri-eye-off-line"></i></button>
                 </div>
             </div>
 
             <div class="form-options">
-                <label class="checkbox-wrapper">
+                <label class="remember">
                     <input type="checkbox" name="remember">
-                    <div class="custom-checkbox"></div>
-                    <span style="color: var(--text-muted);">Remember me</span>
+                    <div class="checkmark"></div>
+                    Remember me
                 </label>
             </div>
 
-            <button type="submit" class="btn-submit">
-                Access System <i class="ri-arrow-right-line"></i>
-            </button>
+            <button type="submit" class="btn-submit"><i class="ri-login-circle-line"></i> Access System</button>
         </form>
-
-        <div class="auth-footer">
-            Don't have an account? <a href="register.php" class="text-link">Register here</a>
-        </div>
+        <div class="form-footer">No account? <a href="register.php">Register here</a></div>
     </div>
+</div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            document.querySelectorAll('.password-toggle').forEach(function (btn) {
-                btn.addEventListener('click', function () {
-                    var targetId = btn.getAttribute('data-target');
-                    var input = document.getElementById(targetId);
-                    if (!input) return;
-                    var icon = btn.querySelector('i');
-                    if (input.type === 'password') {
-                        input.type = 'text';
-                        if (icon) {
-                            icon.classList.remove('ri-eye-off-line');
-                            icon.classList.add('ri-eye-line');
-                        }
-                    } else {
-                        input.type = 'password';
-                        if (icon) {
-                            icon.classList.remove('ri-eye-line');
-                            icon.classList.add('ri-eye-off-line');
-                        }
-                    }
-                });
-            });
+<div class="status-strip">
+    <div class="status-item"><span class="s-dot" style="background:#10b981;box-shadow:0 0 6px #10b981;"></span>Systems Online</div>
+    <div class="status-item"><span class="s-dot" style="background:#2563eb;box-shadow:0 0 6px #2563eb;"></span>DB Connected</div>
+    <div class="status-item"><span class="s-dot" style="background:#f59e0b;box-shadow:0 0 6px #f59e0b;"></span>Secure Channel</div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded',()=>{
+    document.querySelectorAll('.pw-toggle').forEach(btn=>{
+        btn.addEventListener('click',()=>{
+            const input=document.getElementById(btn.dataset.target);
+            const icon=btn.querySelector('i');
+            if(input.type==='password'){input.type='text';icon.className='ri-eye-line';}
+            else{input.type='password';icon.className='ri-eye-off-line';}
         });
-    </script>
-
+    });
+    document.querySelectorAll('.form-input').forEach(input=>{
+        input.addEventListener('focus',()=>{ const ic=input.parentElement.querySelector('.input-icon'); if(ic)ic.style.color='var(--primary)'; });
+        input.addEventListener('blur', ()=>{ const ic=input.parentElement.querySelector('.input-icon'); if(ic)ic.style.color=''; });
+    });
+    const form=document.querySelector('form'),btn=document.querySelector('.btn-submit');
+    form.addEventListener('submit',()=>{ btn.innerHTML='<i class="ri-loader-4-line" style="animation:spin 0.8s linear infinite"></i> Authenticating…'; btn.style.opacity='0.8'; btn.disabled=true; });
+});
+</script>
 </body>
 </html>

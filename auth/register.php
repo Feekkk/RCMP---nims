@@ -4,10 +4,10 @@ require_once __DIR__ . '/../config/database.php';
 
 $msg = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $name = trim($_POST['full_name'] ?? '');
-    $email = trim($_POST['email'] ?? '');
-    $staffId = trim($_POST['staff_id'] ?? '');
-    $password = $_POST['password'] ?? '';
+    $name     = trim($_POST['full_name'] ?? '');
+    $email    = trim($_POST['email']     ?? '');
+    $staffId  = trim($_POST['staff_id']  ?? '');
+    $password = $_POST['password']       ?? '';
     if (strlen($password) < 6) {
         $msg = 'Password must be at least 6 characters.';
     } else {
@@ -18,8 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: login.php?registered=1');
             exit;
         } catch (PDOException $e) {
-            if ($e->getCode() == 23000) $msg = 'Staff ID or email already exists.';
-            else $msg = 'Registration failed. Please try again.';
+            $msg = $e->getCode() == 23000 ? 'Staff ID or email already exists.' : 'Registration failed. Please try again.';
         }
     }
 }
@@ -29,374 +28,255 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IT Staff Registration - RCMP NIMS</title>
+    <title>IT Staff Registration — RCMP NIMS</title>
     <link rel="icon" type="image/png" href="../public/rcmp.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <style>
         :root {
-            --primary: #2563eb;
-            --primary-hover: #1d4ed8;
+            --primary:   #2563eb;
             --secondary: #0ea5e9;
-            --bg: #f0f4f8;
-            --card-bg: #ffffff;
-            --card-border: #e2e8f0;
-            --text-main: #0f172a;
-            --text-muted: #64748b;
-            --input-bg: #f8fafc;
-            --input-border: #cbd5e1;
+            --purple:    #8b5cf6;
+            --green:     #10b981;
+            --bg:        #f0f5ff;
+            --surface:   #ffffff;
+            --card-border: rgba(37,99,235,0.1);
+            --text-main:   #0f172a;
+            --text-muted:  #64748b;
+            --text-subtle: #94a3b8;
+            --input-bg:    #f8faff;
+            --input-border: rgba(37,99,235,0.14);
+            --mono: 'JetBrains Mono', monospace;
         }
+        *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+        body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text-main);min-height:100vh;display:flex;overflow-x:hidden;}
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        .bg-layer{position:fixed;inset:0;z-index:0;background:radial-gradient(ellipse 65% 55% at 80% 15%,rgba(139,92,246,0.06) 0%,transparent 60%),radial-gradient(ellipse 60% 50% at 10% 80%,rgba(37,99,235,0.07) 0%,transparent 60%),linear-gradient(155deg,#eef4ff 0%,#f0f5ff 60%,#f3f0ff 100%);}
+        .grid-layer{position:fixed;inset:0;z-index:1;background-image:linear-gradient(rgba(37,99,235,0.045) 1px,transparent 1px),linear-gradient(90deg,rgba(37,99,235,0.045) 1px,transparent 1px);background-size:56px 56px;animation:gridMove 24s linear infinite;}
+        @keyframes gridMove{to{background-position:56px 56px;}}
 
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg);
-            background-image: linear-gradient(135deg, #dbeafe 0%, #f0f4f8 50%, #e0f2fe 100%);
-            color: var(--text-main);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            overflow-x: hidden;
-            padding: 2rem 0; 
-        }
+        /* Split */
+        .split-left{width:42%;display:flex;flex-direction:column;justify-content:center;padding:4rem 5%;position:relative;z-index:10;border-right:1px solid rgba(37,99,235,0.08);}
+        .split-right{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:3rem 5%;position:relative;z-index:10;overflow-y:auto;}
 
-        .page-bg { display: none; }
-        .bg-overlay { display: none; }
+        /* Left */
+        .brand-area{opacity:0;transform:translateY(24px);animation:riseIn 0.8s cubic-bezier(0.16,1,0.3,1) 0.05s forwards;}
+        @keyframes riseIn{to{opacity:1;transform:translateY(0);}}
+        .brand-logo{height:52px;object-fit:contain;filter:drop-shadow(0 2px 8px rgba(37,99,235,0.15));margin-bottom:2.5rem;transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1);}
+        .brand-logo:hover{transform:scale(1.06);}
+        .brand-eyebrow{font-family:var(--mono);font-size:0.7rem;letter-spacing:2.5px;text-transform:uppercase;color:var(--purple);margin-bottom:1rem;display:flex;align-items:center;gap:8px;}
+        .eyebrow-line{height:1px;width:30px;background:var(--purple);opacity:0.4;}
+        .brand-headline{font-size:3rem;font-weight:900;line-height:1;letter-spacing:-2px;margin-bottom:1rem;background:linear-gradient(135deg,#0f172a 40%,#8b5cf6 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+        .brand-sub{font-size:0.95rem;color:var(--text-muted);line-height:1.7;max-width:300px;margin-bottom:2.5rem;}
 
-        /* Decorative glowing orbs */
-        .blob {
-            position: fixed;
-            border-radius: 50%;
-            filter: blur(80px);
-            z-index: -1;
-            opacity: 0.4;
-        }
+        /* Steps */
+        .steps{display:flex;flex-direction:column;gap:0;}
+        .step{display:flex;align-items:flex-start;gap:14px;opacity:0;transform:translateX(-14px);animation:slideR 0.55s cubic-bezier(0.16,1,0.3,1) forwards;}
+        .step:nth-child(1){animation-delay:0.45s;} .step:nth-child(2){animation-delay:0.6s;} .step:nth-child(3){animation-delay:0.75s;}
+        @keyframes slideR{to{opacity:1;transform:translateX(0);}}
+        .step-connector{display:flex;flex-direction:column;align-items:center;}
+        .step-num{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:0.72rem;font-weight:700;flex-shrink:0;}
+        .step-line{width:1px;flex:1;min-height:28px;background:linear-gradient(to bottom,rgba(37,99,235,0.15),transparent);margin:4px 0;}
+        .step:last-child .step-line{display:none;}
+        .step-body{padding-bottom:1.25rem;}
+        .step-title{font-size:0.88rem;font-weight:700;color:var(--text-main);margin-bottom:2px;}
+        .step-desc{font-size:0.78rem;color:var(--text-muted);line-height:1.5;}
 
-        .blob-1 {
-            width: 400px;
-            height: 400px;
-            background: var(--primary);
-            top: -100px;
-            left: -100px;
-        }
+        /* Form card */
+        .form-card{width:100%;max-width:440px;background:rgba(255,255,255,0.88);border:1px solid rgba(37,99,235,0.1);border-radius:24px;padding:2.25rem;backdrop-filter:blur(24px);box-shadow:0 24px 60px rgba(37,99,235,0.09),0 4px 16px rgba(37,99,235,0.05),inset 0 1px 0 rgba(255,255,255,1);position:relative;overflow:hidden;opacity:0;transform:translateY(32px) scale(0.98);animation:cardIn 0.9s cubic-bezier(0.16,1,0.3,1) 0.2s forwards;}
+        .form-card::before{content:'';position:absolute;top:0;left:20%;right:20%;height:1px;background:linear-gradient(90deg,transparent,var(--purple),transparent);opacity:0.35;}
+        @keyframes cardIn{to{opacity:1;transform:translateY(0) scale(1);}}
 
-        .blob-2 {
-            width: 350px;
-            height: 350px;
-            background: #8b5cf6;
-            bottom: -50px;
-            right: -50px;
-        }
+        .form-header{text-align:center;margin-bottom:1.75rem;}
+        .form-title{font-size:1.45rem;font-weight:800;letter-spacing:-0.5px;color:var(--text-main);margin-bottom:0.3rem;}
+        .form-sub{font-size:0.8rem;color:var(--text-muted);font-family:var(--mono);}
 
-        /* Container */
-        .auth-container {
-            width: 100%;
-            max-width: 480px;
-            padding: 2.5rem;
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 24px;
-            box-shadow: 0 20px 60px rgba(37, 99, 235, 0.1), 0 4px 16px rgba(0,0,0,0.06);
-            animation: fadeIn 0.6s ease-out forwards;
-            margin: auto;
-            position: relative;
-            z-index: 1;
-        }
+        .form-row{display:grid;grid-template-columns:1fr 1fr;gap:0.9rem;}
+        .form-group{margin-bottom:1rem;position:relative;}
+        .form-label{display:block;font-family:var(--mono);font-size:0.67rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-muted);margin-bottom:0.45rem;}
+        .input-wrap{position:relative;display:flex;align-items:center;}
+        .input-icon{position:absolute;left:0.85rem;color:var(--text-subtle);font-size:0.95rem;pointer-events:none;transition:color 0.25s;z-index:1;}
+        .form-input{width:100%;background:var(--input-bg);border:1px solid var(--input-border);border-radius:10px;padding:0.75rem 1rem 0.75rem 2.5rem;color:var(--text-main);font-family:'Outfit',sans-serif;font-size:0.9rem;transition:all 0.25s;outline:none;}
+        .form-input::placeholder{color:var(--text-subtle);font-size:0.85rem;}
+        .form-input:focus{background:white;border-color:rgba(139,92,246,0.4);box-shadow:0 0 0 3px rgba(139,92,246,0.1);}
+        .form-input:focus~.input-icon{color:var(--purple);}
 
-        .auth-header {
-            text-align: center;
-            margin-bottom: 2.25rem;
-        }
+        /* Password strength */
+        .strength-bar{display:flex;gap:4px;margin-top:6px;}
+        .strength-seg{height:3px;flex:1;border-radius:2px;background:rgba(37,99,235,0.08);transition:background 0.4s;}
+        .strength-label{font-family:var(--mono);font-size:0.65rem;color:var(--text-muted);margin-top:4px;text-align:right;transition:color 0.3s;}
 
-        .auth-logo {
-            height: 55px;
-            margin-bottom: 1rem;
-            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
-        }
+        .pw-toggle{position:absolute;right:0.85rem;background:none;border:none;color:var(--text-subtle);cursor:pointer;font-size:0.95rem;padding:0;transition:color 0.2s;}
+        .pw-toggle:hover{color:var(--text-main);}
 
-        .auth-title {
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: #ffffff;
-            margin-bottom: 0.5rem;
-        }
+        .alert{display:flex;align-items:center;gap:8px;padding:0.7rem 1rem;border-radius:8px;font-size:0.82rem;margin-bottom:1rem;font-family:var(--mono);}
+        .alert-error{background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.16);color:#dc2626;}
 
-        .auth-subtitle {
-            font-size: 0.95rem;
-            color: var(--text-muted);
-        }
+        .divider{display:flex;align-items:center;gap:10px;margin:0.5rem 0 1rem;font-family:var(--mono);font-size:0.65rem;color:var(--text-subtle);letter-spacing:1px;text-transform:uppercase;}
+        .divider::before,.divider::after{content:'';flex:1;height:1px;background:rgba(37,99,235,0.1);}
 
-        /* Form Elements */
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-        }
+        .btn-submit{width:100%;padding:0.85rem;border-radius:10px;border:none;background:linear-gradient(135deg,var(--purple),var(--primary));color:white;font-family:'Outfit',sans-serif;font-size:0.95rem;font-weight:700;cursor:pointer;transition:all 0.3s;box-shadow:0 6px 20px rgba(139,92,246,0.25);display:flex;align-items:center;justify-content:center;gap:8px;position:relative;overflow:hidden;margin-top:0.5rem;}
+        .btn-submit::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.25),transparent);transition:left 0.5s;}
+        .btn-submit:hover::before{left:100%;}
+        .btn-submit:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(139,92,246,0.35);}
 
-        .form-group {
-            margin-bottom: 1.25rem;
-            position: relative;
-        }
+        .form-footer{text-align:center;margin-top:1.25rem;font-size:0.82rem;color:var(--text-muted);}
+        .form-footer a{color:var(--primary);text-decoration:none;font-weight:600;transition:color 0.2s;}
+        .form-footer a:hover{color:#1d4ed8;}
 
-        .form-label {
-            display: block;
-            font-size: 0.85rem;
-            font-weight: 500;
-            color: var(--text-muted);
-            margin-bottom: 0.5rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
+        .back-link{position:absolute;top:2rem;left:2rem;display:flex;align-items:center;gap:6px;color:var(--text-muted);text-decoration:none;font-size:0.8rem;font-family:var(--mono);letter-spacing:0.5px;transition:color 0.2s;z-index:20;}
+        .back-link:hover{color:var(--primary);}
 
-        .form-input-wrapper {
-            position: relative;
-            display: flex;
-            align-items: center;
-        }
+        .status-strip{position:fixed;bottom:1.5rem;left:0;right:0;display:flex;justify-content:center;gap:1.5rem;font-family:var(--mono);font-size:0.68rem;color:var(--text-muted);z-index:20;}
+        .status-item{display:flex;align-items:center;gap:5px;}
+        .s-dot{width:5px;height:5px;border-radius:50%;}
 
-        .form-icon {
-            position: absolute;
-            left: 1rem;
-            color: var(--text-muted);
-            font-size: 1.2rem;
-            pointer-events: none;
-            transition: color 0.3s ease;
-        }
-
-        .password-toggle {
-            position: absolute;
-            right: 0.9rem;
-            background: transparent;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
-            font-size: 1.1rem;
-        }
-
-        .form-input {
-            width: 100%;
-            background: var(--input-bg);
-            border: 1px solid var(--input-border);
-            border-radius: 12px;
-            padding: 0.85rem 1rem 0.85rem 3rem;
-            color: var(--text-main);
-            font-family: 'Inter', sans-serif;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            outline: none;
-        }
-
-        .form-input:focus {
-            background: #fff;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
-        }
-
-        .form-input:focus + .form-icon,
-        .form-input:not(:placeholder-shown) + .form-icon {
-            color: var(--primary);
-        }
-
-        .text-link {
-            color: var(--primary);
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.3s ease;
-        }
-
-        .text-link:hover {
-            color: var(--primary-hover);
-            text-decoration: underline;
-        }
-
-        .btn-submit {
-            width: 100%;
-            padding: 0.9rem;
-            border-radius: 12px;
-            border: none;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            color: white;
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 10px 20px -5px rgba(37, 99, 235, 0.4);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            margin-top: 1.5rem;
-        }
-
-        .btn-submit:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 15px 25px -5px rgba(37, 99, 235, 0.5);
-            filter: brightness(1.1);
-        }
-
-        .auth-footer {
-            margin-top: 2rem;
-            text-align: center;
-            font-size: 0.95rem;
-            color: var(--text-muted);
-        }
-
-        .back-home {
-            position: absolute;
-            top: 2rem;
-            left: 2rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            color: var(--text-muted);
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.3s ease;
-            z-index: 10;
-        }
-
-        .back-home:hover {
-            color: var(--primary);
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        @media (max-width: 540px) {
-            .auth-container {
-                padding: 2rem;
-                width: 90%;
-            }
-            .form-row {
-                grid-template-columns: 1fr;
-                gap: 0;
-            }
-            .back-home {
-                position: relative;
-                top: auto;
-                left: auto;
-                justify-content: center;
-                margin-bottom: 2rem;
-                width: 100%;
-            }
-            body {
-                flex-direction: column;
-                justify-content: flex-start;
-                padding-top: 1rem;
-            }
-        }
+        @media(max-width:900px){.split-left{display:none;}.split-right{padding:2rem;}body{overflow-y:auto;}}
+        @media(max-width:540px){.form-card{padding:1.75rem;}.form-row{grid-template-columns:1fr;}}
+        @keyframes spin{to{transform:rotate(360deg);}}
     </style>
 </head>
 <body>
+<div class="bg-layer"></div>
+<div class="grid-layer"></div>
 
-    <div class="page-bg"></div>
-    <div class="bg-overlay"></div>
-    
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
+<a href="../index.php" class="back-link"><i class="ri-arrow-left-line"></i> Back</a>
 
-    <a href="../index.php" class="back-home">
-        <i class="ri-arrow-left-line"></i> Back to Homepage
-    </a>
+<!-- Left -->
+<div class="split-left">
+    <div class="brand-area">
+        <img src="../public/logo-nims.png" alt="NIMS" class="brand-logo">
+        <div class="brand-eyebrow"><span class="eyebrow-line"></span> New Staff Onboarding</div>
+        <h1 class="brand-headline">Join the<br>IT Team</h1>
+        <p class="brand-sub">Create your NIMS account to start managing UniKL RCMP's IT assets. Registration requires a valid Staff ID issued by IT management.</p>
+        <div class="steps">
+            <div class="step">
+                <div class="step-connector">
+                    <div class="step-num" style="background:rgba(139,92,246,0.1);color:#8b5cf6;">01</div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-body"><div class="step-title">Fill in your details</div><div class="step-desc">Provide your full name, UniKL email, and assigned Staff ID.</div></div>
+            </div>
+            <div class="step">
+                <div class="step-connector">
+                    <div class="step-num" style="background:rgba(37,99,235,0.1);color:#2563eb;">02</div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-body"><div class="step-title">Create a secure password</div><div class="step-desc">Minimum 6 characters. A strong password keeps assets secure.</div></div>
+            </div>
+            <div class="step">
+                <div class="step-connector">
+                    <div class="step-num" style="background:rgba(16,185,129,0.1);color:#10b981;">03</div>
+                    <div class="step-line"></div>
+                </div>
+                <div class="step-body"><div class="step-title">Access the dashboard</div><div class="step-desc">Log in with your new credentials to start tracking assets immediately.</div></div>
+            </div>
+        </div>
+    </div>
+</div>
 
-    <div class="auth-container">
-        <div class="auth-header">
-            <img src="../public/logo-nims.png" alt="RCMP NIMS" class="auth-logo">
-            <h1 class="auth-title">Create Account</h1>
-            <p class="auth-subtitle">Register for IT Department Access</p>
+<!-- Right -->
+<div class="split-right">
+    <div class="form-card">
+        <div class="form-header">
+            <div class="form-title">Create Account</div>
+            <div class="form-sub">// rcmp-nims · new staff registration</div>
         </div>
 
-        <?php if ($msg): ?><p style="color:#ef4444;margin-bottom:1rem;font-size:0.9rem;"><?= htmlspecialchars($msg) ?></p><?php endif; ?>
-        <form action="" method="POST">
+        <?php if($msg): ?>
+        <div class="alert alert-error"><i class="ri-error-warning-line"></i><?= htmlspecialchars($msg) ?></div>
+        <?php endif; ?>
+
+        <form action="" method="POST" id="regForm">
             <div class="form-group">
                 <label class="form-label" for="full_name">Full Name</label>
-                <div class="form-input-wrapper">
-                    <input type="text" id="full_name" name="full_name" class="form-input" placeholder="Enter your full name" required>
-                    <i class="ri-user-smile-line form-icon"></i>
+                <div class="input-wrap">
+                    <input type="text" id="full_name" name="full_name" class="form-input" placeholder="As per staff records" required>
+                    <i class="ri-user-smile-line input-icon"></i>
                 </div>
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="email">Email Address</label>
-                <div class="form-input-wrapper">
-                    <input type="email" id="email" name="email" class="form-input" placeholder="Enter your UniKL email" required>
-                    <i class="ri-mail-line form-icon"></i>
+                <label class="form-label" for="email">UniKL Email</label>
+                <div class="input-wrap">
+                    <input type="email" id="email" name="email" class="form-input" placeholder="name@unikl.edu.my" required>
+                    <i class="ri-mail-line input-icon"></i>
                 </div>
             </div>
+
+            <div class="divider">Account Credentials</div>
 
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label" for="staff_id">Staff ID</label>
-                    <div class="form-input-wrapper">
-                        <input type="text" id="staff_id" name="staff_id" class="form-input" placeholder="e.g. IT-123" required>
-                        <i class="ri-id-card-line form-icon"></i>
+                    <div class="input-wrap">
+                        <input type="text" id="staff_id" name="staff_id" class="form-input" placeholder="IT-123" required>
+                        <i class="ri-id-card-line input-icon"></i>
                     </div>
                 </div>
-
                 <div class="form-group">
                     <label class="form-label" for="password">Password</label>
-                    <div class="form-input-wrapper">
-                        <input type="password" id="password" name="password" class="form-input" placeholder="Create password" required>
-                        <i class="ri-lock-line form-icon"></i>
-                        <button type="button" class="password-toggle" data-target="password" aria-label="Toggle password visibility">
-                            <i class="ri-eye-off-line"></i>
-                        </button>
+                    <div class="input-wrap">
+                        <input type="password" id="password" name="password" class="form-input" placeholder="Min. 6 chars" required>
+                        <i class="ri-lock-line input-icon"></i>
+                        <button type="button" class="pw-toggle" data-target="password"><i class="ri-eye-off-line"></i></button>
                     </div>
                 </div>
             </div>
 
-            <button type="submit" class="btn-submit">
-                Register Account <i class="ri-user-add-line"></i>
-            </button>
+            <div class="strength-bar" id="strengthBar">
+                <div class="strength-seg" id="seg1"></div><div class="strength-seg" id="seg2"></div>
+                <div class="strength-seg" id="seg3"></div><div class="strength-seg" id="seg4"></div>
+            </div>
+            <div class="strength-label" id="strengthLabel">Enter password</div>
+
+            <button type="submit" class="btn-submit"><i class="ri-user-add-line"></i> Create Account</button>
         </form>
-
-        <div class="auth-footer">
-            Already have an account? <a href="login.php" class="text-link">Login here</a>
-        </div>
+        <div class="form-footer">Already registered? <a href="login.php">Sign in here</a></div>
     </div>
+</div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            document.querySelectorAll('.password-toggle').forEach(function (btn) {
-                btn.addEventListener('click', function () {
-                    var targetId = btn.getAttribute('data-target');
-                    var input = document.getElementById(targetId);
-                    if (!input) return;
-                    var icon = btn.querySelector('i');
-                    if (input.type === 'password') {
-                        input.type = 'text';
-                        if (icon) {
-                            icon.classList.remove('ri-eye-off-line');
-                            icon.classList.add('ri-eye-line');
-                        }
-                    } else {
-                        input.type = 'password';
-                        if (icon) {
-                            icon.classList.remove('ri-eye-line');
-                            icon.classList.add('ri-eye-off-line');
-                        }
-                    }
-                });
-            });
+<div class="status-strip">
+    <div class="status-item"><span class="s-dot" style="background:#10b981;box-shadow:0 0 6px #10b981;"></span>Systems Online</div>
+    <div class="status-item"><span class="s-dot" style="background:#2563eb;box-shadow:0 0 6px #2563eb;"></span>DB Connected</div>
+    <div class="status-item"><span class="s-dot" style="background:#f59e0b;box-shadow:0 0 6px #f59e0b;"></span>Secure Channel</div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded',()=>{
+    document.querySelectorAll('.pw-toggle').forEach(btn=>{
+        btn.addEventListener('click',()=>{
+            const input=document.getElementById(btn.dataset.target);
+            const icon=btn.querySelector('i');
+            if(input.type==='password'){input.type='text';icon.className='ri-eye-line';}
+            else{input.type='password';icon.className='ri-eye-off-line';}
         });
-    </script>
+    });
+    document.querySelectorAll('.form-input').forEach(input=>{
+        input.addEventListener('focus',()=>{ const ic=input.parentElement.querySelector('.input-icon'); if(ic)ic.style.color='var(--purple)'; });
+        input.addEventListener('blur', ()=>{ const ic=input.parentElement.querySelector('.input-icon'); if(ic)ic.style.color=''; });
+    });
 
+    // Password strength
+    const pwInput=document.getElementById('password');
+    const segs=[document.getElementById('seg1'),document.getElementById('seg2'),document.getElementById('seg3'),document.getElementById('seg4')];
+    const label=document.getElementById('strengthLabel');
+    const colors=['#ef4444','#f59e0b','#2563eb','#10b981'];
+    const labels=['Weak','Fair','Good','Strong'];
+    pwInput.addEventListener('input',()=>{
+        const val=pwInput.value; let score=0;
+        if(val.length>=6)score++; if(val.length>=10)score++;
+        if(/[A-Z]/.test(val)&&/[0-9]/.test(val))score++; if(/[^A-Za-z0-9]/.test(val))score++;
+        segs.forEach((s,i)=>{ s.style.background=i<score?colors[Math.min(score-1,3)]:'rgba(37,99,235,0.08)'; });
+        if(!val){label.textContent='Enter password';label.style.color='var(--text-muted)';}
+        else{label.textContent=labels[Math.min(score-1,3)]||'Too weak';label.style.color=colors[Math.min(score-1,3)]||'#ef4444';}
+    });
+
+    const form=document.getElementById('regForm'),btn=document.querySelector('.btn-submit');
+    form.addEventListener('submit',()=>{ btn.innerHTML='<i class="ri-loader-4-line" style="animation:spin 0.8s linear infinite"></i> Creating account…'; btn.style.opacity='0.8'; btn.disabled=true; });
+});
+</script>
 </body>
 </html>
