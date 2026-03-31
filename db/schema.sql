@@ -11,18 +11,20 @@ CREATE TABLE IF NOT EXISTS role (
   name VARCHAR(128) NOT NULL UNIQUE
 );
 
-INSERT IGNORE INTO role (id, name) VALUES (1, 'technician'), (2, 'admin');
+INSERT IGNORE INTO role (id, name) VALUES (1, 'technician'), (2, 'admin'), (3, 'nextcheck users');
 
 CREATE TABLE IF NOT EXISTS users (
   staff_id VARCHAR(32) NOT NULL,
   full_name VARCHAR(128) NOT NULL,
   email VARCHAR(128) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
-  role_id INT UNSIGNED NOT NULL DEFAULT 1,
+  role_id INT UNSIGNED NOT NULL,
+  phone VARCHAR(64) DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (staff_id),
   FOREIGN KEY (role_id) REFERENCES role(id),
+  UNIQUE KEY uq_users_email (email),
   INDEX idx_staff_id (staff_id),
   INDEX idx_role_id (role_id)
 );
