@@ -6,6 +6,7 @@ if (!isset($_SESSION['staff_id']) || (int)($_SESSION['role_id'] ?? 0) !== 1) {
 }
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/nextcheck_shared.php';
 
 /** @return 'laptop'|'av'|'network' */
 function nextadd_asset_class_strict(): string
@@ -222,166 +223,6 @@ if ($suggest_q !== '') {
     }
 }
 
-const CHECKOUT_PIPELINE_STATUS_IDS = [11, 12, 13];
-/** Active (nextcheck) — applied when technician confirms checkout */
-const CHECKOUT_CONFIRM_TARGET_STATUS_ID = 11;
-const CHECKOUT_MAX_SELECTION = 200;
-/** Restored status when removed from pipeline (laptop / AV) */
-const PIPELINE_REVERT_STATUS_LAPTOP_AV = 1;
-/** Restored status when removed from pipeline (network) */
-const PIPELINE_REVERT_STATUS_NETWORK = 9;
-
-function checkout_table_exists(PDO $pdo, string $table): bool
-{
-    static $cache = [];
-    if (array_key_exists($table, $cache)) {
-        return $cache[$table];
-    }
-    $stmt = $pdo->prepare('SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1');
-    $stmt->execute([$table]);
-    $cache[$table] = (bool)$stmt->fetchColumn();
-    return $cache[$table];
-}
-
-/** Laptop / network / av rows whose status is Active, Pending, or Checkout (nextcheck) */
-function checkout_fetch_pipeline_assets(PDO $pdo): array
-{
-    $ids = array_map('intval', CHECKOUT_PIPELINE_STATUS_IDS);
-    $ids = array_values(array_unique(array_filter($ids)));
-    if ($ids === []) {
-        return [];
-    }
-    $ph = implode(',', array_fill(0, count($ids), '?'));
-    $out = [];
-
-    foreach (['laptop' => 'laptop', 'network' => 'network'] as $tbl => $cls) {
-        $stmt = $pdo->prepare("
-            SELECT t.asset_id, t.serial_num, t.brand, t.model, t.status_id, s.name AS status_name
-            FROM `{$tbl}` t
-            JOIN status s ON s.status_id = t.status_id
-            WHERE t.status_id IN ($ph)
-            ORDER BY t.asset_id DESC
-        ");
-        $stmt->execute($ids);
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $out[] = [
-                'asset_class' => $cls,
-                'asset_id' => (int)$r['asset_id'],
-                'serial' => (string)($r['serial_num'] ?? ''),
-                'brand' => (string)($r['brand'] ?? ''),
-                'model' => (string)($r['model'] ?? ''),
-                'status_id' => (int)$r['status_id'],
-                'status' => (string)($r['status_name'] ?? ''),
-            ];
-        }
-    }
-
-    if (checkout_table_exists($pdo, 'av')) {
-        try {
-            $stmt = $pdo->prepare("
-                SELECT a.asset_id, a.serial_num, a.brand, a.model, a.status_id, s.name AS status_name
-                FROM av a
-                JOIN status s ON s.status_id = a.status_id
-                WHERE a.status_id IN ($ph)
-                ORDER BY a.asset_id DESC
-            ");
-            $stmt->execute($ids);
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $out[] = [
-                    'asset_class' => 'av',
-                    'asset_id' => (int)$r['asset_id'],
-                    'serial' => (string)($r['serial_num'] ?? ''),
-                    'brand' => (string)($r['brand'] ?? ''),
-                    'model' => (string)($r['model'] ?? ''),
-                    'status_id' => (int)$r['status_id'],
-                    'status' => (string)($r['status_name'] ?? ''),
-                ];
-            }
-        } catch (Throwable $e) {
-        }
-    }
-
-    usort($out, static fn ($a, $b) => $b['asset_id'] <=> $a['asset_id']);
-    return $out;
-}
-
-/** @param int[] $ids */
-function checkout_lock_and_update(PDO $pdo, string $table, array $ids, int $statusId): void
-{
-    if ($ids === []) {
-        return;
-    }
-    $ids = array_values(array_unique(array_map('intval', $ids)));
-    $placeholders = implode(',', array_fill(0, count($ids), '?'));
-    $stmt = $pdo->prepare("SELECT asset_id FROM `{$table}` WHERE asset_id IN ($placeholders) FOR UPDATE");
-    $stmt->execute($ids);
-    $found = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN, 0));
-    sort($ids);
-    sort($found);
-    if ($found !== $ids) {
-        $missing = array_values(array_diff($ids, $found));
-        throw new RuntimeException('Missing ' . $table . ' asset(s): ' . implode(', ', $missing));
-    }
-    $stmtU = $pdo->prepare("UPDATE `{$table}` SET status_id = ? WHERE asset_id IN ($placeholders)");
-    $stmtU->execute(array_merge([(int)$statusId], $ids));
-}
-
-/** Revert one asset out of NextCheck pipeline (statuses 11–13 only). */
-function pipeline_revert_one(PDO $pdo, string $class, int $assetId): void
-{
-    $class = strtolower(trim($class));
-    if (!in_array($class, ['laptop', 'network', 'av'], true)) {
-        throw new InvalidArgumentException('Invalid asset type');
-    }
-    if ($class === 'av' && !checkout_table_exists($pdo, 'av')) {
-        throw new RuntimeException('AV inventory table is not available.');
-    }
-    $table = $class === 'network' ? 'network' : ($class === 'av' ? 'av' : 'laptop');
-    $target = $class === 'network' ? PIPELINE_REVERT_STATUS_NETWORK : PIPELINE_REVERT_STATUS_LAPTOP_AV;
-    $allowed = array_values(array_unique(array_map('intval', CHECKOUT_PIPELINE_STATUS_IDS)));
-
-    $pdo->beginTransaction();
-    try {
-        $stmt = $pdo->prepare("SELECT status_id FROM `{$table}` WHERE asset_id = ? FOR UPDATE");
-        $stmt->execute([$assetId]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$row) {
-            throw new RuntimeException('Asset not found');
-        }
-        $sid = (int)$row['status_id'];
-        if (!in_array($sid, $allowed, true)) {
-            throw new RuntimeException('Asset is not in the NextCheck pipeline');
-        }
-        $stmtU = $pdo->prepare("UPDATE `{$table}` SET status_id = ? WHERE asset_id = ?");
-        $stmtU->execute([(int)$target, $assetId]);
-        $pdo->commit();
-    } catch (Throwable $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-        throw $e;
-    }
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pipeline_revert'])) {
-    header('Content-Type: application/json; charset=utf-8');
-    $class = strtolower(trim((string)($_POST['asset_class'] ?? '')));
-    $idRaw = trim((string)($_POST['asset_id'] ?? ''));
-    if (!in_array($class, ['laptop', 'network', 'av'], true) || $idRaw === '' || !ctype_digit($idRaw)) {
-        echo json_encode(['ok' => false, 'error' => 'Invalid request']);
-        exit;
-    }
-    $aid = (int)$idRaw;
-    try {
-        $pdo = db();
-        pipeline_revert_one($pdo, $class, $aid);
-        echo json_encode(['ok' => true]);
-    } catch (Throwable $e) {
-        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
-    }
-    exit;
-}
-
 $checkout_error = '';
 $success_checkout = isset($_GET['checkout_ok']) && (string)$_GET['checkout_ok'] === '1';
 $initial_checkout_items = [];
@@ -415,7 +256,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_checkout'])) 
         foreach (array_keys($buckets) as $k) {
             $buckets[$k] = array_values(array_unique($buckets[$k]));
         }
-        if ($checkout_error === '' && $buckets['av'] !== [] && !checkout_table_exists(db(), 'av')) {
+        if ($checkout_error === '' && $buckets['av'] !== [] && !nextcheck_checkout_table_exists(db(), 'av')) {
             $checkout_error = 'AV inventory table is not available. Remove AV items or contact IT.';
         }
         if ($checkout_error === '') {
@@ -428,10 +269,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_checkout'])) 
                     $pdo = db();
                     $pdo->beginTransaction();
                     $target = CHECKOUT_CONFIRM_TARGET_STATUS_ID;
-                    checkout_lock_and_update($pdo, 'laptop', $buckets['laptop'], $target);
-                    checkout_lock_and_update($pdo, 'network', $buckets['network'], $target);
+                    nextcheck_lock_and_update($pdo, 'laptop', $buckets['laptop'], $target);
+                    nextcheck_lock_and_update($pdo, 'network', $buckets['network'], $target);
                     if ($buckets['av'] !== []) {
-                        checkout_lock_and_update($pdo, 'av', $buckets['av'], $target);
+                        nextcheck_lock_and_update($pdo, 'av', $buckets['av'], $target);
                     }
                     $pdo->commit();
                     header('Location: nextAdd.php?checkout_ok=1');
@@ -453,27 +294,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_checkout'])) 
     }
 }
 
-$pipeline_assets = [];
-try {
-    $pipeline_assets = checkout_fetch_pipeline_assets(db());
-} catch (Throwable $e) {
-    $pipeline_assets = [];
-}
-
-$pipeline_by_class = ['laptop' => 0, 'av' => 0, 'network' => 0];
-foreach ($pipeline_assets as $pa) {
-    $c = (string)($pa['asset_class'] ?? '');
-    if (isset($pipeline_by_class[$c])) {
-        $pipeline_by_class[$c]++;
-    }
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily checkout — NextCheck - RCMP NIMS</title>
+    <title>Add items — NextCheck — RCMP NIMS</title>
     <link rel="icon" type="image/png" href="../public/rcmp.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -582,59 +409,6 @@ foreach ($pipeline_assets as $pa) {
         }
         .card-subtitle i{color:var(--primary)}
 
-        .stat-cards{
-            display:grid;
-            grid-template-columns:repeat(3,minmax(0,1fr));
-            gap:1rem;
-        }
-        .stat-card{
-            background:var(--card-bg);
-            border:1px solid var(--card-border);
-            border-radius:16px;
-            padding:1.1rem 1.15rem;
-            display:flex;
-            align-items:center;
-            gap:1rem;
-            box-shadow:0 8px 22px rgba(15,23,42,0.06);
-        }
-        .stat-card-icon{
-            width:48px;height:48px;
-            border-radius:14px;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            flex-shrink:0;
-            font-size:1.35rem;
-        }
-        .stat-card--laptop .stat-card-icon{
-            background:rgba(37,99,235,0.10);
-            border:1px solid rgba(37,99,235,0.22);
-            color:var(--primary);
-        }
-        .stat-card--av .stat-card-icon{
-            background:rgba(245,158,11,0.12);
-            border:1px solid rgba(245,158,11,0.28);
-            color:var(--warning);
-        }
-        .stat-card--network .stat-card-icon{
-            background:rgba(16,185,129,0.12);
-            border:1px solid rgba(16,185,129,0.28);
-            color:var(--success);
-        }
-        .stat-card-text{display:flex;flex-direction:column;gap:0.2rem;min-width:0}
-        .stat-card-value{
-            font-family:'Outfit',sans-serif;
-            font-size:1.65rem;
-            font-weight:800;
-            letter-spacing:-0.5px;
-            color:var(--text-main);
-            line-height:1.1;
-        }
-        .stat-card-label{
-            font-size:0.84rem;
-            font-weight:600;
-            color:var(--text-muted);
-        }
         .search{
             display:flex;
             gap:0.75rem;
@@ -798,56 +572,6 @@ foreach ($pipeline_assets as $pa) {
             border-color:var(--text-main);
         }
 
-        .pipeline-toolbar{
-            display:flex;
-            gap:0.75rem;
-            flex-wrap:wrap;
-            align-items:flex-start;
-            margin-bottom:0.85rem;
-        }
-        .pipeline-search-box{flex:1;min-width:220px}
-        .pipeline-filter-dropdown{position:relative;flex-shrink:0}
-        .pipeline-filter-toggle{
-            border-radius:14px;
-            padding:0.85rem 1rem;
-            font-weight:700;
-            white-space:nowrap;
-            display:inline-flex;
-            align-items:center;
-            gap:0.4rem;
-        }
-        .pipeline-filter-panel{
-            position:absolute;
-            top:calc(100% + 0.35rem);
-            right:0;
-            z-index:25;
-            background:var(--card-bg);
-            border:1px solid var(--card-border);
-            border-radius:14px;
-            padding:0.9rem 1rem;
-            box-shadow:0 10px 28px rgba(15,23,42,0.12);
-            min-width:240px;
-            display:flex;
-            flex-direction:column;
-            gap:0.75rem;
-        }
-        .pipeline-filter-panel[hidden]{display:none!important}
-        .pipeline-filter-field label{
-            display:block;
-            font-size:0.72rem;
-            font-weight:800;
-            letter-spacing:0.04em;
-            text-transform:uppercase;
-            color:var(--text-muted);
-            margin-bottom:0.35rem;
-        }
-        .pipeline-select{
-            padding:0.55rem 0.75rem;
-            font-size:0.88rem;
-            font-weight:600;
-            width:100%;
-        }
-
         .table-wrap{
             border:1px solid var(--card-border);
             border-radius:16px;
@@ -942,9 +666,6 @@ foreach ($pipeline_assets as $pa) {
         @media (max-width: 1100px){
             .main-content{padding:1.25rem 1.25rem}
         }
-        @media (max-width: 720px){
-            .stat-cards{grid-template-columns:1fr}
-        }
         @media (max-width: 900px){
             .main-content{margin-left:0;max-width:100vw}
         }
@@ -980,12 +701,10 @@ foreach ($pipeline_assets as $pa) {
     <main class="main-content">
         <header class="page-header">
             <div class="title">
-                <h1><i class="ri-calendar-check-line"></i> Daily checkout</h1>
-                <p>Search by Asset ID (laptop, network, or AV), then review the table below (filter by type).</p>
+                <h1><i class="ri-add-circle-line"></i> Add to NextCheck</h1>
+                <p>Search by asset ID, build your list, then confirm to set status <strong><?= (int)CHECKOUT_CONFIRM_TARGET_STATUS_ID ?></strong> (Active nextcheck). View all pipeline rows on <a href="nextListitem.php" style="color:var(--primary);font-weight:700">List items</a>.</p>
             </div>
-            <button class="btn btn-ghost" type="button" onclick="history.back()">
-                <i class="ri-arrow-left-line"></i> Back
-            </button>
+            <a class="btn btn-ghost" href="nextListitem.php"><i class="ri-list-check-2"></i> List items</a>
         </header>
 
         <?php if ($success_checkout): ?>
@@ -998,7 +717,7 @@ foreach ($pipeline_assets as $pa) {
         <div class="layout">
             <section class="card">
                 <div class="card-hd">
-                    <h2><i class="ri-shopping-cart-2-line"></i> Add &amp; review</h2>
+                    <h2><i class="ri-shopping-cart-2-line"></i> Add &amp; confirm</h2>
                     <div class="muted" style="font-weight:700;font-size:0.9rem">
                         In list: <span id="selectedCount">0</span>
                     </div>
@@ -1074,118 +793,6 @@ foreach ($pipeline_assets as $pa) {
                 </div>
                 </form>
             </section>
-
-            <p class="muted" style="font-size:0.78rem;margin:0 0 0.35rem;line-height:1.35">
-                NextCheck assets totals by type (status <strong>11–13</strong>). Counts follow the visible rows after search and filters.
-            </p>
-            <div class="stat-cards" aria-label="NextCheck pipeline counts by asset type">
-                <div class="stat-card stat-card--laptop">
-                    <div class="stat-card-icon" aria-hidden="true"><i class="ri-macbook-line"></i></div>
-                    <div class="stat-card-text">
-                        <span class="stat-card-value" id="countLaptop"><?= (int)$pipeline_by_class['laptop'] ?></span>
-                        <span class="stat-card-label">Laptop</span>
-                    </div>
-                </div>
-                <div class="stat-card stat-card--av">
-                    <div class="stat-card-icon" aria-hidden="true"><i class="ri-film-line"></i></div>
-                    <div class="stat-card-text">
-                        <span class="stat-card-value" id="countAv"><?= (int)$pipeline_by_class['av'] ?></span>
-                        <span class="stat-card-label">AV</span>
-                    </div>
-                </div>
-                <div class="stat-card stat-card--network">
-                    <div class="stat-card-icon" aria-hidden="true"><i class="ri-router-line"></i></div>
-                    <div class="stat-card-text">
-                        <span class="stat-card-value" id="countNetwork"><?= (int)$pipeline_by_class['network'] ?></span>
-                        <span class="stat-card-label">Network</span>
-                    </div>
-                </div>
-            </div>
-
-            <section class="card" aria-labelledby="pipeline-title">
-                <div class="card-hd">
-                    <h2 id="pipeline-title"><i class="ri-git-branch-line"></i> NextCheck pipeline</h2>
-                    <div class="muted" style="font-weight:700;font-size:0.82rem;text-align:right">
-                        <?= count($pipeline_assets) ?> in DB
-                    </div>
-                </div>
-                <div class="card-bd">
-                    <p class="muted" style="font-size:0.84rem;margin-bottom:0.75rem;line-height:1.45">
-                        Inventory rows with status <strong>Active (nextcheck)</strong>, <strong>Pending (nextcheck)</strong>, or <strong>Checkout (nextcheck)</strong>.
-                    </p>
-                    <div class="pipeline-toolbar">
-                        <div class="search-box pipeline-search-box">
-                            <i class="ri-search-line"></i>
-                            <input type="search" id="pipelineSearchInput" class="input" placeholder="Search asset ID, serial, device, status…" autocomplete="off" aria-label="Search pipeline table">
-                        </div>
-                        <div class="pipeline-filter-dropdown">
-                            <button type="button" class="btn btn-ghost pipeline-filter-toggle" id="pipelineFilterBtn" aria-expanded="false" aria-controls="pipelineFilterPanel" aria-haspopup="dialog">
-                                <i class="ri-filter-3-line"></i> Filter
-                            </button>
-                            <div class="pipeline-filter-panel" id="pipelineFilterPanel" role="dialog" aria-label="Pipeline filters" hidden>
-                                <div class="pipeline-filter-field">
-                                    <label for="pipelineStatusSelect">Status</label>
-                                    <select id="pipelineStatusSelect" class="input pipeline-select">
-                                        <option value="all">All</option>
-                                        <option value="11">Active</option>
-                                        <option value="12">Pending</option>
-                                        <option value="13">Checkout</option>
-                                    </select>
-                                </div>
-                                <div class="pipeline-filter-field">
-                                    <label for="pipelineTypeSelect">Type</label>
-                                    <select id="pipelineTypeSelect" class="input pipeline-select">
-                                        <option value="all">All</option>
-                                        <option value="laptop">Laptop</option>
-                                        <option value="av">AV</option>
-                                        <option value="network">Network</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="pipelineEmpty" class="muted" style="padding:0.35rem 0 0.65rem;<?= count($pipeline_assets) ? 'display:none' : '' ?>">
-                        No assets recorded right now.
-                    </div>
-                    <div id="pipelineEmptyFilter" class="muted" style="display:none;padding:0.35rem 0 0.65rem">
-                        Nothing matches the current filters.
-                    </div>
-                    <div class="table-wrap" id="pipelineTableWrap" style="<?= count($pipeline_assets) ? '' : 'display:none;' ?>margin-top:0.35rem">
-                        <table class="checkout-table">
-                            <thead>
-                                <tr>
-                                    <th>Type</th>
-                                    <th>Asset ID</th>
-                                    <th>Device</th>
-                                    <th>Serial</th>
-                                    <th>Status</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="pipelineTableBody">
-                                <?php foreach ($pipeline_assets as $pa):
-                                    $pcls = $pa['asset_class'];
-                                    $ptl = $pcls === 'network' ? 'Network' : ($pcls === 'av' ? 'AV' : 'Laptop');
-                                    $ptp = $pcls === 'network' ? 'type-network' : ($pcls === 'av' ? 'type-av' : 'type-laptop');
-                                    $ptitle = trim(($pa['brand'] ?? '') . ' ' . ($pa['model'] ?? '')) ?: $ptl;
-                                    $sid = (int)$pa['status_id'];
-                                ?>
-                                <tr data-pl-row="1" data-status-id="<?= $sid ?>" data-asset-type="<?= htmlspecialchars($pcls) ?>" data-asset-id="<?= (int)$pa['asset_id'] ?>">
-                                    <td><span class="pill <?= htmlspecialchars($ptp) ?>"><?= htmlspecialchars($ptl) ?></span></td>
-                                    <td><span class="cell-main"><?= (int)$pa['asset_id'] ?></span></td>
-                                    <td><div class="cell-main"><?= htmlspecialchars($ptitle) ?></div></td>
-                                    <td><?= htmlspecialchars($pa['serial'] !== '' ? $pa['serial'] : '—') ?></td>
-                                    <td><span class="pill nextcheck"><?= htmlspecialchars($pa['status'] !== '' ? $pa['status'] : '—') ?></span></td>
-                                    <td>
-                                        <button type="button" class="btn btn-danger pipeline-remove-btn" style="padding:0.35rem 0.65rem;font-size:0.78rem;font-weight:600" data-pipeline-remove="1" data-asset-class="<?= htmlspecialchars($pcls) ?>" data-asset-id="<?= (int)$pa['asset_id'] ?>">Remove</button>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
         </div>
     </main>
 
@@ -1215,9 +822,6 @@ foreach ($pipeline_assets as $pa) {
         const filterSummary = document.getElementById('filterSummary');
         const suggestBox = document.getElementById('suggestBox');
         const filterButtons = document.querySelectorAll('.checkout-type-filters [data-filter]');
-        const countLaptop = document.getElementById('countLaptop');
-        const countAv = document.getElementById('countAv');
-        const countNetwork = document.getElementById('countNetwork');
 
         let listFilter = 'all';
 
@@ -1246,27 +850,6 @@ foreach ($pipeline_assets as $pa) {
             if (['Maintenance'].includes(s)) return 'warn';
             if (['Faulty','Lost','Disposed'].includes(s)) return 'bad';
             return 'muted';
-        }
-
-        function updatePipelineStatCards() {
-            const rows = document.querySelectorAll('#pipelineTableBody tr[data-pl-row]');
-            let nL = 0, nA = 0, nN = 0;
-            rows.forEach((tr) => {
-                if (tr.style.display === 'none') {
-                    return;
-                }
-                const t = tr.getAttribute('data-asset-type') || 'laptop';
-                if (t === 'network') {
-                    nN++;
-                } else if (t === 'av') {
-                    nA++;
-                } else {
-                    nL++;
-                }
-            });
-            if (countLaptop) countLaptop.textContent = String(nL);
-            if (countAv) countAv.textContent = String(nA);
-            if (countNetwork) countNetwork.textContent = String(nN);
         }
 
         function renderSelectedList() {
@@ -1505,110 +1088,6 @@ foreach ($pipeline_assets as $pa) {
             renderSuggest([]);
             assetIdInput.focus();
             addByAssetId(id, ac);
-        });
-
-        const pipelineSearchInput = document.getElementById('pipelineSearchInput');
-        const pipelineStatusSelect = document.getElementById('pipelineStatusSelect');
-        const pipelineTypeSelect = document.getElementById('pipelineTypeSelect');
-        const pipelineFilterBtn = document.getElementById('pipelineFilterBtn');
-        const pipelineFilterPanel = document.getElementById('pipelineFilterPanel');
-        const pipelineFilterDropdown = document.querySelector('.pipeline-filter-dropdown');
-
-        function applyPipelineFilters() {
-            const tbody = document.getElementById('pipelineTableBody');
-            if (!tbody) return;
-            const plStatusFilter = pipelineStatusSelect?.value || 'all';
-            const plTypeFilter = pipelineTypeSelect?.value || 'all';
-            const q = String(pipelineSearchInput?.value || '').trim().toLowerCase();
-            const rows = tbody.querySelectorAll('tr[data-pl-row]');
-            const total = rows.length;
-            let visible = 0;
-            rows.forEach((tr) => {
-                const sid = String(tr.getAttribute('data-status-id') || '');
-                const typ = tr.getAttribute('data-asset-type') || 'laptop';
-                const okS = plStatusFilter === 'all' || sid === plStatusFilter;
-                const okT = plTypeFilter === 'all' || typ === plTypeFilter;
-                const hay = tr.textContent.replace(/\s+/g, ' ').trim().toLowerCase();
-                const okQ = q === '' || hay.includes(q);
-                const show = okS && okT && okQ;
-                tr.style.display = show ? '' : 'none';
-                if (show) visible++;
-            });
-            const empty = document.getElementById('pipelineEmpty');
-            const emptyF = document.getElementById('pipelineEmptyFilter');
-            const wrap = document.getElementById('pipelineTableWrap');
-            if (total === 0) {
-                if (empty) empty.style.display = '';
-                if (emptyF) emptyF.style.display = 'none';
-                if (wrap) wrap.style.display = 'none';
-                return;
-            }
-            if (empty) empty.style.display = 'none';
-            if (visible === 0) {
-                if (emptyF) emptyF.style.display = '';
-                if (wrap) wrap.style.display = 'none';
-            } else {
-                if (emptyF) emptyF.style.display = 'none';
-                if (wrap) wrap.style.display = '';
-            }
-            updatePipelineStatCards();
-        }
-
-        pipelineStatusSelect?.addEventListener('change', () => applyPipelineFilters());
-        pipelineTypeSelect?.addEventListener('change', () => applyPipelineFilters());
-        pipelineSearchInput?.addEventListener('input', () => applyPipelineFilters());
-
-        pipelineFilterBtn?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (!pipelineFilterPanel) return;
-            const open = pipelineFilterPanel.hidden;
-            pipelineFilterPanel.hidden = !open;
-            pipelineFilterBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-        });
-        pipelineFilterDropdown?.addEventListener('click', (e) => e.stopPropagation());
-        document.addEventListener('click', () => {
-            if (pipelineFilterPanel && !pipelineFilterPanel.hidden) {
-                pipelineFilterPanel.hidden = true;
-                pipelineFilterBtn?.setAttribute('aria-expanded', 'false');
-            }
-        });
-
-        applyPipelineFilters();
-
-        const plTableBody = document.getElementById('pipelineTableBody');
-        plTableBody?.addEventListener('click', async (e) => {
-            const btn = e.target.closest('[data-pipeline-remove]');
-            if (!btn) return;
-            const ac = btn.getAttribute('data-asset-class') || '';
-            const aid = btn.getAttribute('data-asset-id') || '';
-            const msg = ac === 'network'
-                ? 'Remove this asset from the NextCheck pipeline and set network status back to 9?'
-                : 'Remove this asset from the NextCheck pipeline and set status back to 1 (laptop / AV)?';
-            if (!window.confirm(msg)) return;
-            btn.disabled = true;
-            try {
-                const fd = new FormData();
-                fd.set('pipeline_revert', '1');
-                fd.set('asset_class', ac);
-                fd.set('asset_id', aid);
-                const res = await fetch('nextAdd.php', {
-                    method: 'POST',
-                    body: fd,
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                    cache: 'no-store'
-                });
-                const data = await res.json();
-                if (!data?.ok) {
-                    alert(data?.error || 'Could not update asset.');
-                    btn.disabled = false;
-                    return;
-                }
-                btn.closest('tr')?.remove();
-                applyPipelineFilters();
-            } catch (err) {
-                alert('Request failed.');
-                btn.disabled = false;
-            }
         });
 
         (async function bootstrapCheckoutList() {
