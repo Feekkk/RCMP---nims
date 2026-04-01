@@ -332,7 +332,7 @@ foreach ($pipeline_assets as $pa) {
     <header class="page-header">
         <div class="title">
             <h1><i class="ri-list-check-2"></i> NextCheck pipeline</h1>
-            <p>Assets in status <strong>(Active / Pending / Checkout)</strong>. Counts update when you filter the table. Add new pool items on <a href="nextAdd.php" style="color:var(--primary);font-weight:700">Add items</a>.</p>
+            <p>Assets in status <strong>(Active / Pending / Checkout)</strong>. Counts update when you filter the table.</p>
         </div>
         <a class="btn btn-ghost" href="nextAdd.php"><i class="ri-add-line"></i> Add items</a>
     </header>
