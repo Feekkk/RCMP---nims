@@ -211,6 +211,57 @@ CREATE TABLE IF NOT EXISTS handover_return (
   INDEX `idx_return_status_id` (`return_status_id`)
 );
 
+-- NextCheck: user submits request (categories only); technician assigns laptop assets (status 12 → 13 on laptop)
+CREATE TABLE IF NOT EXISTS nexcheck_request (
+  `nexcheck_id` INT(11) NOT NULL AUTO_INCREMENT,
+  `requested_by` VARCHAR(32) NOT NULL,
+  `borrow_date` DATE NOT NULL,
+  `return_date` DATE NOT NULL,
+  `program_type` VARCHAR(128) NOT NULL COMMENT 'e.g. academic project/class, Official Event, Club/Society',
+  `usage_location` VARCHAR(255) NOT NULL,
+  `reason` TEXT DEFAULT NULL,
+  `terms_accepted_at` TIMESTAMP NOT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`nexcheck_id`),
+  FOREIGN KEY (`requested_by`) REFERENCES `users`(`staff_id`),
+  INDEX `idx_nexcheck_requested_by` (`requested_by`),
+  INDEX `idx_nexcheck_borrow_date` (`borrow_date`),
+  INDEX `idx_nexcheck_return_date` (`return_date`)
+);
+
+CREATE TABLE IF NOT EXISTS nexcheck_request_item (
+  `request_item_id` INT(11) NOT NULL AUTO_INCREMENT,
+  `nexcheck_id` INT(11) NOT NULL,
+  `category` VARCHAR(128) NOT NULL COMMENT 'e.g. Laptop, Projector — user selects category only',
+  `quantity` INT UNSIGNED NOT NULL DEFAULT 1,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`request_item_id`),
+  FOREIGN KEY (`nexcheck_id`) REFERENCES `nexcheck_request`(`nexcheck_id`) ON DELETE CASCADE,
+  INDEX `idx_nexcheck_item_request` (`nexcheck_id`)
+);
+
+CREATE TABLE IF NOT EXISTS nexcheck_assignment (
+  `assignment_id` INT(11) NOT NULL AUTO_INCREMENT,
+  `nexcheck_id` INT(11) NOT NULL,
+  `request_item_id` INT(11) DEFAULT NULL,
+  `asset_id` INT(11) NOT NULL,
+  `assigned_by` VARCHAR(32) NOT NULL,
+  `assigned_at` TIMESTAMP NULL DEFAULT NULL COMMENT 'set when asset marked Pending (nextcheck) 12',
+  `checkout_at` TIMESTAMP NULL DEFAULT NULL COMMENT 'set when asset marked Checkout (nextcheck) 13',
+  `remarks` TEXT DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`assignment_id`),
+  FOREIGN KEY (`nexcheck_id`) REFERENCES `nexcheck_request`(`nexcheck_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`request_item_id`) REFERENCES `nexcheck_request_item`(`request_item_id`) ON DELETE SET NULL,
+  FOREIGN KEY (`asset_id`) REFERENCES `laptop`(`asset_id`),
+  FOREIGN KEY (`assigned_by`) REFERENCES `users`(`staff_id`),
+  UNIQUE KEY `uq_nexcheck_asset_per_request` (`nexcheck_id`, `asset_id`),
+  INDEX `idx_nexcheck_assignment_asset` (`asset_id`)
+);
+
 -- Disposal process (one disposal form can include multiple assets)
 CREATE TABLE IF NOT EXISTS disposal (
   `disposal_id` INT(11) NOT NULL AUTO_INCREMENT,
