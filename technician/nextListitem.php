@@ -437,7 +437,11 @@ foreach ($pipeline_assets as $pa) {
                                 <td><?= htmlspecialchars($pa['serial'] !== '' ? $pa['serial'] : '—') ?></td>
                                 <td><span class="pill nextcheck"><?= htmlspecialchars($pa['status'] !== '' ? $pa['status'] : '—') ?></span></td>
                                 <td>
+                                    <?php if ($sid === CHECKOUT_CONFIRM_TARGET_STATUS_ID): ?>
                                     <button type="button" class="btn btn-danger pipeline-remove-btn" style="padding:0.35rem 0.65rem;font-size:0.78rem;font-weight:600" data-pipeline-remove="1" data-asset-class="<?= htmlspecialchars($pcls) ?>" data-asset-id="<?= (int)$pa['asset_id'] ?>">Remove</button>
+                                    <?php else: ?>
+                                    <span class="muted" title="Only pool (Active) assets can be removed from the pipeline">—</span>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
