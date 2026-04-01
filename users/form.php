@@ -6,6 +6,9 @@ if (!isset($_SESSION['staff_id']) || (int)($_SESSION['role_id'] !== 3)) {
 }
 
 $userName = trim((string)($_SESSION['user_name'] ?? 'User'));
+$staffId = (string)($_SESSION['staff_id'] ?? '');
+
+require_once __DIR__ . '/../config/database.php';
 
 $equipment_catalog = [
     ['id' => 'portable_speaker', 'name' => 'Portable Speaker', 'category' => 'Audio equipment', 'icon' => 'ri-volume-up-line'],
@@ -18,6 +21,10 @@ $equipment_catalog = [
     ['id' => 'webcam', 'name' => 'Webcam', 'category' => 'Visual equipment', 'icon' => 'ri-webcam-line'],
 ];
 $equipment_ids = array_column($equipment_catalog, 'id');
+$equipment_category_label = [];
+foreach ($equipment_catalog as $eq) {
+    $equipment_category_label[$eq['id']] = $eq['name'] . ' — ' . $eq['category'];
+}
 
 $form_error = '';
 $values = [
@@ -34,9 +41,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $values['program_type'] = trim((string)($_POST['program_type'] ?? ''));
     $values['usage_location'] = trim((string)($_POST['usage_location'] ?? ''));
     $values['reason'] = trim((string)($_POST['reason'] ?? ''));
-    $items = $_POST['items'] ?? [];
-    if (!is_array($items)) { $items = []; }
-    $items = array_values(array_intersect(array_map('strval', $items), $equipment_ids));
+    $qtyPost = $_POST['qty'] ?? [];
+    if (!is_array($qtyPost)) {
+        $qtyPost = [];
+    }
+    $lineItems = [];
+    foreach ($equipment_ids as $eqId) {
+        $q = isset($qtyPost[$eqId]) ? (int)$qtyPost[$eqId] : 0;
+        if ($q < 1) {
+            continue;
+        }
+        if ($q > 99) {
+            $q = 99;
+        }
+        $lineItems[] = ['id' => $eqId, 'qty' => $q];
+    }
     $accept = isset($_POST['accept_terms']) && (string)$_POST['accept_terms'] === '1';
     $valid_programs = ['academic', 'official_event', 'club_society'];
 
@@ -50,19 +69,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $form_error = 'Please enter the usage location.';
     } elseif (mb_strlen($values['reason']) < 5) {
         $form_error = 'Please enter a reason (at least a few words).';
-    } elseif ($items === []) {
+    } elseif ($lineItems === []) {
         $form_error = 'Add at least one item to your request.';
     } elseif (!$accept) {
         $form_error = 'You must read and accept the terms and conditions.';
     }
 
     if ($form_error === '') {
-        header('Location: form.php?submitted=1');
-        exit;
+        try {
+            $pdo = db();
+            $pdo->beginTransaction();
+            $stmt = $pdo->prepare('
+                INSERT INTO nexcheck_request (
+                    requested_by, borrow_date, return_date, program_type,
+                    usage_location, reason, terms_accepted_at
+                ) VALUES (?, ?, ?, ?, ?, ?, NOW())
+            ');
+            $stmt->execute([
+                $staffId,
+                $values['borrow_date'],
+                $values['return_date'],
+                $values['program_type'],
+                $values['usage_location'],
+                $values['reason'] !== '' ? $values['reason'] : null,
+            ]);
+            $nexcheckId = (int)$pdo->lastInsertId();
+            $itemStmt = $pdo->prepare('
+                INSERT INTO nexcheck_request_item (nexcheck_id, category, quantity)
+                VALUES (?, ?, ?)
+            ');
+            foreach ($lineItems as $row) {
+                $label = $equipment_category_label[$row['id']] ?? $row['id'];
+                for ($u = 0; $u < $row['qty']; $u++) {
+                    $itemStmt->execute([$nexcheckId, $label, 1]);
+                }
+            }
+            $pdo->commit();
+            header('Location: form.php?submitted=1');
+            exit;
+        } catch (PDOException $e) {
+            if (isset($pdo) && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $form_error = 'Could not save your request. Please try again or contact support.';
+        }
     }
 }
 
 $submitted_ok = isset($_GET['submitted']) && (string)$_GET['submitted'] === '1';
+
+$initial_qty = [];
+if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
+    foreach ($equipment_ids as $eqId) {
+        $q = isset($_POST['qty'][$eqId]) ? (int)$_POST['qty'][$eqId] : 0;
+        if ($q > 0) {
+            $initial_qty[$eqId] = min(99, max(1, $q));
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -409,15 +473,23 @@ $submitted_ok = isset($_GET['submitted']) && (string)$_GET['submitted'] === '1';
             border: 2px solid var(--card-border);
             border-radius: 16px;
             padding: 1rem;
+            padding-bottom: 0.85rem;
             background: var(--glass);
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.65rem;
+            transition: all 0.2s cubic-bezier(.4,0,.2,1);
+            position: relative;
+            overflow: hidden;
+        }
+        .eq-card-main {
             display: flex;
             flex-direction: column;
             align-items: flex-start;
             gap: 0.55rem;
-            cursor: pointer;
-            transition: all 0.2s cubic-bezier(.4,0,.2,1);
             position: relative;
-            overflow: hidden;
+            z-index: 1;
         }
         .eq-card::before {
             content: '';
@@ -426,6 +498,7 @@ $submitted_ok = isset($_GET['submitted']) && (string)$_GET['submitted'] === '1';
             background: linear-gradient(135deg, rgba(37,99,235,0.08), transparent);
             opacity: 0;
             transition: opacity 0.2s;
+            pointer-events: none;
         }
         .eq-card:hover { border-color: rgba(37,99,235,0.3); transform: translateY(-1px); }
         .eq-card:hover::before { opacity: 1; }
@@ -457,9 +530,54 @@ $submitted_ok = isset($_GET['submitted']) && (string)$_GET['submitted'] === '1';
             opacity: 0;
             transform: scale(0.6);
             transition: all 0.2s cubic-bezier(.4,0,.2,1);
+            pointer-events: none;
+            z-index: 2;
         }
         .eq-check i { font-size: 0.8rem; color: #fff; }
         .eq-card.in-cart .eq-check { opacity: 1; transform: scale(1); }
+        .eq-qty-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem;
+            margin-top: auto;
+            padding-top: 0.5rem;
+            border-top: 1px solid var(--card-border);
+            position: relative;
+            z-index: 1;
+        }
+        .eq-card.in-cart .eq-qty-row { border-top-color: rgba(37,99,235,0.2); }
+        .eq-qty-btn {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            border: 1px solid var(--card-border);
+            background: var(--card-bg);
+            color: var(--text-main);
+            font-size: 1.15rem;
+            font-weight: 600;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .eq-qty-btn:hover {
+            border-color: var(--primary);
+            background: rgba(37,99,235,0.08);
+        }
+        .eq-qty-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+        .eq-qty-val {
+            min-width: 2rem;
+            text-align: center;
+            font-weight: 800;
+            font-size: 0.95rem;
+            font-variant-numeric: tabular-nums;
+        }
 
         /* ── Selected items summary ── */
         .selected-summary {
@@ -472,8 +590,8 @@ $submitted_ok = isset($_GET['submitted']) && (string)$_GET['submitted'] === '1';
         .sel-chip {
             display: inline-flex;
             align-items: center;
-            gap: 0.35rem;
-            padding: 0.3rem 0.6rem 0.3rem 0.5rem;
+            gap: 0.4rem;
+            padding: 0.35rem 0.5rem 0.35rem 0.65rem;
             background: rgba(37,99,235,0.1);
             border: 1px solid rgba(37,99,235,0.25);
             border-radius: 20px;
@@ -481,6 +599,26 @@ $submitted_ok = isset($_GET['submitted']) && (string)$_GET['submitted'] === '1';
             font-weight: 600;
             color: var(--primary-dark);
         }
+        .sel-chip .chip-qty-btns {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.15rem;
+            margin-left: 0.15rem;
+        }
+        .sel-chip .chip-qty-btns button {
+            width: 26px;
+            height: 26px;
+            border-radius: 8px;
+            border: none;
+            background: rgba(37,99,235,0.15);
+            color: var(--primary-dark);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+        .sel-chip .chip-qty-btns button:hover { background: rgba(37,99,235,0.28); }
         .sel-chip button {
             background: none;
             border: none;
@@ -571,6 +709,11 @@ $submitted_ok = isset($_GET['submitted']) && (string)$_GET['submitted'] === '1';
             flex-wrap: wrap;
             gap: 0.4rem;
             margin-top: 0.35rem;
+        }
+        .review-item-badge .riv-qty {
+            font-weight: 800;
+            opacity: 0.85;
+            margin-left: 0.25rem;
         }
         .review-item-badge {
             background: rgba(37,99,235,0.1);
@@ -762,15 +905,22 @@ $submitted_ok = isset($_GET['submitted']) && (string)$_GET['submitted'] === '1';
                         </div>
                         <div class="card-bd">
                             <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1.1rem;line-height:1.5">
-                                Tap each item to add it to your request. Multiple items are allowed.
+                                Use <strong>+</strong> and <strong>−</strong> to set how many you need for each type. You can request more than one of the same category.
                             </p>
                             <div class="equipment-grid" id="equipmentGrid">
                                 <?php foreach ($equipment_catalog as $eq): ?>
-                                <div class="eq-card" data-eq-id="<?= htmlspecialchars($eq['id']) ?>" role="button" tabindex="0" aria-pressed="false">
-                                    <div class="eq-check"><i class="ri-check-line"></i></div>
-                                    <div class="eq-icon"><i class="<?= htmlspecialchars($eq['icon']) ?>"></i></div>
-                                    <div class="eq-name"><?= htmlspecialchars($eq['name']) ?></div>
-                                    <div class="eq-cat"><?= htmlspecialchars($eq['category']) ?></div>
+                                <div class="eq-card" data-eq-id="<?= htmlspecialchars($eq['id']) ?>">
+                                    <div class="eq-check" aria-hidden="true"><i class="ri-check-line"></i></div>
+                                    <div class="eq-card-main">
+                                        <div class="eq-icon"><i class="<?= htmlspecialchars($eq['icon']) ?>"></i></div>
+                                        <div class="eq-name"><?= htmlspecialchars($eq['name']) ?></div>
+                                        <div class="eq-cat"><?= htmlspecialchars($eq['category']) ?></div>
+                                    </div>
+                                    <div class="eq-qty-row">
+                                        <button type="button" class="eq-qty-btn" data-eq-delta="-1" aria-label="Decrease quantity">−</button>
+                                        <span class="eq-qty-val" data-eq-qty-display>0</span>
+                                        <button type="button" class="eq-qty-btn" data-eq-delta="1" aria-label="Increase quantity">+</button>
+                                    </div>
                                 </div>
                                 <?php endforeach; ?>
                             </div>
@@ -897,7 +1047,8 @@ $submitted_ok = isset($_GET['submitted']) && (string)$_GET['submitted'] === '1';
         var byId = {};
         catalog.forEach(function (e) { byId[e.id] = e; });
 
-        var cart = new Set();
+        var MAX_QTY = 99;
+        var cart = new Map();
         var currentStep = 1;
         var totalSteps = 4;
 
@@ -957,9 +1108,15 @@ $submitted_ok = isset($_GET['submitted']) && (string)$_GET['submitted'] === '1';
             goToStep(2);
         });
 
+        function cartTotalUnits() {
+            var t = 0;
+            cart.forEach(function (q) { t += q; });
+            return t;
+        }
+
         // ── Step 2 validation ──
         document.getElementById('next2').addEventListener('click', function () {
-            if (cart.size === 0) { alert('Please add at least one item to your request.'); return; }
+            if (cartTotalUnits() < 1) { alert('Please add at least one item to your request.'); return; }
             goToStep(3);
         });
 
@@ -984,14 +1141,34 @@ $submitted_ok = isset($_GET['submitted']) && (string)$_GET['submitted'] === '1';
         // init
         next3Btn.disabled = !acceptTerms.checked;
 
-        // ── Equipment toggle ──
+        function getQty(id) {
+            return cart.get(id) || 0;
+        }
+
+        function setQty(id, q) {
+            q = parseInt(q, 10);
+            if (isNaN(q) || q < 1) {
+                cart.delete(id);
+            } else {
+                cart.set(id, Math.min(MAX_QTY, q));
+            }
+            updateEquipmentCards();
+            renderSummaryChips();
+            syncHidden();
+        }
+
+        function addDelta(id, delta) {
+            var q = getQty(id) + delta;
+            setQty(id, q);
+        }
+
         function syncHidden() {
             hiddenWrap.innerHTML = '';
-            cart.forEach(function (id) {
+            cart.forEach(function (q, id) {
                 var inp = document.createElement('input');
                 inp.type = 'hidden';
-                inp.name = 'items[]';
-                inp.value = id;
+                inp.name = 'qty[' + id + ']';
+                inp.value = String(q);
                 hiddenWrap.appendChild(inp);
             });
         }
@@ -1002,19 +1179,32 @@ $submitted_ok = isset($_GET['submitted']) && (string)$_GET['submitted'] === '1';
                 summaryWrap.innerHTML = '<span class="empty-chips">No items selected yet</span>';
                 return;
             }
-            cart.forEach(function (id) {
+            cart.forEach(function (qty, id) {
                 var e = byId[id];
                 if (!e) return;
                 var chip = document.createElement('span');
                 chip.className = 'sel-chip';
-                chip.innerHTML = escapeHtml(e.name) +
-                    '<button type="button" aria-label="Remove ' + escapeHtml(e.name) + '">' +
-                    '<i class="ri-close-line"></i></button>';
-                chip.querySelector('button').addEventListener('click', function () {
-                    cart.delete(id);
-                    updateEquipmentCards();
-                    renderSummaryChips();
-                    syncHidden();
+                var wrap = document.createElement('span');
+                wrap.textContent = e.name + ' × ' + qty;
+                chip.appendChild(wrap);
+                var btns = document.createElement('span');
+                btns.className = 'chip-qty-btns';
+                btns.innerHTML =
+                    '<button type="button" data-chip-delta="-1" aria-label="Decrease"><i class="ri-subtract-line"></i></button>' +
+                    '<button type="button" data-chip-delta="1" aria-label="Increase"><i class="ri-add-line"></i></button>' +
+                    '<button type="button" data-chip-remove aria-label="Remove ' + escapeHtml(e.name) + '"><i class="ri-close-line"></i></button>';
+                chip.appendChild(btns);
+                btns.querySelector('[data-chip-delta="-1"]').addEventListener('click', function (ev) {
+                    ev.stopPropagation();
+                    addDelta(id, -1);
+                });
+                btns.querySelector('[data-chip-delta="1"]').addEventListener('click', function (ev) {
+                    ev.stopPropagation();
+                    addDelta(id, 1);
+                });
+                btns.querySelector('[data-chip-remove]').addEventListener('click', function (ev) {
+                    ev.stopPropagation();
+                    setQty(id, 0);
                 });
                 summaryWrap.appendChild(chip);
             });
@@ -1023,25 +1213,50 @@ $submitted_ok = isset($_GET['submitted']) && (string)$_GET['submitted'] === '1';
         function updateEquipmentCards() {
             document.querySelectorAll('.eq-card').forEach(function (card) {
                 var id = card.getAttribute('data-eq-id');
-                var inCart = cart.has(id);
-                card.classList.toggle('in-cart', inCart);
-                card.setAttribute('aria-pressed', inCart ? 'true' : 'false');
+                var q = getQty(id);
+                card.classList.toggle('in-cart', q > 0);
+                var disp = card.querySelector('[data-eq-qty-display]');
+                if (disp) disp.textContent = String(q);
+                var minus = card.querySelector('[data-eq-delta="-1"]');
+                var plus = card.querySelector('[data-eq-delta="1"]');
+                if (minus) minus.disabled = q < 1;
+                if (plus) plus.disabled = q >= MAX_QTY;
             });
         }
 
-        document.querySelectorAll('.eq-card').forEach(function (card) {
-            function toggle() {
+        function eventElement(ev) {
+            var t = ev.target;
+            return (t && t.nodeType === 1) ? t : (t && t.parentElement) || null;
+        }
+
+        document.querySelectorAll('.eq-card .eq-qty-btn').forEach(function (btn) {
+            btn.addEventListener('click', function (ev) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                var card = btn.closest('.eq-card');
+                if (!card) return;
                 var id = card.getAttribute('data-eq-id');
-                if (cart.has(id)) { cart.delete(id); } else { cart.add(id); }
-                updateEquipmentCards();
-                renderSummaryChips();
-                syncHidden();
-            }
-            card.addEventListener('click', toggle);
-            card.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+                var d = parseInt(btn.getAttribute('data-eq-delta'), 10);
+                if (!id || (d !== 1 && d !== -1)) return;
+                addDelta(id, d);
             });
         });
+
+        var equipmentGridEl = document.getElementById('equipmentGrid');
+        if (equipmentGridEl) {
+            equipmentGridEl.addEventListener('click', function (ev) {
+                var el = eventElement(ev);
+                if (!el) return;
+                if (el.closest('.eq-qty-btn')) return;
+                var main = el.closest('.eq-card-main');
+                if (!main) return;
+                var card2 = main.closest('.eq-card');
+                var id2 = card2 && card2.getAttribute('data-eq-id');
+                if (id2 && getQty(id2) < MAX_QTY) {
+                    addDelta(id2, 1);
+                }
+            });
+        }
 
         // ── Populate review page ──
         function populateReview() {
@@ -1062,12 +1277,16 @@ $submitted_ok = isset($_GET['submitted']) && (string)$_GET['submitted'] === '1';
             if (cart.size === 0) {
                 revItems.innerHTML = '<span style="font-size:0.82rem;color:var(--text-muted)">No items selected</span>';
             } else {
-                cart.forEach(function (id) {
+                cart.forEach(function (qty, id) {
                     var e = byId[id];
                     if (!e) return;
                     var badge = document.createElement('span');
                     badge.className = 'review-item-badge';
-                    badge.textContent = e.name;
+                    badge.appendChild(document.createTextNode(e.name));
+                    var qspan = document.createElement('span');
+                    qspan.className = 'riv-qty';
+                    qspan.textContent = '×' + qty;
+                    badge.appendChild(qspan);
                     revItems.appendChild(badge);
                 });
             }
@@ -1077,19 +1296,16 @@ $submitted_ok = isset($_GET['submitted']) && (string)$_GET['submitted'] === '1';
             return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
 
-        // ── Restore from PHP error ──
-        var initialCart = <?= json_encode(array_values(array_intersect(
-            ($form_error !== '' && isset($_POST['items']) && is_array($_POST['items']))
-                ? array_map('strval', $_POST['items'])
-                : [],
-            $equipment_ids
-        )), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-        initialCart.forEach(function (id) { cart.add(id); });
-        if (initialCart.length) {
-            updateEquipmentCards();
+        var initialQty = <?= json_encode($initial_qty, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+        Object.keys(initialQty).forEach(function (id) {
+            var q = parseInt(initialQty[id], 10);
+            if (q > 0 && byId[id]) cart.set(id, Math.min(MAX_QTY, q));
+        });
+        if (cart.size > 0) {
             renderSummaryChips();
             syncHidden();
         }
+        updateEquipmentCards();
 
         // If there was a PHP-side error, jump to the relevant step
         <?php if ($form_error !== ''): ?>
