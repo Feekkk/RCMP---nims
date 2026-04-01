@@ -250,6 +250,9 @@ CREATE TABLE IF NOT EXISTS nexcheck_assignment (
   `assigned_by` VARCHAR(32) NOT NULL,
   `assigned_at` TIMESTAMP NULL DEFAULT NULL COMMENT 'set when asset marked Pending (nextcheck) 12',
   `checkout_at` TIMESTAMP NULL DEFAULT NULL COMMENT 'set when asset marked Checkout (nextcheck) 13',
+  `returned_at` TIMESTAMP NULL DEFAULT NULL COMMENT 'technician checked equipment back in',
+  `return_condition` VARCHAR(512) DEFAULT NULL COMMENT 'physical condition / notes at return',
+  `returned_by` VARCHAR(32) DEFAULT NULL,
   `remarks` TEXT DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -258,8 +261,10 @@ CREATE TABLE IF NOT EXISTS nexcheck_assignment (
   FOREIGN KEY (`request_item_id`) REFERENCES `nexcheck_request_item`(`request_item_id`) ON DELETE SET NULL,
   FOREIGN KEY (`asset_id`) REFERENCES `laptop`(`asset_id`),
   FOREIGN KEY (`assigned_by`) REFERENCES `users`(`staff_id`),
+  FOREIGN KEY (`returned_by`) REFERENCES `users`(`staff_id`),
   UNIQUE KEY `uq_nexcheck_asset_per_request` (`nexcheck_id`, `asset_id`),
-  INDEX `idx_nexcheck_assignment_asset` (`asset_id`)
+  INDEX `idx_nexcheck_assignment_asset` (`asset_id`),
+  INDEX `idx_nexcheck_assignment_returned` (`returned_at`)
 );
 
 -- Disposal process (one disposal form can include multiple assets)
