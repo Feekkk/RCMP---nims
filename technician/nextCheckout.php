@@ -34,7 +34,12 @@ try {
             u.full_name AS requester_name,
             u.email AS requester_email,
             (SELECT COUNT(*) FROM nexcheck_request_item i WHERE i.nexcheck_id = r.nexcheck_id) AS item_count,
-            (SELECT COUNT(*) FROM nexcheck_assignment a WHERE a.nexcheck_id = r.nexcheck_id) AS assigned_count
+            (SELECT COUNT(*) FROM nexcheck_assignment a WHERE a.nexcheck_id = r.nexcheck_id) AS assigned_count,
+            (SELECT COUNT(*) FROM nexcheck_assignment a
+                INNER JOIN laptop l ON l.asset_id = a.asset_id
+                WHERE a.nexcheck_id = r.nexcheck_id
+                  AND a.returned_at IS NULL
+                  AND l.status_id = 13) AS returnable_count
         FROM nexcheck_request r
         JOIN users u ON u.staff_id = r.requested_by
         ORDER BY r.created_at DESC
@@ -197,6 +202,17 @@ try {
             text-decoration: none;
         }
         .link-row:hover { text-decoration: underline; }
+        .req-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 0.4rem; }
+        .link-return {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-weight: 700;
+            color: #047857;
+            text-decoration: none;
+            font-size: 0.84rem;
+        }
+        .link-return:hover { text-decoration: underline; }
         .empty-state {
             padding: 2.5rem 1.5rem;
             text-align: center;
@@ -212,7 +228,7 @@ try {
     <header class="page-header">
         <div>
             <h1><i class="ri-file-list-3-line"></i> User requests</h1>
-            <p>Equipment requests from NextCheck users. Assign pool laptops (status <strong>11</strong>) — they become <strong>Checkout (nextcheck)</strong> (<strong>13</strong>) when saved.</p>
+            <p>Equipment requests from NextCheck users. Assign pool laptops as they become <strong>Checkout (nextcheck)</strong> when saved.</p>
         </div>
         <a class="btn-ghost" href="nextAdd.php"><i class="ri-arrow-left-line"></i> Add items</a>
     </header>
@@ -239,7 +255,7 @@ try {
                             <th>Program / location</th>
                             <th>Progress</th>
                             <th>Submitted</th>
-                            <th></th>
+                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -247,6 +263,7 @@ try {
                         $nid = (int)$row['nexcheck_id'];
                         $ic = (int)$row['item_count'];
                         $ac = (int)$row['assigned_count'];
+                        $ret = (int)($row['returnable_count'] ?? 0);
                         if ($ic === 0) {
                             $pill = 'empty';
                             $plabel = 'No lines';
@@ -276,10 +293,15 @@ try {
                                 <div class="cell-muted" style="margin-top:0.35rem"><?= $ac ?> / <?= $ic ?> units</div>
                             </td>
                             <td class="cell-muted"><?= htmlspecialchars((string)$row['created_at']) ?></td>
-                            <td>
+                            <td class="req-actions">
                                 <a class="link-row" href="nextItems.php?nexcheck_id=<?= $nid ?>">
                                     Assign <i class="ri-arrow-right-s-line"></i>
                                 </a>
+                                <?php if ($ret > 0): ?>
+                                <a class="link-return" href="nextItems.php?nexcheck_id=<?= $nid ?>#nexcheck-return">
+                                    <i class="ri-arrow-go-back-line"></i> Return (<?= $ret ?>)
+                                </a>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
