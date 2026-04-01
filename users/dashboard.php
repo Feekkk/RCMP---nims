@@ -441,7 +441,7 @@ $firstName = $userName !== '' ? preg_split('/\s+/', $userName, 2)[0] : 'User';
             <i class="ri-customer-service-2-line"></i>
             <div>
                 <strong>Need help?</strong>
-                For questions, account issues, or checkout support, please contact <strong>staff from the IT department</strong> (UniKL RCMP). They can assist with form problems, asset status, and next steps after you submit.
+                For questions, account issues, or checkout support, please contact <strong>staff from the IT department</strong> (UniKL RCMP) or email to <a href="mailto:it.rcmp@unikl.edu.my">it.rcmp@unikl.edu.my</a>
             </div>
         </div>
 
