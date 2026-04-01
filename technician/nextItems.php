@@ -9,52 +9,10 @@ require_once __DIR__ . '/../config/database.php';
 
 const NEXCHECK_POOL_STATUS = 11;
 const NEXCHECK_ASSIGN_TARGET_STATUS = 13;
+const NEXCHECK_RETURN_FROM_STATUS = 13;
+const NEXCHECK_RETURN_TO_STATUS = 11;
 
 $staffId = (string)($_SESSION['staff_id'] ?? '');
-
-if (isset($_GET['suggest_q'])) {
-    header('Content-Type: application/json; charset=utf-8');
-    $q = trim((string)$_GET['suggest_q']);
-    if ($q === '' || mb_strlen($q) > 64) {
-        echo json_encode(['ok' => true, 'items' => []]);
-        exit;
-    }
-    $esc  = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q);
-    $like = '%' . $esc . '%';
-    try {
-        $pdo   = db();
-        $parts = ['l.serial_num LIKE ?', 'l.brand LIKE ?', 'l.model LIKE ?', 'IFNULL(l.category,\'\') LIKE ?'];
-        $params = [NEXCHECK_POOL_STATUS, $like, $like, $like, $like];
-        if (ctype_digit($q)) {
-            array_unshift($parts, 'CAST(l.asset_id AS CHAR) LIKE ?');
-            array_splice($params, 1, 0, [$q . '%']);
-        }
-        $sql = 'SELECT l.asset_id, l.serial_num, l.brand, l.model, l.category FROM laptop l
-                WHERE l.status_id = ? AND (' . implode(' OR ', $parts) . ')
-                ORDER BY l.asset_id DESC LIMIT 16';
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $items_suggest = [];
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $aid   = (int)$r['asset_id'];
-            $label = '#' . $aid;
-            $bm    = trim((string)$r['brand'] . ' ' . (string)$r['model']);
-            if ($bm !== '') { $label .= ' — ' . $bm; }
-            if ((string)$r['serial_num'] !== '') { $label .= ' · ' . (string)$r['serial_num']; }
-            $items_suggest[] = [
-                'asset_id' => $aid, 'label' => $label,
-                'serial'   => (string)($r['serial_num'] ?? ''),
-                'brand'    => (string)($r['brand']      ?? ''),
-                'model'    => (string)($r['model']      ?? ''),
-                'category' => (string)($r['category']   ?? ''),
-            ];
-        }
-        echo json_encode(['ok' => true, 'items' => $items_suggest], JSON_UNESCAPED_UNICODE);
-    } catch (Throwable $e) {
-        echo json_encode(['ok' => false, 'error' => 'Lookup failed', 'items' => []]);
-    }
-    exit;
-}
 
 function nexcheck_format_program(string $p): string {
     return match ($p) {
@@ -68,8 +26,81 @@ function nexcheck_format_program(string $p): string {
 $nexcheckId = isset($_GET['nexcheck_id']) ? (int)$_GET['nexcheck_id'] : 0;
 if ($nexcheckId < 1) { header('Location: nextCheckout.php'); exit; }
 
-$form_error = '';
-$success    = isset($_GET['saved']) && (string)$_GET['saved'] === '1';
+$form_error   = '';
+$return_error = '';
+$success      = isset($_GET['saved']) && (string)$_GET['saved'] === '1';
+$return_ok    = isset($_GET['returned']) && (string)$_GET['returned'] === '1';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_returns'])) {
+    $postNex = isset($_POST['nexcheck_id']) ? (int)$_POST['nexcheck_id'] : 0;
+    $conds   = $_POST['return_cond'] ?? [];
+    if (!is_array($conds)) {
+        $conds = [];
+    }
+    if ($postNex < 1 || $postNex !== $nexcheckId) {
+        $return_error = 'Invalid request.';
+    } else {
+        $toProcess = [];
+        foreach ($conds as $aidKey => $text) {
+            $aid = (int)$aidKey;
+            $c   = trim((string)$text);
+            if ($aid < 1 || $c === '' || mb_strlen($c) < 2) {
+                continue;
+            }
+            if (mb_strlen($c) > 500) {
+                $c = mb_substr($c, 0, 500);
+            }
+            $toProcess[$aid] = $c;
+        }
+        if ($toProcess === []) {
+            $return_error = 'Enter a condition (at least 2 characters) for at least one checkout item to return.';
+        } else {
+            try {
+                $pdo = db();
+                $pdo->beginTransaction();
+                $stmtLock = $pdo->prepare('
+                    SELECT a.assignment_id, a.nexcheck_id, a.asset_id, a.returned_at, l.status_id AS laptop_status_id
+                    FROM nexcheck_assignment a
+                    INNER JOIN laptop l ON l.asset_id = a.asset_id
+                    WHERE a.assignment_id = ?
+                    FOR UPDATE
+                ');
+                $stmtUpA = $pdo->prepare('
+                    UPDATE nexcheck_assignment
+                    SET returned_at = NOW(), return_condition = ?, returned_by = ?
+                    WHERE assignment_id = ? AND nexcheck_id = ? AND returned_at IS NULL
+                ');
+                $stmtUpL = $pdo->prepare('UPDATE laptop SET status_id = ? WHERE asset_id = ?');
+                foreach ($toProcess as $assignId => $condText) {
+                    $stmtLock->execute([$assignId]);
+                    $row = $stmtLock->fetch(PDO::FETCH_ASSOC);
+                    if (!$row || (int)$row['nexcheck_id'] !== $nexcheckId) {
+                        throw new RuntimeException('Invalid assignment.');
+                    }
+                    if ($row['returned_at'] !== null && $row['returned_at'] !== '') {
+                        throw new RuntimeException('Assignment #' . $assignId . ' was already returned.');
+                    }
+                    if ((int)$row['laptop_status_id'] !== NEXCHECK_RETURN_FROM_STATUS) {
+                        throw new RuntimeException('Asset #' . (int)$row['asset_id'] . ' is not in checkout (status ' . NEXCHECK_RETURN_FROM_STATUS . ').');
+                    }
+                    $stmtUpA->execute([$condText, $staffId, $assignId, $nexcheckId]);
+                    if ($stmtUpA->rowCount() !== 1) {
+                        throw new RuntimeException('Could not update assignment #' . $assignId . '.');
+                    }
+                    $stmtUpL->execute([NEXCHECK_RETURN_TO_STATUS, (int)$row['asset_id']]);
+                }
+                $pdo->commit();
+                header('Location: nextItems.php?nexcheck_id=' . $nexcheckId . '&returned=1#nexcheck-return');
+                exit;
+            } catch (Throwable $e) {
+                if (isset($pdo) && $pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $return_error = $e->getMessage();
+            }
+        }
+    }
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_assignments'])) {
     $postNex = isset($_POST['nexcheck_id']) ? (int)$_POST['nexcheck_id'] : 0;
@@ -136,7 +167,19 @@ try {
     $request = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$request) { header('Location: nextCheckout.php'); exit; }
 
-    $stmtI = $pdo->prepare('SELECT i.request_item_id, i.category, i.quantity, a.assignment_id, a.asset_id AS assigned_asset_id, a.assigned_at, l.serial_num AS assigned_serial, l.brand AS assigned_brand, l.model AS assigned_model FROM nexcheck_request_item i LEFT JOIN nexcheck_assignment a ON a.request_item_id = i.request_item_id LEFT JOIN laptop l ON l.asset_id = a.asset_id WHERE i.nexcheck_id = ? ORDER BY i.request_item_id ASC');
+    $stmtI = $pdo->prepare('
+        SELECT
+            i.request_item_id, i.category, i.quantity,
+            a.assignment_id, a.asset_id AS assigned_asset_id, a.assigned_at,
+            a.returned_at, a.return_condition,
+            l.serial_num AS assigned_serial, l.brand AS assigned_brand, l.model AS assigned_model,
+            l.status_id AS laptop_status_id
+        FROM nexcheck_request_item i
+        LEFT JOIN nexcheck_assignment a ON a.request_item_id = i.request_item_id
+        LEFT JOIN laptop l ON l.asset_id = a.asset_id
+        WHERE i.nexcheck_id = ?
+        ORDER BY i.request_item_id ASC
+    ');
     $stmtI->execute([$nexcheckId]);
     $items = $stmtI->fetchAll(PDO::FETCH_ASSOC);
 
@@ -145,9 +188,18 @@ try {
     $pool = $stmtP->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) { $request = null; }
 
-$needCount  = 0; $doneCount = 0;
+$needCount  = 0; $doneCount = 0; $returnableCount = 0;
 foreach ($items as $it) {
-    if (empty($it['assignment_id'])) { $needCount++; } else { $doneCount++; }
+    if (empty($it['assignment_id'])) {
+        $needCount++;
+    } else {
+        $doneCount++;
+        $hasRet = !empty($it['returned_at']);
+        $sid    = isset($it['laptop_status_id']) ? (int)$it['laptop_status_id'] : 0;
+        if (!$hasRet && $sid === NEXCHECK_RETURN_FROM_STATUS) {
+            $returnableCount++;
+        }
+    }
 }
 $totalItems = count($items);
 $allDone    = $needCount === 0 && $totalItems > 0;
@@ -296,6 +348,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
         .ps-num.c-total { color: var(--primary); }
         .ps-num.c-done  { color: var(--success); }
         .ps-num.c-need  { color: var(--warning); }
+        .ps-num.c-return { color: #7c3aed; }
         .divider-v { width: 1px; height: 38px; background: var(--card-border); flex-shrink: 0; }
         .progress-bar-wrap { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 0.4rem; }
         .progress-bar-track { height: 8px; border-radius: 99px; background: var(--card-border); overflow: hidden; }
@@ -435,11 +488,10 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
         }
         .ap-serial { font-weight: 500; opacity: 0.8; font-size: 0.76rem; }
 
-        /* ── Asset picker ── */
-        .asset-pick { position: relative; }
-        .asset-pick-input {
+        .asset-select-wrap { width: 100%; max-width: 22rem; }
+        .asset-select {
             width: 100%;
-            padding: 0.6rem 0.9rem;
+            padding: 0.6rem 2rem 0.6rem 0.9rem;
             border-radius: 12px;
             border: 1.5px solid var(--card-border);
             font-family: inherit;
@@ -447,50 +499,20 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
             font-weight: 500;
             background: #fff;
             color: var(--text-main);
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.65rem center;
             transition: border-color 0.2s, box-shadow 0.2s;
         }
-        .asset-pick-input:focus {
+        .asset-select:focus {
             outline: none;
             border-color: rgba(37,99,235,0.5);
             box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
         }
-        .asset-pick-input::placeholder { color: var(--text-muted); font-weight: 400; }
-        .asset-suggest {
-            position: absolute;
-            left: 0; right: 0;
-            top: calc(100% + 6px);
-            z-index: 40;
-            background: #fff;
-            border: 1.5px solid var(--card-border);
-            border-radius: 14px;
-            box-shadow: 0 16px 36px rgba(15,23,42,0.13);
-            max-height: 260px;
-            overflow-y: auto;
-            display: none;
-        }
-        .asset-suggest.open { display: block; }
-        .asset-suggest button {
-            display: flex;
-            flex-direction: column;
-            width: 100%;
-            text-align: left;
-            padding: 0.65rem 0.9rem;
-            border: none;
-            border-bottom: 1px solid var(--card-border);
-            background: transparent;
-            font-family: inherit;
-            font-size: 0.84rem;
-            font-weight: 600;
-            cursor: pointer;
-            color: var(--text-main);
-            line-height: 1.3;
-            transition: background 0.15s;
-        }
-        .asset-suggest button:last-child { border-bottom: none; }
-        .asset-suggest button:hover { background: rgba(37,99,235,0.06); }
-        .suggest-muted { font-size: 0.72rem; font-weight: 500; color: var(--text-muted); margin-top: 0.1rem; }
-        .suggest-empty { padding: 0.75rem 0.9rem; font-size: 0.82rem; color: var(--text-muted); font-style: italic; }
-        .asset-pick-hint { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.35rem; display: flex; align-items: center; gap: 0.3rem; }
+        .asset-select option:disabled { color: var(--text-muted); }
+        .asset-select-hint { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.35rem; display: flex; align-items: center; gap: 0.3rem; }
 
         /* Status badge */
         .status-badge {
@@ -534,6 +556,37 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
         .btn-primary:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
         .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; transform: none; }
         .footer-note { font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; }
+
+        #nexcheck-return { scroll-margin-top: 1rem; }
+        .return-row {
+            display: grid;
+            grid-template-columns: 1fr minmax(180px, 1.2fr);
+            gap: 1rem;
+            align-items: start;
+            padding: 1rem 1.4rem;
+            border-bottom: 1px solid var(--card-border);
+        }
+        .return-row:last-of-type { border-bottom: none; }
+        @media (max-width: 700px) { .return-row { grid-template-columns: 1fr; } }
+        .return-asset-label { font-weight: 700; font-size: 0.88rem; }
+        .return-asset-sub { font-size: 0.76rem; color: var(--text-muted); margin-top: 0.25rem; }
+        .cond-input {
+            width: 100%;
+            min-height: 4rem;
+            padding: 0.65rem 0.85rem;
+            border-radius: 10px;
+            border: 1.5px solid var(--card-border);
+            font-family: inherit;
+            font-size: 0.84rem;
+            resize: vertical;
+        }
+        .cond-input:focus {
+            outline: none;
+            border-color: rgba(37,99,235,0.45);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+        }
+        .status-badge.returned { color: #0369a1; }
+        .status-badge.checkout { color: #7c3aed; }
     </style>
 </head>
 <body>
@@ -571,6 +624,18 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
             <div><?= htmlspecialchars($form_error) ?></div>
         </div>
     <?php endif; ?>
+    <?php if ($return_ok): ?>
+        <div class="banner banner-success">
+            <i class="ri-checkbox-circle-line"></i>
+            <div><strong>Return recorded.</strong> Asset(s) are back in pool (status <?= NEXCHECK_RETURN_TO_STATUS ?>).</div>
+        </div>
+    <?php endif; ?>
+    <?php if ($return_error !== ''): ?>
+        <div class="banner banner-error">
+            <i class="ri-error-warning-line"></i>
+            <div><?= htmlspecialchars($return_error) ?></div>
+        </div>
+    <?php endif; ?>
 
     <!-- Progress -->
     <?php if ($totalItems > 0): ?>
@@ -585,9 +650,9 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
             <span class="ps-label">Assigned</span>
         </div>
         <div class="divider-v"></div>
-        <div class="progress-stat">
-            <span class="ps-num c-need"><?= $needCount ?></span>
-            <span class="ps-label">Pending</span>
+        <div class="progress-stat" title="Assigned laptops still in checkout — not yet returned to pool">
+            <span class="ps-num c-return"><?= $returnableCount ?></span>
+            <span class="ps-label">To return</span>
         </div>
         <div class="divider-v"></div>
         <div class="progress-bar-wrap">
@@ -657,7 +722,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                     <?php endif; ?>
                 </div>
                 <p style="font-size:0.82rem;color:var(--text-muted);line-height:1.55;margin-bottom:0.85rem">
-                    Only <strong>Active (nextcheck)</strong> laptops appear in search suggestions below.
+                    Only <strong>Active (nextcheck)</strong> laptops appear in the assignment dropdowns below.
                     <?php if (count($pool) === 0): ?>
                         <a href="nextAdd.php" style="color:var(--primary);font-weight:700">Add stock →</a>
                     <?php endif; ?>
@@ -673,7 +738,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                         </div>
                         <?php endforeach; ?>
                         <?php if (count($pool) > 7): ?>
-                            <div style="font-size:0.74rem;color:var(--text-muted);padding:0.15rem 0.4rem">+<?= count($pool) - 7 ?> more — search below</div>
+                            <div style="font-size:0.74rem;color:var(--text-muted);padding:0.15rem 0.4rem">+<?= count($pool) - 7 ?> more — see dropdown</div>
                         <?php endif; ?>
                     </div>
                 <?php endif; ?>
@@ -711,7 +776,10 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
             <?php foreach ($items as $idx => $it):
                 $rid        = (int)$it['request_item_id'];
                 $hasA       = !empty($it['assignment_id']);
+                $assignId   = $hasA ? (int)$it['assignment_id'] : 0;
                 $brandModel = trim((string)$it['assigned_brand'] . ' ' . (string)$it['assigned_model']);
+                $lapSid     = $hasA ? (int)($it['laptop_status_id'] ?? 0) : 0;
+                $isReturned = $hasA && !empty($it['returned_at']);
             ?>
             <div class="line-row">
                 <div class="row-num"><?= $idx + 1 ?></div>
@@ -734,22 +802,38 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                             <?php endif; ?>
                         </span>
                     <?php else: ?>
-                        <div class="asset-pick">
-                            <input type="hidden" name="assign[<?= $rid ?>]" value="" class="asset-pick-hidden" id="assign-hid-<?= $rid ?>">
-                            <input type="text" class="asset-pick-input" id="assign-inp-<?= $rid ?>"
-                                placeholder="Search by ID, serial, brand…" autocomplete="off"
-                                aria-autocomplete="list" aria-controls="assign-sug-<?= $rid ?>">
-                            <div class="asset-suggest" id="assign-sug-<?= $rid ?>" role="listbox"></div>
-                            <p class="asset-pick-hint">
+                        <div class="asset-select-wrap">
+                            <select class="asset-select" name="assign[<?= $rid ?>]" id="assign-sel-<?= $rid ?>" aria-label="Select laptop for line <?= $idx + 1 ?>">
+                                <option value="">— Select laptop —</option>
+                                <?php foreach ($pool as $p):
+                                    $pAid = (int)$p['asset_id'];
+                                    $optLabel = '#' . $pAid;
+                                    $pBm = trim((string)($p['brand'] ?? '') . ' ' . (string)($p['model'] ?? ''));
+                                    if ($pBm !== '') {
+                                        $optLabel .= ' — ' . $pBm;
+                                    }
+                                    if ((string)($p['serial_num'] ?? '') !== '') {
+                                        $optLabel .= ' · ' . (string)$p['serial_num'];
+                                    }
+                                    ?>
+                                <option value="<?= $pAid ?>"><?= htmlspecialchars($optLabel) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="asset-select-hint">
                                 <i class="ri-information-line" style="color:var(--secondary)"></i>
-                                Only status-<?= NEXCHECK_POOL_STATUS ?> laptops
+                                Assets: status <?= NEXCHECK_POOL_STATUS ?> (<?= count($pool) ?> available)
                             </p>
                         </div>
                     <?php endif; ?>
                 </div>
 
                 <div>
-                    <?php if ($hasA): ?>
+                    <?php if ($isReturned): ?>
+                        <span class="status-badge returned"><span class="dot" style="background:#0ea5e9"></span>Returned</span>
+                        <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.35rem;max-width:14rem"><?= htmlspecialchars(mb_substr((string)($it['return_condition'] ?? ''), 0, 80)) ?><?= mb_strlen((string)($it['return_condition'] ?? '')) > 80 ? '…' : '' ?></div>
+                    <?php elseif ($hasA && $lapSid === NEXCHECK_RETURN_FROM_STATUS): ?>
+                        <span class="status-badge checkout"><span class="dot" style="background:#8b5cf6"></span>Checkout (<?= NEXCHECK_RETURN_FROM_STATUS ?>)</span>
+                    <?php elseif ($hasA): ?>
                         <span class="status-badge" style="color:#047857"><span class="dot green"></span>Assigned</span>
                     <?php else: ?>
                         <span class="status-badge" style="color:#92400e"><span class="dot amber"></span>Pending</span>
@@ -776,13 +860,55 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                             <strong style="color:#b45309"><i class="ri-alert-line"></i> No laptops in pool.</strong>
                             <a href="nextAdd.php" style="color:var(--primary);font-weight:700">Add items first →</a>
                         <?php else: ?>
-                            Fill in each pending row, then click Save. Only filled rows will be processed.
+                            Choose a laptop for each pending row, then save. Only rows with a selection are processed.
                         <?php endif; ?>
                     </p>
                 </div>
             <?php endif; ?>
         </form>
     </div>
+
+    <?php if ($returnableCount > 0): ?>
+    <div class="card" id="nexcheck-return" style="margin-top:1.25rem">
+        <div class="card-hd">
+            <span><i class="ri-arrow-go-back-line"></i> Return equipment</span>
+            <span class="hd-extra"><?= $returnableCount ?> in checkout</span>
+        </div>
+        <p style="padding:0.85rem 1.4rem 0;font-size:0.84rem;color:var(--text-muted);line-height:1.5">
+            Items still in status <strong><?= NEXCHECK_RETURN_FROM_STATUS ?></strong> (checkout). Describe condition, then save — laptops go back to pool (<strong><?= NEXCHECK_RETURN_TO_STATUS ?></strong>).
+        </p>
+        <form method="post" action="">
+            <input type="hidden" name="save_returns" value="1">
+            <input type="hidden" name="nexcheck_id" value="<?= (int)$nexcheckId ?>">
+            <?php foreach ($items as $it):
+                if (empty($it['assignment_id']) || !empty($it['returned_at'])) {
+                    continue;
+                }
+                if ((int)($it['laptop_status_id'] ?? 0) !== NEXCHECK_RETURN_FROM_STATUS) {
+                    continue;
+                }
+                $aid = (int)$it['assignment_id'];
+                $bm  = trim((string)$it['assigned_brand'] . ' ' . (string)$it['assigned_model']);
+                ?>
+            <div class="return-row">
+                <div>
+                    <div class="return-asset-label">#<?= (int)$it['assigned_asset_id'] ?><?= $bm !== '' ? ' — ' . htmlspecialchars($bm) : '' ?></div>
+                    <div class="return-asset-sub"><?= htmlspecialchars((string)$it['category']) ?> · item #<?= (int)$it['request_item_id'] ?></div>
+                </div>
+                <div>
+                    <label class="item-cat-sub" for="rc-<?= $aid ?>" style="display:block;margin-bottom:0.35rem">Condition at return</label>
+                    <textarea class="cond-input" id="rc-<?= $aid ?>" name="return_cond[<?= $aid ?>]" placeholder="e.g. Good, all accessories present; or note any damage…" maxlength="500"></textarea>
+                </div>
+            </div>
+            <?php endforeach; ?>
+            <div class="form-footer">
+                <button class="btn-primary" type="submit"><i class="ri-check-line"></i> Record return(s)</button>
+                <p class="footer-note">Only rows with a filled condition are processed. You can return items in separate batches.</p>
+            </div>
+        </form>
+    </div>
+    <?php endif; ?>
+
     <?php endif; ?>
 
     <?php endif; ?>
@@ -790,71 +916,28 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
 
 <script>
 (function () {
-    var suggestUrl = 'nextItems.php';
-    function debounce(fn, ms) {
-        var t;
-        return function () {
-            clearTimeout(t);
-            var self = this, args = arguments;
-            t = setTimeout(function () { fn.apply(self, args); }, ms);
-        };
-    }
-    function escapeHtml(s) {
-        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
-
-    document.querySelectorAll('.asset-pick').forEach(function (wrap) {
-        var hid = wrap.querySelector('.asset-pick-hidden');
-        var inp = wrap.querySelector('.asset-pick-input');
-        var box = wrap.querySelector('.asset-suggest');
-        if (!hid || !inp || !box) return;
-
-        var runSuggest = debounce(function () {
-            var q = inp.value.trim();
-            box.innerHTML = '';
-            if (q.length < 1) { box.classList.remove('open'); return; }
-            fetch(suggestUrl + '?suggest_q=' + encodeURIComponent(q), { credentials: 'same-origin' })
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                    if (!data.ok || !data.items || !data.items.length) {
-                        box.innerHTML = '<div class="suggest-empty">No laptops match (status <?= NEXCHECK_POOL_STATUS ?> only).</div>';
-                        box.classList.add('open');
-                        return;
-                    }
-                    data.items.forEach(function (it) {
-                        var btn = document.createElement('button');
-                        btn.type = 'button';
-                        btn.setAttribute('role', 'option');
-                        var sub = it.category ? '<span class="suggest-muted"><i class="ri-price-tag-3-line"></i> ' + escapeHtml(it.category) + '</span>' : '';
-                        btn.innerHTML = escapeHtml(it.label) + sub;
-                        btn.addEventListener('mousedown', function (e) { e.preventDefault(); });
-                        btn.addEventListener('click', function () {
-                            hid.value = String(it.asset_id);
-                            inp.value = it.label;
-                            box.classList.remove('open');
-                            box.innerHTML = '';
-                        });
-                        box.appendChild(btn);
-                    });
-                    box.classList.add('open');
-                })
-                .catch(function () {
-                    box.innerHTML = '<div class="suggest-empty">Could not load suggestions.</div>';
-                    box.classList.add('open');
-                });
-        }, 200);
-
-        inp.addEventListener('input', function () { hid.value = ''; runSuggest(); });
-        inp.addEventListener('focus', function () { if (inp.value.trim().length >= 1) runSuggest(); });
-    });
-
-    document.addEventListener('click', function (ev) {
-        if (!ev.target.closest('.asset-pick')) {
-            document.querySelectorAll('.asset-suggest.open').forEach(function (x) {
-                x.classList.remove('open');
+    function syncAssignDropdowns() {
+        var selects = document.querySelectorAll('select.asset-select');
+        if (!selects.length) return;
+        var taken = {};
+        selects.forEach(function (s) {
+            var v = s.value;
+            if (v) taken[v] = (taken[v] || 0) + 1;
+        });
+        selects.forEach(function (s) {
+            var mine = s.value;
+            Array.prototype.forEach.call(s.options, function (opt) {
+                if (!opt.value) return;
+                var id = opt.value;
+                var count = taken[id] || 0;
+                opt.disabled = id !== mine && count > 0;
             });
-        }
+        });
+    }
+    document.querySelectorAll('select.asset-select').forEach(function (s) {
+        s.addEventListener('change', syncAssignDropdowns);
     });
+    syncAssignDropdowns();
 })();
 </script>
 </body>
