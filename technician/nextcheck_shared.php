@@ -127,6 +127,9 @@ function nextcheck_pipeline_revert_one(PDO $pdo, string $class, int $assetId): v
         if (!in_array($sid, $allowed, true)) {
             throw new RuntimeException('Asset is not in the NextCheck pipeline');
         }
+        if ($sid !== CHECKOUT_CONFIRM_TARGET_STATUS_ID) {
+            throw new RuntimeException('Remove is only allowed for pool status (' . CHECKOUT_CONFIRM_TARGET_STATUS_ID . ')');
+        }
         $stmtU = $pdo->prepare("UPDATE `{$table}` SET status_id = ? WHERE asset_id = ?");
         $stmtU->execute([(int)$target, $assetId]);
         $pdo->commit();
