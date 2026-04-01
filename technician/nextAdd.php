@@ -8,6 +8,8 @@ if (!isset($_SESSION['staff_id']) || (int)($_SESSION['role_id'] ?? 0) !== 1) {
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/nextcheck_shared.php';
 
+const NEXTADD_SUGGEST_STATUS_ID = 1;
+
 /** @return 'laptop'|'av'|'network' */
 function nextadd_asset_class_strict(): string
 {
@@ -107,7 +109,7 @@ if ($suggest_q !== '') {
                         SELECT l.asset_id, l.serial_num, l.brand, l.model, s.name AS status_name
                         FROM laptop l
                         JOIN status s ON s.status_id = l.status_id
-                        WHERE CAST(l.asset_id AS CHAR) LIKE CONCAT(?, '%')
+                        WHERE l.status_id = ? AND CAST(l.asset_id AS CHAR) LIKE CONCAT(?, '%')
                         ORDER BY l.asset_id DESC
                         LIMIT 8
                     ");
@@ -116,7 +118,7 @@ if ($suggest_q !== '') {
                         SELECT n.asset_id, n.serial_num, n.brand, n.model, s.name AS status_name
                         FROM network n
                         JOIN status s ON s.status_id = n.status_id
-                        WHERE CAST(n.asset_id AS CHAR) LIKE CONCAT(?, '%')
+                        WHERE n.status_id = ? AND CAST(n.asset_id AS CHAR) LIKE CONCAT(?, '%')
                         ORDER BY n.asset_id DESC
                         LIMIT 8
                     ");
@@ -125,13 +127,13 @@ if ($suggest_q !== '') {
                         SELECT a.asset_id, a.serial_num, a.brand, a.model, s.name AS status_name
                         FROM av a
                         JOIN status s ON s.status_id = a.status_id
-                        WHERE CAST(a.asset_id AS CHAR) LIKE CONCAT(?, '%')
+                        WHERE a.status_id = ? AND CAST(a.asset_id AS CHAR) LIKE CONCAT(?, '%')
                         ORDER BY a.asset_id DESC
                         LIMIT 8
                     ");
                 }
                 try {
-                    $stmt->execute([$suggest_q]);
+                    $stmt->execute([NEXTADD_SUGGEST_STATUS_ID, $suggest_q]);
                     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                         $items[] = [
                             'asset_class' => $cls,
@@ -155,11 +157,11 @@ if ($suggest_q !== '') {
                 SELECT n.asset_id, n.serial_num, n.brand, n.model, s.name AS status_name
                 FROM network n
                 JOIN status s ON s.status_id = n.status_id
-                WHERE CAST(n.asset_id AS CHAR) LIKE CONCAT(?, '%')
+                WHERE n.status_id = ? AND CAST(n.asset_id AS CHAR) LIKE CONCAT(?, '%')
                 ORDER BY n.asset_id DESC
                 LIMIT 8
             ");
-            $stmt->execute([$suggest_q]);
+            $stmt->execute([NEXTADD_SUGGEST_STATUS_ID, $suggest_q]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $items[] = [
                     'asset_class' => $class,
@@ -175,11 +177,11 @@ if ($suggest_q !== '') {
                 SELECT a.asset_id, a.serial_num, a.brand, a.model, s.name AS status_name
                 FROM av a
                 JOIN status s ON s.status_id = a.status_id
-                WHERE CAST(a.asset_id AS CHAR) LIKE CONCAT(?, '%')
+                WHERE a.status_id = ? AND CAST(a.asset_id AS CHAR) LIKE CONCAT(?, '%')
                 ORDER BY a.asset_id DESC
                 LIMIT 8
             ");
-            $stmt->execute([$suggest_q]);
+            $stmt->execute([NEXTADD_SUGGEST_STATUS_ID, $suggest_q]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $items[] = [
                     'asset_class' => $class,
@@ -195,11 +197,11 @@ if ($suggest_q !== '') {
                 SELECT l.asset_id, l.serial_num, l.brand, l.model, s.name AS status_name
                 FROM laptop l
                 JOIN status s ON s.status_id = l.status_id
-                WHERE CAST(l.asset_id AS CHAR) LIKE CONCAT(?, '%')
+                WHERE l.status_id = ? AND CAST(l.asset_id AS CHAR) LIKE CONCAT(?, '%')
                 ORDER BY l.asset_id DESC
                 LIMIT 8
             ");
-            $stmt->execute([$suggest_q]);
+            $stmt->execute([NEXTADD_SUGGEST_STATUS_ID, $suggest_q]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $items[] = [
                     'asset_class' => $class,
