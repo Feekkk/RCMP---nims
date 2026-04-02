@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['staff_id'] = $user['staff_id'];
                 $_SESSION['role_id']  = $rid;
                 $_SESSION['user_name']= $user['full_name'] ?? '';
-                header('Location: ../users/dashboard.php');
+                header('Location: ../users/landingPage.php');
                 exit;
             }
         }
