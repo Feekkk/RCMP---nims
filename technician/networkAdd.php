@@ -184,26 +184,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register Network Asset - RCMP NIMS</title>
+    <title>Register Network Asset — RCMP NIMS</title>
     <link rel="icon" type="image/png" href="../public/rcmp.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <style>
         :root {
-            --primary: #2563eb;
-            --secondary: #0ea5e9;
-            --danger: #ef4444;
-            --bg: #f1f5f9;
-            --sidebar-bg: #ffffff;
-            --card-bg: #ffffff;
-            --card-border: #e2e8f0;
-            --text-main: #0f172a;
-            --text-muted: #64748b;
-            --glass-panel: #f8fafc;
+            --primary:       #2563eb;
+            --primary-light: #3b82f6;
+            --primary-dark:  #1d4ed8;
+            --secondary:     #0ea5e9;
+            --danger:        #ef4444;
+            --success:       #10b981;
+            --warning:       #f59e0b;
+            --bg:            #f1f5f9;
+            --card-bg:       #ffffff;
+            --card-border:   #e2e8f0;
+            --text-main:     #0f172a;
+            --text-muted:    #64748b;
+            --glass:         #f8fafc;
         }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
             font-family: 'Inter', sans-serif;
             background: var(--bg);
@@ -212,487 +217,569 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
             min-height: 100vh;
             overflow-x: hidden;
         }
-        .sidebar {
-            width: 280px;
-            height: 100vh;
-            background: var(--sidebar-bg);
-            border-right: 1px solid var(--card-border);
-            position: fixed;
-            top: 0;
-            left: 0;
-            display: flex;
-            flex-direction: column;
-            padding: 1.5rem;
-            z-index: 100;
-            box-shadow: 4px 0 20px rgba(15,23,42,0.06);
-        }
-        .sidebar-logo {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding-bottom: 2rem;
-            border-bottom: 1px solid var(--card-border);
-            margin-bottom: 2rem;
-        }
-        .sidebar-logo img { height: 45px; }
-        .nav-menu { display: flex; flex-direction: column; gap: 0.75rem; flex: 1; }
-        .nav-item {
-            padding: 0.85rem 1.25rem;
-            border-radius: 12px;
-            color: var(--text-muted);
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            font-weight: 500;
-            transition: all 0.25s ease;
-        }
-        .nav-item:hover { color: var(--primary); background: rgba(37,99,235,0.06); }
-        .nav-item.active {
-            color: var(--primary);
-            background: rgba(37,99,235,0.1);
-            border: 1px solid rgba(37,99,235,0.2);
-            box-shadow: inset 3px 0 0 var(--primary);
-        }
-        .nav-item i { font-size: 1.25rem; }
-        .nav-dropdown { display: none; flex-direction: column; gap: 0.25rem; padding-left: 3.25rem; margin-top: -0.25rem; margin-bottom: 0.25rem; }
-        .nav-dropdown.show { display: flex; }
-        .nav-dropdown-item {
-            padding: 0.6rem 1rem;
-            border-radius: 8px;
-            color: var(--text-muted);
-            text-decoration: none;
-            font-size: 0.85rem;
-            font-weight: 500;
-        }
-        .nav-dropdown-item:hover { color: var(--primary); background: rgba(37,99,235,0.06); }
-        .nav-dropdown-item.active { color: var(--primary); }
-        .nav-item.open .chevron { transform: rotate(180deg); }
-        .user-profile {
-            margin-top: auto;
-            padding: 1rem;
-            background: var(--glass-panel);
-            border: 1px solid var(--card-border);
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            cursor: pointer;
-        }
-        .avatar {
-            width: 42px;
-            height: 42px;
-            border-radius: 12px;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: 'Outfit', sans-serif;
-            font-weight: 700;
-            color: #fff;
-            font-size: 1.1rem;
-        }
-        .user-info { flex: 1; overflow: hidden; }
-        .user-name { font-size: 0.9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .user-role { font-size: 0.75rem; color: var(--primary); margin-top: 0.2rem; text-transform: uppercase; font-weight: 600; }
 
         .main-content {
             margin-left: 280px;
             flex: 1;
-            padding: 2.5rem 3.5rem 5rem;
+            padding: 2rem 2.5rem 4rem;
             max-width: calc(100vw - 280px);
         }
+        @media (max-width: 900px) {
+            .main-content { margin-left: 0; max-width: 100vw; padding: 1.25rem 1rem 3rem; }
+        }
+
         .page-header {
             display: flex;
+            align-items: flex-start;
             justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2rem;
-            padding-bottom: 1.5rem;
-            border-bottom: 1px solid var(--card-border);
-            flex-wrap: wrap;
             gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.75rem;
         }
-        .page-title h1 {
+        .page-title {
             font-family: 'Outfit', sans-serif;
-            font-size: 2rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
+            font-size: 1.75rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
         }
-        .page-title h1 i { color: var(--primary); }
-        .page-title p { color: var(--text-muted); margin-top: 0.35rem; font-size: 0.95rem; }
+        .page-subtitle { color: var(--text-muted); font-size: 0.875rem; margin-top: 0.3rem; }
         .btn-back {
             display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            color: var(--text-muted);
-            text-decoration: none;
-            font-weight: 500;
-            background: var(--glass-panel);
-            padding: 0.6rem 1.2rem;
+            gap: 0.45rem;
+            padding: 0.65rem 1.1rem;
             border-radius: 12px;
-            border: 1px solid var(--card-border);
+            border: 1.5px solid var(--card-border);
+            background: var(--card-bg);
+            color: var(--text-muted);
+            font-weight: 700;
+            font-size: 0.88rem;
+            text-decoration: none;
+            white-space: nowrap;
+            transition: all 0.2s;
         }
-        .btn-back:hover { color: var(--primary); border-color: rgba(37,99,235,0.2); }
+        .btn-back:hover { border-color: var(--primary); color: var(--primary); }
 
         .alert {
-            padding: 1rem 1.5rem;
-            border-radius: 14px;
-            margin-bottom: 1.5rem;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 0.75rem;
-            font-size: 0.95rem;
+            padding: 1rem 1.25rem;
+            border-radius: 14px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            line-height: 1.45;
         }
-        .alert-success { background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.35); color: #059669; }
-        .alert-error { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35); color: #dc2626; }
+        .alert i { font-size: 1.2rem; flex-shrink: 0; margin-top: 0.05rem; }
+        .alert-link { margin-left: auto; font-weight: 700; text-decoration: underline; color: inherit; white-space: nowrap; }
+        .alert-success { background: rgba(16,185,129,0.1);  border: 1px solid rgba(16,185,129,0.3);  color: #047857; }
+        .alert-error   { background: rgba(239,68,68,0.08);  border: 1px solid rgba(239,68,68,0.25);  color: #b91c1c; }
 
         .form-section {
             background: var(--card-bg);
             border: 1px solid var(--card-border);
             border-radius: 20px;
-            padding: 2rem 2.25rem;
-            margin-bottom: 1.75rem;
-            box-shadow: 0 2px 12px rgba(15,23,42,0.06);
-            position: relative;
             overflow: hidden;
+            margin-bottom: 1.25rem;
+            box-shadow: 0 2px 12px rgba(15,23,42,0.05);
+            transition: opacity 0.3s;
         }
-        .form-section::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 4px;
-            background: linear-gradient(90deg, var(--primary), var(--secondary));
-            opacity: 0.75;
-        }
-        .section-title {
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.25rem;
-            font-weight: 600;
-            margin-bottom: 1.5rem;
+
+        .section-head {
             display: flex;
             align-items: center;
-            gap: 0.6rem;
+            justify-content: space-between;
+            padding: 1rem 1.4rem;
+            border-bottom: 1px solid var(--card-border);
+            background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+            gap: 0.75rem;
         }
-        .section-title i {
-            color: var(--secondary);
-            background: rgba(14,165,233,0.15);
-            padding: 0.45rem;
+        .section-head-left {
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+        }
+        .section-icon {
+            width: 36px; height: 36px;
             border-radius: 10px;
+            background: rgba(37,99,235,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
         }
+        .section-icon i { font-size: 1rem; color: var(--primary); }
+        .section-title {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 800;
+            font-size: 0.98rem;
+        }
+        .section-desc { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.1rem; }
+
+        .badge-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.2rem 0.65rem;
+            border-radius: 20px;
+            font-size: 0.67rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .badge-required { background: rgba(37,99,235,0.1);   color: var(--primary);   border: 1px solid rgba(37,99,235,0.2); }
+        .badge-optional { background: rgba(100,116,139,0.1); color: var(--text-muted); border: 1px solid var(--card-border); }
+        .badge-deploy   { background: rgba(245,158,11,0.1);  color: #b45309;           border: 1px solid rgba(245,158,11,0.25); }
+
+        .section-body { padding: 1.4rem; }
+
+        .section-disabled { opacity: 0.42; pointer-events: none; }
+        .section-disabled .section-head { background: var(--glass); }
+
         .form-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 1.25rem 1.75rem;
+            gap: 1rem 1.25rem;
         }
-        .form-group { display: flex; flex-direction: column; gap: 0.45rem; }
-        .form-label { font-size: 0.85rem; font-weight: 500; color: var(--text-muted); }
-        .form-label span { color: var(--danger); }
-        .hint { font-size: 0.78rem; color: var(--text-muted); margin-top: -0.2rem; }
-        .form-input, .form-select, .form-textarea {
-            background: var(--glass-panel);
-            border: 1px solid var(--card-border);
-            border-radius: 12px;
-            padding: 0.85rem 1.1rem;
-            font-size: 0.95rem;
-            font-family: inherit;
-            color: var(--text-main);
+        @media (max-width: 1100px) { .form-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 640px)  { .form-grid { grid-template-columns: 1fr; } }
+
+        .col-2 { grid-column: span 2; }
+        .col-3 { grid-column: 1 / -1; }
+
+        @media (max-width: 640px) {
+            .col-2, .col-3 { grid-column: span 1; }
+        }
+
+        .field { display: flex; flex-direction: column; gap: 0.4rem; }
+
+        .field-label {
+            font-size: 0.7rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            flex-wrap: wrap;
+        }
+        .req { color: var(--danger); }
+        .auto-tag {
+            font-size: 0.63rem;
+            font-weight: 700;
+            background: rgba(37,99,235,0.08);
+            color: var(--primary);
+            border: 1px solid rgba(37,99,235,0.15);
+            border-radius: 20px;
+            padding: 0.08rem 0.45rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.2rem;
+            letter-spacing: 0.03em;
+        }
+
+        .field-input,
+        .field-select,
+        .field-textarea {
             width: 100%;
+            padding: 0.68rem 0.9rem;
+            border: 1.5px solid var(--card-border);
+            border-radius: 11px;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.875rem;
+            color: var(--text-main);
+            background: var(--glass);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
             outline: none;
         }
-        .form-input:focus, .form-select:focus, .form-textarea:focus {
-            border-color: var(--primary);
+        .field-input::placeholder,
+        .field-textarea::placeholder { color: #94a3b8; font-weight: 400; }
+        .field-input:focus,
+        .field-select:focus,
+        .field-textarea:focus {
+            border-color: rgba(37,99,235,0.5);
             background: #fff;
             box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
         }
-        .form-input:read-only { cursor: default; background: rgba(37,99,235,0.06); font-weight: 700; color: var(--primary); }
-        .form-select {
+        .field-input:disabled,
+        .field-select:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .field-input.auto {
+            font-weight: 700;
+            color: var(--primary);
+            background: rgba(37,99,235,0.04);
+            border-color: rgba(37,99,235,0.18);
+            cursor: default;
+        }
+
+        .field-select {
             appearance: none;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 16L6 10H18L12 16Z'/%3E%3C/svg%3E");
             background-repeat: no-repeat;
-            background-position: right 1rem center;
-            background-size: 1.2rem;
+            background-position: right 0.85rem center;
+            background-size: 1rem;
+            padding-right: 2.2rem;
             cursor: pointer;
         }
-        .form-textarea { min-height: 100px; resize: vertical; }
+        .field-select option { background: #fff; color: var(--text-main); }
+        .field-textarea { resize: vertical; min-height: 100px; }
+
+        .field-hint {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        .field-hint i { font-size: 0.75rem; }
+
+        .deploy-notice {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.7rem 1rem;
+            border-radius: 10px;
+            background: rgba(245,158,11,0.08);
+            border: 1px solid rgba(245,158,11,0.22);
+            color: #92400e;
+            font-size: 0.82rem;
+            font-weight: 600;
+            margin-bottom: 1.1rem;
+        }
+        .deploy-notice i { font-size: 0.95rem; color: var(--warning); flex-shrink: 0; }
+
+        .deploy-meta {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+            line-height: 1.5;
+        }
+        .deploy-meta code { font-size: 0.85em; background: var(--glass); padding: 0.1rem 0.35rem; border-radius: 6px; border: 1px solid var(--card-border); }
 
         .form-actions {
             display: flex;
             justify-content: flex-end;
-            gap: 1rem;
-            margin-top: 0.5rem;
+            align-items: center;
+            gap: 0.85rem;
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--card-border);
+            flex-wrap: wrap;
         }
         .btn {
-            padding: 0.95rem 1.75rem;
-            border-radius: 12px;
-            font-family: 'Outfit', sans-serif;
-            font-weight: 600;
-            font-size: 1rem;
-            cursor: pointer;
-            border: none;
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
+            padding: 0.78rem 1.5rem;
+            border-radius: 12px;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 0.92rem;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
         }
         .btn-primary {
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            background: linear-gradient(135deg, #021A54, #1e40af);
             color: #fff;
-            box-shadow: 0 8px 20px rgba(37,99,235,0.35);
+            box-shadow: 0 4px 14px rgba(2,26,84,0.28);
         }
-        .btn-primary:hover { filter: brightness(1.05); transform: translateY(-1px); }
+        .btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(2,26,84,0.35); }
         .btn-outline {
-            background: transparent;
-            border: 1px solid var(--text-muted);
+            background: var(--card-bg);
+            border: 1.5px solid var(--card-border);
             color: var(--text-muted);
         }
-        .btn-outline:hover { color: var(--primary); border-color: rgba(37,99,235,0.3); }
-
-        .section-disabled {
-            opacity: 0.45;
-            pointer-events: none;
-            max-height: 0;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            border: none;
-            box-shadow: none;
-        }
-        .section-disabled::before { display: none; }
-        .form-section:not(.section-disabled) { transition: opacity 0.25s ease; }
-        .badge-optional {
-            font-size: 0.72rem;
-            font-weight: 600;
-            color: #94a3b8;
-            background: rgba(148,163,184,0.15);
-            padding: 0.2rem 0.55rem;
-            border-radius: 999px;
-            margin-left: 0.5rem;
-        }
-
-        @media (max-width: 1100px) {
-            .form-grid { grid-template-columns: repeat(2, 1fr); }
-        }
-        @media (max-width: 900px) {
-            .sidebar { transform: translateX(-100%); width: 260px; }
-            .main-content { margin-left: 0; max-width: 100vw; padding: 1.5rem; }
-            .form-grid { grid-template-columns: 1fr; }
-        }
+        .btn-outline:hover { border-color: var(--danger); color: var(--danger); }
     </style>
 </head>
 <body>
-    <?php include __DIR__ . '/../components/sidebarUser.php'; ?>
 
-    <main class="main-content">
-        <header class="page-header">
-            <div class="page-title">
-                <h1><i class="ri-router-line"></i> Register network asset</h1>
-                <p>Maps to <code>network</code> table — status IDs 9/10 Online/Offline, plus Deploy, Maintenance, Faulty, Disposed, Lost.</p>
+<?php include __DIR__ . '/../components/sidebarUser.php'; ?>
+
+<main class="main-content">
+
+    <header class="page-header">
+        <div>
+            <h1 class="page-title">Register New Network Asset</h1>
+            <p class="page-subtitle">Add switches, access points, or other network equipment to the inventory.</p>
+        </div>
+        <a href="network.php" class="btn-back">
+            <i class="ri-arrow-left-line"></i> Back to Inventory
+        </a>
+    </header>
+
+    <?php if ($success_message): ?>
+    <div class="alert alert-success">
+        <i class="ri-checkbox-circle-fill"></i>
+        <span><?= htmlspecialchars($success_message) ?></span>
+        <a href="network.php" class="alert-link">View Inventory →</a>
+    </div>
+    <?php endif; ?>
+    <?php if ($error_message): ?>
+    <div class="alert alert-error">
+        <i class="ri-error-warning-fill"></i>
+        <span><?= htmlspecialchars($error_message) ?></span>
+    </div>
+    <?php endif; ?>
+
+    <?php if (!empty($status_options)): ?>
+    <form method="post" action="" id="networkForm">
+
+        <div class="form-section">
+            <div class="section-head">
+                <div class="section-head-left">
+                    <div class="section-icon"><i class="ri-router-line"></i></div>
+                    <div>
+                        <div class="section-title">Device Identity</div>
+                        <div class="section-desc">Asset ID, serial, status, brand, model, MAC and IP</div>
+                    </div>
+                </div>
+                <span class="badge-tag badge-required">Required</span>
             </div>
-            <a href="network.php" class="btn-back"><i class="ri-arrow-left-line"></i> Back to inventory</a>
-        </header>
-
-        <?php if ($success_message): ?>
-        <div class="alert alert-success">
-            <i class="ri-checkbox-circle-fill" style="font-size:1.25rem;"></i>
-            <span><?= htmlspecialchars($success_message) ?> <a href="network.php" style="color:inherit;font-weight:700;">View list →</a></span>
-        </div>
-        <?php endif; ?>
-        <?php if ($error_message): ?>
-        <div class="alert alert-error">
-            <i class="ri-error-warning-fill" style="font-size:1.25rem;"></i>
-            <span><?= htmlspecialchars($error_message) ?></span>
-        </div>
-        <?php endif; ?>
-
-        <?php if (!empty($status_options)): ?>
-        <form method="post" action="">
-            <div class="form-section">
-                <h2 class="section-title"><i class="ri-cpu-line"></i> Device</h2>
+            <div class="section-body">
                 <div class="form-grid">
-                    <div class="form-group">
-                        <label class="form-label">Asset ID <span>*</span></label>
-                        <input type="number" name="asset_id" class="form-input" value="<?= (int)$next_asset_id ?>" readonly>
-                        <p class="hint">Auto: 24 + year + sequence (e.g. 24260001). Separate range from laptop IDs.</p>
+                    <div class="field">
+                        <label class="field-label">
+                            Asset ID <span class="req">*</span>
+                            <span class="auto-tag"><i class="ri-magic-line"></i> Auto-generated</span>
+                        </label>
+                        <input type="number" name="asset_id" class="field-input auto" value="<?= (int)$next_asset_id ?>" readonly>
+                        <span class="field-hint"><i class="ri-information-line"></i> 24 + year + sequence (e.g. 24260001); separate range from laptops</span>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label" for="serial_num">Serial number <span>*</span></label>
-                        <input type="text" id="serial_num" name="serial_num" class="form-input" required placeholder="Device serial">
+                    <div class="field">
+                        <label class="field-label" for="serial_num">Serial Number <span class="req">*</span></label>
+                        <input type="text" id="serial_num" name="serial_num" class="field-input" required placeholder="e.g. device serial">
                     </div>
-                    <div class="form-group">
-                        <label class="form-label" for="status_id">Status <span>*</span></label>
-                        <select id="status_id" name="status_id" class="form-select" required>
-                            <option value="" disabled selected>Select status</option>
+                    <div class="field">
+                        <label class="field-label" for="status_id">System Status <span class="req">*</span></label>
+                        <select id="status_id" name="status_id" class="field-select" required>
+                            <option value="" disabled selected>Select status…</option>
                             <?php foreach ($status_options as $s): ?>
                             <option value="<?= (int)$s['status_id'] ?>"><?= htmlspecialchars($s['name']) ?> (<?= (int)$s['status_id'] ?>)</option>
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label" for="brand">Brand</label>
-                        <input type="text" id="brand" name="brand" class="form-input" placeholder="e.g. Cisco">
+                    <div class="field">
+                        <label class="field-label" for="brand">Brand</label>
+                        <input type="text" id="brand" name="brand" class="field-input" placeholder="e.g. Cisco">
                     </div>
-                    <div class="form-group">
-                        <label class="form-label" for="model">Model</label>
-                        <input type="text" id="model" name="model" class="form-input" placeholder="e.g. Catalyst 9200">
+                    <div class="field">
+                        <label class="field-label" for="model">Model</label>
+                        <input type="text" id="model" name="model" class="field-input" placeholder="e.g. Catalyst 9200">
                     </div>
-                    <div class="form-group">
-                        <label class="form-label" for="mac_address">MAC address</label>
-                        <input type="text" id="mac_address" name="mac_address" class="form-input" placeholder="AA:BB:CC:DD:EE:FF">
+                    <div class="field">
+                        <label class="field-label" for="mac_address">MAC Address</label>
+                        <input type="text" id="mac_address" name="mac_address" class="field-input" placeholder="e.g. AA:BB:CC:DD:EE:FF">
                     </div>
-                    <div class="form-group">
-                        <label class="form-label" for="ip_address">IP address</label>
-                        <input type="text" id="ip_address" name="ip_address" class="form-input" placeholder="192.168.1.1">
+                    <div class="field">
+                        <label class="field-label" for="ip_address">IP Address</label>
+                        <input type="text" id="ip_address" name="ip_address" class="field-input" placeholder="e.g. 192.168.1.1">
                     </div>
                 </div>
             </div>
+        </div>
 
-            <div class="form-section section-disabled" id="deploymentSection">
-                <h2 class="section-title">
-                    <i class="ri-map-pin-user-line"></i> Deployment
-                    <span class="badge-optional">When status is Deploy (3)</span>
-                </h2>
-                <p class="hint" style="margin-bottom:1rem;">
-                    <strong>Auto-filled:</strong> <code>asset_id</code> = <span id="deployAssetEcho"><?= (int)$next_asset_id ?></span>, <code>staff_id</code> = <code><?= htmlspecialchars($_SESSION['staff_id'] ?? '—') ?></code> (logged-in technician).
+        <div class="form-section">
+            <div class="section-head">
+                <div class="section-head-left">
+                    <div class="section-icon"><i class="ri-shopping-bag-3-line"></i></div>
+                    <div>
+                        <div class="section-title">Purchase Details</div>
+                        <div class="section-desc">PO, delivery order, invoice and cost</div>
+                    </div>
+                </div>
+                <span class="badge-tag badge-optional">Optional</span>
+            </div>
+            <div class="section-body">
+                <div class="form-grid">
+                    <div class="field">
+                        <label class="field-label" for="po_date">PO Date</label>
+                        <input type="date" id="po_date" name="po_date" class="field-input">
+                    </div>
+                    <div class="field">
+                        <label class="field-label" for="po_num">PO Number</label>
+                        <input type="text" id="po_num" name="po_num" class="field-input" placeholder="e.g. PO-2026-001">
+                    </div>
+                    <div class="field">
+                        <label class="field-label" for="do_date">DO Date</label>
+                        <input type="date" id="do_date" name="do_date" class="field-input">
+                    </div>
+                    <div class="field">
+                        <label class="field-label" for="do_num">DO Number</label>
+                        <input type="text" id="do_num" name="do_num" class="field-input" placeholder="e.g. DO-2026-001">
+                    </div>
+                    <div class="field">
+                        <label class="field-label" for="invoice_date">Invoice Date</label>
+                        <input type="date" id="invoice_date" name="invoice_date" class="field-input">
+                    </div>
+                    <div class="field">
+                        <label class="field-label" for="invoice_num">Invoice Number</label>
+                        <input type="text" id="invoice_num" name="invoice_num" class="field-input" placeholder="e.g. INV-2026-001">
+                    </div>
+                    <div class="field">
+                        <label class="field-label" for="purchase_cost">Purchase Cost (RM)</label>
+                        <input type="number" step="0.01" id="purchase_cost" name="purchase_cost" class="field-input" placeholder="0.00">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section section-disabled" id="deploymentSection">
+            <div class="section-head">
+                <div class="section-head-left">
+                    <div class="section-icon" style="background:rgba(245,158,11,0.1)">
+                        <i class="ri-map-pin-user-line" style="color:var(--warning)"></i>
+                    </div>
+                    <div>
+                        <div class="section-title">Deployment Location</div>
+                        <div class="section-desc">Required when status is Deploy (3)</div>
+                    </div>
+                </div>
+                <span class="badge-tag badge-deploy">Deploy only</span>
+            </div>
+            <div class="section-body">
+                <div class="deploy-notice">
+                    <i class="ri-alert-line"></i>
+                    Set status to <strong>Deploy</strong> above to unlock this section.
+                </div>
+                <p class="deploy-meta">
+                    <strong>Recorded:</strong> <code>asset_id</code> = <span id="deployAssetEcho"><?= (int)$next_asset_id ?></span>,
+                    <code>staff_id</code> = <code><?= htmlspecialchars($_SESSION['staff_id'] ?? '—') ?></code> (logged-in technician).
                 </p>
                 <div class="form-grid">
-                    <div class="form-group">
-                        <label class="form-label" for="deployment_building">Building <span>*</span></label>
-                        <select id="deployment_building" name="deployment_building" class="form-select deploy-input" disabled>
-                            <option value="" selected disabled>Select building</option>
+                    <div class="field">
+                        <label class="field-label" for="deployment_building">Building <span class="req">*</span></label>
+                        <select id="deployment_building" name="deployment_building" class="field-select deploy-input" disabled>
+                            <option value="" selected disabled>Select building…</option>
                             <?php foreach (BUILDING_OPTIONS as $b): ?>
                             <option value="<?= htmlspecialchars($b) ?>"><?= htmlspecialchars($b) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label" for="deployment_level">Level <span>*</span></label>
-                        <input type="text" id="deployment_level" name="deployment_level" class="form-input deploy-input" placeholder="e.g. 3, G, Basement" disabled>
+                    <div class="field">
+                        <label class="field-label" for="deployment_level">Level <span class="req">*</span></label>
+                        <input type="text" id="deployment_level" name="deployment_level" class="field-input deploy-input" placeholder="e.g. 3, G, Basement" disabled>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label" for="deployment_zone">Zone <span>*</span></label>
-                        <input type="text" id="deployment_zone" name="deployment_zone" class="form-input deploy-input" placeholder="e.g. Data corner, IDF-2" disabled>
+                    <div class="field">
+                        <label class="field-label" for="deployment_zone">Zone <span class="req">*</span></label>
+                        <input type="text" id="deployment_zone" name="deployment_zone" class="field-input deploy-input" placeholder="e.g. Data corner, IDF-2" disabled>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label" for="deployment_date">Deployment date <span>*</span></label>
-                        <input type="date" id="deployment_date" name="deployment_date" class="form-input deploy-input" disabled>
+                    <div class="field">
+                        <label class="field-label" for="deployment_date">Deployment Date <span class="req">*</span></label>
+                        <input type="date" id="deployment_date" name="deployment_date" class="field-input deploy-input" disabled>
                     </div>
-                    <div class="form-group" style="grid-column: 1 / -1;">
-                        <label class="form-label" for="deployment_remarks">Remarks <span class="badge-optional" style="margin-left:0;">Optional</span></label>
-                        <textarea id="deployment_remarks" name="deployment_remarks" class="form-textarea deploy-input" rows="3" placeholder="Rack, port, VLAN…" disabled style="min-height:88px;"></textarea>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-section">
-                <h2 class="section-title"><i class="ri-shopping-bag-3-line"></i> Purchase &amp; invoice</h2>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label class="form-label" for="po_date">PO date</label>
-                        <input type="date" id="po_date" name="po_date" class="form-input">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="po_num">PO number</label>
-                        <input type="text" id="po_num" name="po_num" class="form-input" placeholder="PO-2026-001">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="do_date">DO date</label>
-                        <input type="date" id="do_date" name="do_date" class="form-input">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="do_num">DO number</label>
-                        <input type="text" id="do_num" name="do_num" class="form-input">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="invoice_date">Invoice date</label>
-                        <input type="date" id="invoice_date" name="invoice_date" class="form-input">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="invoice_num">Invoice number</label>
-                        <input type="text" id="invoice_num" name="invoice_num" class="form-input">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="purchase_cost">Purchase cost (RM)</label>
-                        <input type="number" step="0.01" id="purchase_cost" name="purchase_cost" class="form-input" placeholder="0.00">
+                    <div class="field col-3">
+                        <label class="field-label" for="deployment_remarks">Deployment Remarks</label>
+                        <textarea id="deployment_remarks" name="deployment_remarks" class="field-textarea deploy-input" rows="3" placeholder="e.g. Rack, port, VLAN…" disabled style="min-height:88px;"></textarea>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <div class="form-section">
-                <h2 class="section-title"><i class="ri-sticky-note-line"></i> Remarks</h2>
-                <div class="form-group">
-                    <label class="form-label" for="remarks">Notes</label>
-                    <textarea id="remarks" name="remarks" class="form-textarea" placeholder="Location, rack, VLAN, warranty notes…"></textarea>
+        <div class="form-section">
+            <div class="section-head">
+                <div class="section-head-left">
+                    <div class="section-icon"><i class="ri-sticky-note-line"></i></div>
+                    <div>
+                        <div class="section-title">General Remarks</div>
+                        <div class="section-desc">Additional notes about this asset</div>
+                    </div>
+                </div>
+                <span class="badge-tag badge-optional">Optional</span>
+            </div>
+            <div class="section-body">
+                <div class="field">
+                    <label class="field-label" for="remarks">Remarks</label>
+                    <textarea id="remarks" name="remarks" class="field-textarea" rows="4"
+                        placeholder="e.g. Location, rack, VLAN, warranty notes…"></textarea>
                 </div>
             </div>
+        </div>
 
-            <div class="form-actions">
-                <button type="reset" class="btn btn-outline">Clear</button>
-                <button type="submit" class="btn btn-primary"><i class="ri-save-line"></i> Save network asset</button>
-            </div>
-        </form>
-        <?php elseif ($error_message === ''): ?>
-        <div class="alert alert-error">No valid statuses for network (IDs 3,5,6,7,8,9,10). Check <code>status</code> table.</div>
-        <?php endif; ?>
-    </main>
+        <div class="form-actions">
+            <button type="reset" class="btn btn-outline">
+                <i class="ri-refresh-line"></i> Clear Form
+            </button>
+            <button type="submit" class="btn btn-primary">
+                <i class="ri-save-3-line"></i> Register Network Asset
+            </button>
+        </div>
+    </form>
+    <?php elseif ($error_message === ''): ?>
+    <div class="alert alert-error">
+        <i class="ri-error-warning-fill"></i>
+        <span>No valid statuses for network (IDs 3,5,6,7,8,9,10). Check <code>status</code> table.</span>
+    </div>
+    <?php endif; ?>
+</main>
 
-    <script>
-        function toggleDropdown(element, event) {
-            event.preventDefault();
-            const group = element.closest('.nav-group');
-            const dropdown = group.querySelector('.nav-dropdown');
-            element.classList.toggle('open');
-            dropdown.classList.toggle('show');
-        }
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    function toggleDropdown(element, event) {
+        event.preventDefault();
+        var group = element.closest('.nav-group');
+        var dropdown = group && group.querySelector('.nav-dropdown');
+        element.classList.toggle('open');
+        dropdown && dropdown.classList.toggle('show');
+    }
+    window.toggleDropdown = toggleDropdown;
 
-        function syncDeploymentSection() {
-            const sel = document.getElementById('status_id');
-            const section = document.getElementById('deploymentSection');
-            const inputs = document.querySelectorAll('.deploy-input');
-            const deploy = sel && String(sel.value) === '3';
-            if (!section) return;
-            section.classList.toggle('section-disabled', !deploy);
-            inputs.forEach(el => {
-                el.disabled = !deploy;
-                if (!deploy) {
-                    el.removeAttribute('required');
-                    if (el.tagName === 'SELECT') {
-                        el.selectedIndex = 0;
-                    } else if (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'date')) {
-                        el.value = '';
-                    } else if (el.tagName === 'TEXTAREA') {
-                        el.value = '';
-                    }
-                } else {
-                    const req = ['deployment_building', 'deployment_level', 'deployment_zone', 'deployment_date'];
-                    if (req.includes(el.id)) {
-                        el.setAttribute('required', 'required');
-                    }
+    function syncDeploymentSection() {
+        var sel = document.getElementById('status_id');
+        var section = document.getElementById('deploymentSection');
+        var inputs = document.querySelectorAll('.deploy-input');
+        var deploy = sel && String(sel.value) === '3';
+        if (!section) return;
+        section.classList.toggle('section-disabled', !deploy);
+        inputs.forEach(function (el) {
+            el.disabled = !deploy;
+            if (!deploy) {
+                el.removeAttribute('required');
+                if (el.tagName === 'SELECT') {
+                    el.selectedIndex = 0;
+                } else if (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'date')) {
+                    el.value = '';
+                } else if (el.tagName === 'TEXTAREA') {
+                    el.value = '';
                 }
-            });
-        }
-
-        function syncDeployAssetEcho() {
-            const assetIn = document.querySelector('input[name="asset_id"]');
-            const echo = document.getElementById('deployAssetEcho');
-            if (assetIn && echo) echo.textContent = assetIn.value || '—';
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const sel = document.getElementById('status_id');
-            if (sel) {
-                sel.addEventListener('change', syncDeploymentSection);
-                syncDeploymentSection();
+            } else {
+                var req = ['deployment_building', 'deployment_level', 'deployment_zone', 'deployment_date'];
+                if (req.indexOf(el.id) !== -1) {
+                    el.setAttribute('required', 'required');
+                }
             }
-            const assetIn = document.querySelector('input[name="asset_id"]');
-            assetIn?.addEventListener('input', syncDeployAssetEcho);
-            syncDeployAssetEcho();
-            document.querySelector('form')?.addEventListener('reset', () => {
-                setTimeout(() => { syncDeploymentSection(); syncDeployAssetEcho(); }, 0);
-            });
         });
-    </script>
+    }
+
+    function syncDeployAssetEcho() {
+        var assetIn = document.querySelector('input[name="asset_id"]');
+        var echo = document.getElementById('deployAssetEcho');
+        if (assetIn && echo) echo.textContent = assetIn.value || '—';
+    }
+
+    var sel = document.getElementById('status_id');
+    if (sel) {
+        sel.addEventListener('change', syncDeploymentSection);
+        syncDeploymentSection();
+    }
+    var assetIn = document.querySelector('input[name="asset_id"]');
+    if (assetIn) {
+        assetIn.addEventListener('input', syncDeployAssetEcho);
+    }
+    syncDeployAssetEcho();
+    var form = document.getElementById('networkForm');
+    if (form) {
+        form.addEventListener('reset', function () {
+            setTimeout(function () {
+                syncDeploymentSection();
+                syncDeployAssetEcho();
+            }, 0);
+        });
+    }
+});
+</script>
 </body>
 </html>
