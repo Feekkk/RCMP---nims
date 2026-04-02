@@ -463,116 +463,94 @@ if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
         }
         .program-radio:checked + .program-label i { color: var(--primary); }
 
-        /* ── Equipment grid ── */
-        .equipment-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
-            gap: 0.75rem;
-        }
-        .eq-card {
-            border: 2px solid var(--card-border);
-            border-radius: 16px;
-            padding: 1rem;
-            padding-bottom: 0.85rem;
-            background: var(--glass);
+        /* ── Equipment list ── */
+        .equipment-list {
             display: flex;
             flex-direction: column;
-            align-items: stretch;
+            gap: 0.5rem;
+        }
+        .eq-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             gap: 0.65rem;
-            transition: all 0.2s cubic-bezier(.4,0,.2,1);
-            position: relative;
-            overflow: hidden;
+            padding: 0.7rem 0.85rem;
+            border: 1.5px solid var(--card-border);
+            border-radius: 14px;
+            background: var(--glass);
+            transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
         }
-        .eq-card-main {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 0.55rem;
-            position: relative;
-            z-index: 1;
-        }
-        .eq-card::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(135deg, rgba(37,99,235,0.08), transparent);
-            opacity: 0;
-            transition: opacity 0.2s;
-            pointer-events: none;
-        }
-        .eq-card:hover { border-color: rgba(37,99,235,0.3); transform: translateY(-1px); }
-        .eq-card:hover::before { opacity: 1; }
-        .eq-card.in-cart {
+        .eq-row:hover { border-color: rgba(37, 99, 235, 0.35); }
+        .eq-row.in-cart {
             border-color: var(--primary);
-            background: rgba(37,99,235,0.06);
+            background: rgba(37, 99, 235, 0.06);
+            box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.08);
         }
-        .eq-card.in-cart::before { opacity: 1; }
+        .eq-row-main {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            min-width: 0;
+            flex: 1;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .eq-row-text { min-width: 0; }
         .eq-icon {
-            width: 36px; height: 36px;
+            width: 38px;
+            height: 38px;
             border-radius: 10px;
-            background: rgba(37,99,235,0.1);
+            background: rgba(37, 99, 235, 0.1);
             display: flex;
             align-items: center;
             justify-content: center;
+            flex-shrink: 0;
         }
         .eq-icon i { font-size: 1.1rem; color: var(--primary); }
-        .eq-name { font-weight: 700; font-size: 0.88rem; }
-        .eq-cat { font-size: 0.72rem; color: var(--text-muted); }
-        .eq-check {
-            position: absolute;
-            top: 10px; right: 10px;
-            width: 22px; height: 22px;
-            border-radius: 50%;
-            background: var(--primary);
+        .eq-name { font-weight: 700; font-size: 0.88rem; line-height: 1.25; }
+        .eq-cat { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.12rem; }
+        .eq-row-actions {
             display: flex;
             align-items: center;
-            justify-content: center;
-            opacity: 0;
-            transform: scale(0.6);
-            transition: all 0.2s cubic-bezier(.4,0,.2,1);
-            pointer-events: none;
-            z-index: 2;
-        }
-        .eq-check i { font-size: 0.8rem; color: #fff; }
-        .eq-card.in-cart .eq-check { opacity: 1; transform: scale(1); }
-        .eq-qty-row {
-            display: flex;
-            align-items: center;
-            justify-content: center;
             gap: 0.35rem;
-            margin-top: auto;
-            padding-top: 0.5rem;
-            border-top: 1px solid var(--card-border);
-            position: relative;
-            z-index: 1;
+            flex-shrink: 0;
         }
-        .eq-card.in-cart .eq-qty-row { border-top-color: rgba(37,99,235,0.2); }
         .eq-qty-btn {
-            width: 34px;
-            height: 34px;
+            width: 38px;
+            height: 38px;
             border-radius: 10px;
             border: 1px solid var(--card-border);
             background: var(--card-bg);
             color: var(--text-main);
-            font-size: 1.15rem;
+            font-size: 1.1rem;
             font-weight: 600;
             line-height: 1;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: background 0.15s, border-color 0.15s;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
         }
-        .eq-qty-btn:hover {
+        .eq-qty-btn[data-eq-delta="1"] {
+            color: var(--primary);
+            border-color: rgba(37, 99, 235, 0.35);
+            background: rgba(37, 99, 235, 0.08);
+        }
+        .eq-qty-btn[data-eq-delta="1"]:hover:not(:disabled) {
+            background: rgba(37, 99, 235, 0.18);
             border-color: var(--primary);
-            background: rgba(37,99,235,0.08);
+        }
+        .eq-qty-btn[data-eq-delta="-1"]:hover:not(:disabled) {
+            border-color: var(--danger);
+            color: var(--danger);
+            background: rgba(220, 38, 38, 0.06);
         }
         .eq-qty-btn:disabled {
             opacity: 0.35;
             cursor: not-allowed;
         }
         .eq-qty-val {
-            min-width: 2rem;
+            min-width: 1.75rem;
             text-align: center;
             font-weight: 800;
             font-size: 0.95rem;
@@ -811,15 +789,15 @@ if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
             <div class="stepper" id="stepper">
                 <div class="stepper-item active" data-step="1">
                     <div class="step-circle">1</div>
-                    <div class="step-label">Details</div>
+                    <div class="step-label">Terms</div>
                 </div>
                 <div class="stepper-item" data-step="2">
                     <div class="step-circle">2</div>
-                    <div class="step-label">Equipment</div>
+                    <div class="step-label">Details</div>
                 </div>
                 <div class="stepper-item" data-step="3">
                     <div class="step-circle">3</div>
-                    <div class="step-label">Terms</div>
+                    <div class="step-label">Equipment</div>
                 </div>
                 <div class="stepper-item" data-step="4">
                     <div class="step-circle"><i class="ri-check-line" style="font-size:1rem"></i></div>
@@ -830,13 +808,47 @@ if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
             <form method="post" action="" id="requestForm" novalidate>
                 <div class="hidden-inputs" id="cartHiddenInputs" aria-hidden="true"></div>
 
-                <!-- ── STEP 1: Request Details ── -->
+                <!-- ── STEP 1: Terms & Conditions ── -->
                 <div class="step-panel active" id="step-1">
+                    <div class="card">
+                        <div class="card-hd">
+                            <i class="ri-file-shield-2-line"></i>
+                            Terms and Conditions
+                            <span class="card-subtitle">Step 1 of 4</span>
+                        </div>
+                        <div class="card-bd">
+                            <div class="terms-box">
+                                <ul>
+                                    <li><strong>Eligibility:</strong> All equipment is available for reservation only to registered students and staff of UniKL with a valid ID.</li>
+                                    <li><strong>Reservation duration:</strong> The duration of the reservation is as specified in your request.</li>
+                                    <li><strong>Responsibility:</strong> The party making the reservation is fully responsible for the reserved equipment from the moment of collection until they are returned and checked in by a technician.</li>
+                                    <li><strong>Condition of items:</strong> The reserving party must inspect the item(s) at the time of collection. Any existing damage must be reported immediately, or the reserving party may be held responsible.</li>
+                                    <li class="terms-danger"><strong>Damage or loss:</strong> The reserving party will be held financially responsible for the full replacement cost of any lost, stolen, or damaged items (including all parts and accessories).</li>
+                                    <li><strong>Late returns:</strong> Failure to return items by the specified return date will result in a fine and a temporary suspension of reservation privileges.</li>
+                                    <li><strong>Purpose of use:</strong> Items are to be used for academic or official university purposes only, as specified in the reservation form.</li>
+                                    <li><strong>Collection:</strong> Approved items must be collected within 24 hours of the &quot;Approved&quot; status being issued, or the reservation may be cancelled.</li>
+                                </ul>
+                            </div>
+                            <label class="check-terms">
+                                <input type="checkbox" name="accept_terms" id="acceptTerms" value="1" <?= isset($_POST['accept_terms']) ? 'checked' : '' ?>>
+                                <span>I have read and agree to the terms and conditions above. This is required to proceed.</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="step-nav">
+                        <button type="button" class="btn-prev invisible"><i class="ri-arrow-left-line"></i> Back</button>
+                        <span class="step-counter">Step 1 of 4</span>
+                        <button type="button" class="btn-next" id="next1" disabled>Next <i class="ri-arrow-right-line"></i></button>
+                    </div>
+                </div>
+
+                <!-- ── STEP 2: Request Details ── -->
+                <div class="step-panel" id="step-2">
                     <div class="card">
                         <div class="card-hd">
                             <i class="ri-calendar-schedule-line"></i>
                             Request Details
-                            <span class="card-subtitle">Step 1 of 4</span>
+                            <span class="card-subtitle">Step 2 of 4</span>
                         </div>
                         <div class="card-bd">
                             <div class="field-grid">
@@ -889,37 +901,38 @@ if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
                         </div>
                     </div>
                     <div class="step-nav">
-                        <button type="button" class="btn-prev invisible"><i class="ri-arrow-left-line"></i> Back</button>
-                        <span class="step-counter">Step 1 of 4</span>
-                        <button type="button" class="btn-next" id="next1">Next <i class="ri-arrow-right-line"></i></button>
+                        <button type="button" class="btn-prev" data-go="1"><i class="ri-arrow-left-line"></i> Back</button>
+                        <span class="step-counter">Step 2 of 4</span>
+                        <button type="button" class="btn-next" id="next2">Next <i class="ri-arrow-right-line"></i></button>
                     </div>
                 </div>
 
-                <!-- ── STEP 2: Select Equipment ── -->
-                <div class="step-panel" id="step-2">
+                <!-- ── STEP 3: Select Equipment ── -->
+                <div class="step-panel" id="step-3">
                     <div class="card">
                         <div class="card-hd">
                             <i class="ri-shopping-bag-3-line"></i>
                             Select Equipment
-                            <span class="card-subtitle">Step 2 of 4</span>
+                            <span class="card-subtitle">Step 3 of 4</span>
                         </div>
                         <div class="card-bd">
                             <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1.1rem;line-height:1.5">
-                                Use <strong>+</strong> and <strong>−</strong> to set how many you need for each type. You can request more than one of the same category.
+                                Tap a row to add one, or use <strong>Remove</strong> and <strong>Add</strong> on the right to set quantities.
                             </p>
-                            <div class="equipment-grid" id="equipmentGrid">
+                            <div class="equipment-list" id="equipmentGrid">
                                 <?php foreach ($equipment_catalog as $eq): ?>
-                                <div class="eq-card" data-eq-id="<?= htmlspecialchars($eq['id']) ?>">
-                                    <div class="eq-check" aria-hidden="true"><i class="ri-check-line"></i></div>
-                                    <div class="eq-card-main">
+                                <div class="eq-row" data-eq-id="<?= htmlspecialchars($eq['id']) ?>">
+                                    <div class="eq-row-main">
                                         <div class="eq-icon"><i class="<?= htmlspecialchars($eq['icon']) ?>"></i></div>
-                                        <div class="eq-name"><?= htmlspecialchars($eq['name']) ?></div>
-                                        <div class="eq-cat"><?= htmlspecialchars($eq['category']) ?></div>
+                                        <div class="eq-row-text">
+                                            <div class="eq-name"><?= htmlspecialchars($eq['name']) ?></div>
+                                            <div class="eq-cat"><?= htmlspecialchars($eq['category']) ?></div>
+                                        </div>
                                     </div>
-                                    <div class="eq-qty-row">
-                                        <button type="button" class="eq-qty-btn" data-eq-delta="-1" aria-label="Decrease quantity">−</button>
+                                    <div class="eq-row-actions">
+                                        <button type="button" class="eq-qty-btn" data-eq-delta="-1" aria-label="Remove one">−</button>
                                         <span class="eq-qty-val" data-eq-qty-display>0</span>
-                                        <button type="button" class="eq-qty-btn" data-eq-delta="1" aria-label="Increase quantity">+</button>
+                                        <button type="button" class="eq-qty-btn" data-eq-delta="1" aria-label="Add one">+</button>
                                     </div>
                                 </div>
                                 <?php endforeach; ?>
@@ -934,43 +947,9 @@ if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
                         </div>
                     </div>
                     <div class="step-nav">
-                        <button type="button" class="btn-prev" data-go="1"><i class="ri-arrow-left-line"></i> Back</button>
-                        <span class="step-counter">Step 2 of 4</span>
-                        <button type="button" class="btn-next" id="next2">Next <i class="ri-arrow-right-line"></i></button>
-                    </div>
-                </div>
-
-                <!-- ── STEP 3: Terms & Conditions ── -->
-                <div class="step-panel" id="step-3">
-                    <div class="card">
-                        <div class="card-hd">
-                            <i class="ri-file-shield-2-line"></i>
-                            Terms and Conditions
-                            <span class="card-subtitle">Step 3 of 4</span>
-                        </div>
-                        <div class="card-bd">
-                            <div class="terms-box">
-                                <ul>
-                                    <li><strong>Eligibility:</strong> All equipment is available for reservation only to registered students and staff of UniKL with a valid ID.</li>
-                                    <li><strong>Reservation duration:</strong> The duration of the reservation is as specified in your request.</li>
-                                    <li><strong>Responsibility:</strong> The party making the reservation is fully responsible for the reserved equipment from the moment of collection until they are returned and checked in by a technician.</li>
-                                    <li><strong>Condition of items:</strong> The reserving party must inspect the item(s) at the time of collection. Any existing damage must be reported immediately, or the reserving party may be held responsible.</li>
-                                    <li class="terms-danger"><strong>Damage or loss:</strong> The reserving party will be held financially responsible for the full replacement cost of any lost, stolen, or damaged items (including all parts and accessories).</li>
-                                    <li><strong>Late returns:</strong> Failure to return items by the specified return date will result in a fine and a temporary suspension of reservation privileges.</li>
-                                    <li><strong>Purpose of use:</strong> Items are to be used for academic or official university purposes only, as specified in the reservation form.</li>
-                                    <li><strong>Collection:</strong> Approved items must be collected within 24 hours of the &quot;Approved&quot; status being issued, or the reservation may be cancelled.</li>
-                                </ul>
-                            </div>
-                            <label class="check-terms">
-                                <input type="checkbox" name="accept_terms" id="acceptTerms" value="1" <?= isset($_POST['accept_terms']) ? 'checked' : '' ?>>
-                                <span>I have read and agree to the terms and conditions above. This is required to proceed.</span>
-                            </label>
-                        </div>
-                    </div>
-                    <div class="step-nav">
                         <button type="button" class="btn-prev" data-go="2"><i class="ri-arrow-left-line"></i> Back</button>
                         <span class="step-counter">Step 3 of 4</span>
-                        <button type="button" class="btn-next" id="next3" disabled>Review <i class="ri-arrow-right-line"></i></button>
+                        <button type="button" class="btn-next" id="next3">Next <i class="ri-arrow-right-line"></i></button>
                     </div>
                 </div>
 
@@ -1055,7 +1034,7 @@ if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
         // ── DOM refs ──
         var hiddenWrap   = document.getElementById('cartHiddenInputs');
         var acceptTerms  = document.getElementById('acceptTerms');
-        var next3Btn     = document.getElementById('next3');
+        var termsNextBtn = document.getElementById('next1');
         var summaryWrap  = document.getElementById('selectedSummary');
 
         // Program label map
@@ -1079,21 +1058,29 @@ if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
                 var circle = item.querySelector('.step-circle');
                 if (s < n) {
                     circle.innerHTML = '<i class="ri-check-line" style="font-size:1rem"></i>';
-                } else if (s === 4) {
-                    circle.innerHTML = n === 4
+                } else if (s === n) {
+                    circle.innerHTML = (s === 4)
                         ? '<i class="ri-check-line" style="font-size:1rem"></i>'
-                        : '<i class="ri-check-line" style="font-size:1rem"></i>';
-                    circle.innerHTML = '<i class="ri-check-line" style="font-size:1rem"></i>';
+                        : String(s);
                 } else {
-                    circle.innerHTML = s;
+                    circle.innerHTML = String(s);
                 }
             });
             currentStep = n;
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        // ── Step 1 validation ──
+        // ── Step 1: Terms ──
         document.getElementById('next1').addEventListener('click', function () {
+            if (!acceptTerms.checked) {
+                alert('Please read and accept the terms and conditions to continue.');
+                return;
+            }
+            goToStep(2);
+        });
+
+        // ── Step 2: Details ──
+        document.getElementById('next2').addEventListener('click', function () {
             var bd = document.getElementById('borrowDate').value;
             var rd = document.getElementById('returnDate').value;
             var prog = document.querySelector('input[name="program_type"]:checked');
@@ -1105,7 +1092,7 @@ if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
             if (!prog) { alert('Please select a program type.'); return; }
             if (!loc) { alert('Please enter the usage location.'); return; }
             if (rsn.length < 5) { alert('Please enter a reason (at least a few words).'); return; }
-            goToStep(2);
+            goToStep(3);
         });
 
         function cartTotalUnits() {
@@ -1114,15 +1101,9 @@ if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
             return t;
         }
 
-        // ── Step 2 validation ──
-        document.getElementById('next2').addEventListener('click', function () {
-            if (cartTotalUnits() < 1) { alert('Please add at least one item to your request.'); return; }
-            goToStep(3);
-        });
-
-        // ── Step 3 → Step 4: populate review ──
+        // ── Step 3: Equipment → Step 4 Review ──
         document.getElementById('next3').addEventListener('click', function () {
-            if (!acceptTerms.checked) return;
+            if (cartTotalUnits() < 1) { alert('Please add at least one item to your request.'); return; }
             populateReview();
             goToStep(4);
         });
@@ -1134,12 +1115,10 @@ if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
             });
         });
 
-        // ── Terms checkbox enables next3 ──
         acceptTerms.addEventListener('change', function () {
-            next3Btn.disabled = !acceptTerms.checked;
+            termsNextBtn.disabled = !acceptTerms.checked;
         });
-        // init
-        next3Btn.disabled = !acceptTerms.checked;
+        termsNextBtn.disabled = !acceptTerms.checked;
 
         function getQty(id) {
             return cart.get(id) || 0;
@@ -1152,7 +1131,7 @@ if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
             } else {
                 cart.set(id, Math.min(MAX_QTY, q));
             }
-            updateEquipmentCards();
+            updateEquipmentRows();
             renderSummaryChips();
             syncHidden();
         }
@@ -1210,15 +1189,15 @@ if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
             });
         }
 
-        function updateEquipmentCards() {
-            document.querySelectorAll('.eq-card').forEach(function (card) {
-                var id = card.getAttribute('data-eq-id');
+        function updateEquipmentRows() {
+            document.querySelectorAll('.eq-row').forEach(function (row) {
+                var id = row.getAttribute('data-eq-id');
                 var q = getQty(id);
-                card.classList.toggle('in-cart', q > 0);
-                var disp = card.querySelector('[data-eq-qty-display]');
+                row.classList.toggle('in-cart', q > 0);
+                var disp = row.querySelector('[data-eq-qty-display]');
                 if (disp) disp.textContent = String(q);
-                var minus = card.querySelector('[data-eq-delta="-1"]');
-                var plus = card.querySelector('[data-eq-delta="1"]');
+                var minus = row.querySelector('[data-eq-delta="-1"]');
+                var plus = row.querySelector('[data-eq-delta="1"]');
                 if (minus) minus.disabled = q < 1;
                 if (plus) plus.disabled = q >= MAX_QTY;
             });
@@ -1229,13 +1208,13 @@ if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
             return (t && t.nodeType === 1) ? t : (t && t.parentElement) || null;
         }
 
-        document.querySelectorAll('.eq-card .eq-qty-btn').forEach(function (btn) {
+        document.querySelectorAll('.eq-row .eq-qty-btn').forEach(function (btn) {
             btn.addEventListener('click', function (ev) {
                 ev.preventDefault();
                 ev.stopPropagation();
-                var card = btn.closest('.eq-card');
-                if (!card) return;
-                var id = card.getAttribute('data-eq-id');
+                var row = btn.closest('.eq-row');
+                if (!row) return;
+                var id = row.getAttribute('data-eq-id');
                 var d = parseInt(btn.getAttribute('data-eq-delta'), 10);
                 if (!id || (d !== 1 && d !== -1)) return;
                 addDelta(id, d);
@@ -1248,10 +1227,10 @@ if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
                 var el = eventElement(ev);
                 if (!el) return;
                 if (el.closest('.eq-qty-btn')) return;
-                var main = el.closest('.eq-card-main');
+                var main = el.closest('.eq-row-main');
                 if (!main) return;
-                var card2 = main.closest('.eq-card');
-                var id2 = card2 && card2.getAttribute('data-eq-id');
+                var row2 = main.closest('.eq-row');
+                var id2 = row2 && row2.getAttribute('data-eq-id');
                 if (id2 && getQty(id2) < MAX_QTY) {
                     addDelta(id2, 1);
                 }
@@ -1305,15 +1284,15 @@ if ($form_error !== '' && isset($_POST['qty']) && is_array($_POST['qty'])) {
             renderSummaryChips();
             syncHidden();
         }
-        updateEquipmentCards();
+        updateEquipmentRows();
 
         // If there was a PHP-side error, jump to the relevant step
         <?php if ($form_error !== ''): ?>
         (function() {
             var err = <?= json_encode($form_error) ?>;
-            if (err.includes('item')) { goToStep(2); }
-            else if (err.includes('terms')) { goToStep(3); }
-            else { goToStep(1); }
+            if (err.includes('item')) { goToStep(3); }
+            else if (err.includes('terms')) { goToStep(1); }
+            else { goToStep(2); }
         })();
         <?php endif; ?>
 
