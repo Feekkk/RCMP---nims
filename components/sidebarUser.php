@@ -5,7 +5,7 @@ $isDashboard = $currentPage === 'dashboard.php';
 $isLaptop    = $currentPage === 'laptop.php';
 $isAV        = $currentPage === 'av.php';
 $isNetwork   = $currentPage === 'network.php';
-$isNextCheck = str_starts_with($currentPage, 'nextcheck')
+$isRequest   = str_starts_with($currentPage, 'request')
     || $currentPage === 'nextAdd.php'
     || $currentPage === 'nextListitem.php'
     || $currentPage === 'nextCheckout.php'
@@ -238,13 +238,13 @@ $isProfile   = $currentPage === 'profile.php';
             </div>
         </div>
         <div class="nav-group">
-            <a href="#" class="nav-item <?= $isNextCheck ? 'open' : '' ?>" onclick="toggleDropdown(this, event)" style="justify-content: space-between;">
+            <a href="#" class="nav-item <?= $isRequest ? 'open' : '' ?>" onclick="toggleDropdown(this, event)" style="justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 1rem;">
-                    <i class="ri-checkbox-multiple-line"></i> NextCheck
+                    <i class="ri-checkbox-multiple-line"></i> Requests
                 </div>
                 <i class="ri-arrow-down-s-line chevron" style="transition: transform 0.3s ease; font-size: 1.2rem;"></i>
             </a>
-            <div class="nav-dropdown <?= $isNextCheck ? 'show' : '' ?>">
+            <div class="nav-dropdown <?= $isRequest ? 'show' : '' ?>">
                 <a href="../technician/nextAdd.php" class="nav-dropdown-item <?= $currentPage === 'nextAdd.php' ? 'active' : '' ?>">Add items</a>
                 <a href="../technician/nextListitem.php" class="nav-dropdown-item <?= $currentPage === 'nextListitem.php' ? 'active' : '' ?>">List items</a>
                 <a href="../technician/nextCheckout.php" class="nav-dropdown-item <?= ($currentPage === 'nextCheckout.php' || $currentPage === 'nextItems.php') ? 'active' : '' ?>">User requests</a>
