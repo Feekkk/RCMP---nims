@@ -209,6 +209,25 @@ CREATE TABLE IF NOT EXISTS warranty(
   INDEX idx_asset_id (asset_id)
 );
 
+-- In-house repairs for laptops with no (or expired) vendor warranty; logged by technician
+CREATE TABLE IF NOT EXISTS repair (
+  `repair_id` INT(11) NOT NULL AUTO_INCREMENT,
+  `asset_id` INT(11) NOT NULL,
+  `staff_id` VARCHAR(32) NOT NULL,
+  `repair_date` DATE NOT NULL,
+  `completed_date` DATE DEFAULT NULL,
+  `issue_summary` VARCHAR(255) NOT NULL,
+  `repair_remarks` TEXT DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`repair_id`),
+  FOREIGN KEY (`asset_id`) REFERENCES `laptop`(`asset_id`),
+  FOREIGN KEY (`staff_id`) REFERENCES `users`(`staff_id`),
+  INDEX `idx_repair_asset_id` (`asset_id`),
+  INDEX `idx_repair_staff_id` (`staff_id`),
+  INDEX `idx_repair_date` (`repair_date`)
+);
+
 -- Warranty claim log (multiple claims allowed until warranty_end_date)
 CREATE TABLE IF NOT EXISTS warranty_claim (
   `claim_id` INT(11) NOT NULL AUTO_INCREMENT,
