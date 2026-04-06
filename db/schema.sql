@@ -340,14 +340,3 @@ CREATE TABLE IF NOT EXISTS disposal_item (
   INDEX `idx_disposal_item_disposal_id` (`disposal_id`),
   INDEX `idx_disposal_item_asset_id` (`asset_id`)
 );
-
-SET @av_has_loc = (
-  SELECT COUNT(*) FROM information_schema.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'av' AND COLUMN_NAME = 'location'
-);
-SET @sql_av_drop_loc = IF(@av_has_loc > 0,
-  'ALTER TABLE av DROP COLUMN `location`',
-  'SELECT 1');
-PREPARE _stmt_av_drop_loc FROM @sql_av_drop_loc;
-EXECUTE _stmt_av_drop_loc;
-DEALLOCATE PREPARE _stmt_av_drop_loc;
