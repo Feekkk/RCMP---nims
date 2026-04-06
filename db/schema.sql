@@ -105,6 +105,50 @@ CREATE TABLE IF NOT EXISTS network (
     INDEX idx_status_id (status_id)
 );
 
+-- AV assets (audio/visual equipment: speaker, mic, projector, etc.)
+CREATE TABLE IF NOT EXISTS av (
+    `asset_id` INT(11) NOT NULL,
+    `asset_id_old` VARCHAR(64) DEFAULT NULL,
+    `category` VARCHAR(128) DEFAULT NULL,
+    `brand` VARCHAR(100) DEFAULT NULL,
+    `model` VARCHAR(100) DEFAULT NULL,
+    `serial_num` VARCHAR(100) DEFAULT NULL,
+    `status_id` INT UNSIGNED NOT NULL COMMENT '1=Active, 2=Non-active, 3=Deploy, 5=Maintenance, 6=Faulty, 7=Disposed, 8=Lost',
+    `location` VARCHAR(512) DEFAULT NULL,
+    `PO_DATE` DATE DEFAULT NULL,
+    `PO_NUM` VARCHAR(50) DEFAULT NULL,
+    `DO_DATE` DATE DEFAULT NULL,
+    `DO_NUM` VARCHAR(50) DEFAULT NULL,
+    `INVOICE_DATE` DATE DEFAULT NULL,
+    `INVOICE_NUM` VARCHAR(50) DEFAULT NULL,
+    `PURCHASE_COST` DECIMAL(10,2) DEFAULT NULL,
+    `remarks` TEXT DEFAULT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (asset_id),
+    FOREIGN KEY (status_id) REFERENCES status(status_id),
+    INDEX idx_asset_id (asset_id),
+    INDEX idx_status_id (status_id)
+);
+
+CREATE TABLE IF NOT EXISTS av_deployment (
+  `deployment_id` INT(11) NOT NULL AUTO_INCREMENT,
+  `asset_id` INT(11) NOT NULL,
+  `building` VARCHAR(128) NOT NULL,
+  `level` VARCHAR(128) NOT NULL,
+  `zone` VARCHAR(128) NOT NULL,
+  `deployment_date` DATE NOT NULL,
+  `deployment_remarks` TEXT DEFAULT NULL,
+  `staff_id` VARCHAR(32) NOT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (deployment_id),
+  FOREIGN KEY (asset_id) REFERENCES av(asset_id),
+  FOREIGN KEY (staff_id) REFERENCES users(staff_id),
+  INDEX idx_deployment_id (deployment_id),
+  INDEX idx_asset_id (asset_id)
+);
+
 CREATE TABLE IF NOT EXISTS handover (
   `handover_id` INT(11) NOT NULL AUTO_INCREMENT,
   `asset_id` INT(11) NOT NULL,
@@ -297,3 +341,18 @@ CREATE TABLE IF NOT EXISTS disposal_item (
   INDEX `idx_disposal_item_disposal_id` (`disposal_id`),
   INDEX `idx_disposal_item_asset_id` (`asset_id`)
 );
+
+SET @av_has_loc = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'av' AND COLUMN_NAME = 'location'
+);
+SET @av_table = (
+  SELECT COUNT(*) FROM information_schema.TABLES
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'av'
+);
+SET @sql_av_loc = IF(@av_has_loc = 0 AND @av_table > 0,
+  'ALTER TABLE av ADD COLUMN `location` VARCHAR(512) DEFAULT NULL AFTER `status_id`',
+  'SELECT 1');
+PREPARE _stmt_av_loc FROM @sql_av_loc;
+EXECUTE _stmt_av_loc;
+DEALLOCATE PREPARE _stmt_av_loc;
