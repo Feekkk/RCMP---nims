@@ -186,7 +186,6 @@ CREATE TABLE IF NOT EXISTS handover_staff(
   `handover_staff_id` INT(11) NOT NULL AUTO_INCREMENT,
   `employee_no` VARCHAR(32) NOT NULL,
   `handover_id` INT(11) NOT NULL,
-  `assignment_type` VARCHAR(128) NOT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (handover_staff_id),
