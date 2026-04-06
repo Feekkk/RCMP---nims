@@ -69,14 +69,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Receiver staff ID not found.');
             }
 
-            // assignment_type is required; for this form we reuse receiver department.
-            $assignmentType = trim((string)($receiverRow['department'] ?? ''));
-            if ($assignmentType === '') {
-                $assignmentType = trim($receiver_designation) !== '' ? trim($receiver_designation) : 'Receiver';
-            }
-
             $handover_remarks = trim($handover_place);
             $handover_remarks .= ' | Time: ' . trim((string)$handover_time);
+            if ($receiver_designation !== '') {
+                $handover_remarks .= ' | Designation: ' . trim($receiver_designation);
+            }
             if ($receiver_email !== '' && $receiver_phone !== '') {
                 $handover_remarks .= ' | Receiver Contact: ' . trim($receiver_email) . ' / ' . trim($receiver_phone);
             }
@@ -94,13 +91,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $handover_id = (int)$pdo->lastInsertId();
 
             $stmtHandoverStaff = $pdo->prepare('
-                INSERT INTO handover_staff (employee_no, handover_id, assignment_type)
-                VALUES (:employee_no, :handover_id, :assignment_type)
+                INSERT INTO handover_staff (employee_no, handover_id)
+                VALUES (:employee_no, :handover_id)
             ');
             $stmtHandoverStaff->execute([
                 ':employee_no' => $receiver_staff_id,
                 ':handover_id' => $handover_id,
-                ':assignment_type' => $assignmentType,
             ]);
 
             $stmtUpdateAsset = $pdo->prepare('

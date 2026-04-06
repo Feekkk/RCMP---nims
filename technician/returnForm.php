@@ -47,7 +47,6 @@ if ($assetId > 0) {
         SELECT
             hs.handover_staff_id,
             hs.employee_no,
-            hs.assignment_type,
             st.full_name AS recipient_name,
             st.department AS recipient_dept
         FROM handover h
@@ -290,10 +289,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <div class="form-group">
                                     <label class="form-label">Department</label>
                                     <input class="form-control" value="<?= htmlspecialchars((string)($latestRecipient['recipient_dept'] ?? '—')) ?>" disabled>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">Assignment Type</label>
-                                    <input class="form-control" value="<?= htmlspecialchars((string)($latestRecipient['assignment_type'] ?? '—')) ?>" disabled>
                                 </div>
                             <?php else: ?>
                                 <div class="form-group">

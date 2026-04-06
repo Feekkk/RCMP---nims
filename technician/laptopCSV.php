@@ -11,16 +11,23 @@ require_once '../config/database.php';
 if (isset($_GET['download_template'])) {
     $headers = ['asset_id','serial_num','brand','model','category','part_number','processor',
                 'memory','storage','gpu','os','po_date','po_num','do_date','do_num',
-                'invoice_date','invoice_num','purchase_cost','status_id','remarks'];
+                'invoice_date','invoice_num','purchase_cost','status_id','remarks',
+                'handover_date','handover_technician_staff_id','handover_remarks','recipient_employee_no',
+                'warranty_start_date','warranty_end_date','warranty_remarks'];
     header('Content-Type: text/csv');
     header('Content-Disposition: attachment; filename="laptop_import_template.csv"');
     $out = fopen('php://output', 'w');
     fputcsv($out, $headers);
-    // Sample row
     fputcsv($out, ['14260001','SN-EXAMPLE01','Lenovo','ThinkPad T14','Notebook','20W0004UMY',
                    'Intel Core i7-1165G7','16GB DDR4','512GB NVMe SSD','Intel Iris Xe',
                    'Windows 11 Pro','2024-01-15','PO-2024-001','2024-01-20','DO-2024-001',
-                   '2024-01-25','INV-2024-001','4500.00','1','Good condition']);
+                   '2024-01-25','INV-2024-001','4500.00','1','Good condition',
+                   '', '', '', '',
+                   '2024-01-01','2027-01-01','3 Year on-site']);
+    fputcsv($out, ['14260002','SN-DEPLOY01','Lenovo','ThinkPad X1','Notebook','','','','','',
+                   '','','','','','','','3','Deployed user',
+                   '2024-06-01','TECH001','IT handover note','EMP001',
+                   '', '', '']);
     fclose($out);
     exit;
 }
@@ -42,24 +49,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         $results[] = ['row' => 0, 'status' => 'error', 'msg' => 'Only .csv files are accepted.'];
     } else {
         $handle = fopen($file['tmp_name'], 'r');
-        $header = fgetcsv($handle); // skip header row
+        $header = fgetcsv($handle);
 
-        // Normalise expected columns (asset_id is first — user-supplied)
         $expected = ['asset_id','serial_num','brand','model','category','part_number','processor',
                      'memory','storage','gpu','os','po_date','po_num','do_date','do_num',
-                     'invoice_date','invoice_num','purchase_cost','status_id','remarks'];
+                     'invoice_date','invoice_num','purchase_cost','status_id','remarks',
+                     'handover_date','handover_technician_staff_id','handover_remarks','recipient_employee_no',
+                     'warranty_start_date','warranty_end_date','warranty_remarks'];
+
+        if ($header === false || $header === []) {
+            $results[] = ['row' => 0, 'status' => 'error', 'msg' => 'CSV is empty or unreadable.'];
+            fclose($handle);
+            $processed = true;
+        } else {
+        $colIndex = [];
+        foreach ($header as $hi => $hcell) {
+            if ($hi === 0 && is_string($hcell)) {
+                $hcell = preg_replace('/^\xEF\xBB\xBF/', '', $hcell);
+            }
+            $nk = strtolower(trim((string)$hcell));
+            if ($nk !== '' && !array_key_exists($nk, $colIndex)) {
+                $colIndex[$nk] = $hi;
+            }
+        }
 
         $row_num  = 1;
         $pdo      = db();
+        $sessionStaffId = (string)($_SESSION['staff_id'] ?? '');
+
+        $stmtUserExists = $pdo->prepare('SELECT 1 FROM users WHERE staff_id = ? LIMIT 1');
+        $stmtStaffExists = $pdo->prepare('SELECT 1 FROM staff WHERE employee_no = ? LIMIT 1');
 
         while (($row = fgetcsv($handle)) !== false) {
             $row_num++;
             if (count($row) < 2) continue; // skip completely empty lines
 
-            // Map by position against expected headers
             $d = [];
             foreach ($expected as $i => $col) {
-                $d[$col] = isset($row[$i]) && trim($row[$i]) !== '' ? trim($row[$i]) : null;
+                $idx = $colIndex[strtolower($col)] ?? $i;
+                $d[$col] = isset($row[$idx]) && trim((string)$row[$idx]) !== '' ? trim((string)$row[$idx]) : null;
             }
 
             // Validate required fields (asset_id, serial_num, status_id)
@@ -81,6 +109,86 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             }
 
             $aid = (int)$d['asset_id'];
+
+            $hoDate = $d['handover_date'] ?? null;
+            $hoTech = isset($d['handover_technician_staff_id']) && trim((string)$d['handover_technician_staff_id']) !== ''
+                ? trim((string)$d['handover_technician_staff_id']) : null;
+            $hoRemarks = $d['handover_remarks'] ?? null;
+            if ($hoRemarks !== null && trim((string)$hoRemarks) === '') {
+                $hoRemarks = null;
+            }
+            $hoEmployee = isset($d['recipient_employee_no']) && trim((string)$d['recipient_employee_no']) !== ''
+                ? trim((string)$d['recipient_employee_no']) : null;
+
+            $hasHoDate = $hoDate !== null && trim((string)$hoDate) !== '';
+            $anyHo = $hasHoDate || $hoEmployee !== null;
+            if ((int)$d['status_id'] === 3 && (!$hasHoDate || $hoEmployee === null)) {
+                $results[] = ['row'=>$row_num, 'status'=>'error',
+                    'asset_id'=>$d['asset_id'], 'serial'=>$d['serial_num']??'—',
+                    'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
+                    'msg'=>'Deploy status (3) requires handover_date and recipient_employee_no (saved to handover + handover_staff).'];
+                $total_err++;
+                continue;
+            }
+            if ($anyHo && (!$hasHoDate || $hoEmployee === null)) {
+                $results[] = ['row'=>$row_num, 'status'=>'error',
+                    'asset_id'=>$d['asset_id'], 'serial'=>$d['serial_num']??'—',
+                    'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
+                    'msg'=>'Handover incomplete: provide handover_date and recipient_employee_no together (or leave both empty).'];
+                $total_err++;
+                continue;
+            }
+
+            $techStaffId = $hoTech ?? $sessionStaffId;
+            if ($anyHo && $techStaffId === '') {
+                $results[] = ['row'=>$row_num, 'status'=>'error',
+                    'asset_id'=>$d['asset_id'], 'serial'=>$d['serial_num']??'—',
+                    'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
+                    'msg'=>'Handover needs handover_technician_staff_id or an importer session with staff_id.'];
+                $total_err++;
+                continue;
+            }
+
+            if ($anyHo) {
+                $stmtUserExists->execute([$techStaffId]);
+                if (!$stmtUserExists->fetchColumn()) {
+                    $results[] = ['row'=>$row_num, 'status'=>'error',
+                        'asset_id'=>$d['asset_id'], 'serial'=>$d['serial_num']??'—',
+                        'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
+                        'msg'=>'handover_technician_staff_id not found in users.'];
+                    $total_err++;
+                    continue;
+                }
+                $stmtStaffExists->execute([$hoEmployee]);
+                if (!$stmtStaffExists->fetchColumn()) {
+                    $results[] = ['row'=>$row_num, 'status'=>'error',
+                        'asset_id'=>$d['asset_id'], 'serial'=>$d['serial_num']??'—',
+                        'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
+                        'msg'=>'recipient_employee_no not found in staff directory.'];
+                    $total_err++;
+                    continue;
+                }
+            }
+
+            $wStart = isset($d['warranty_start_date']) && trim((string)$d['warranty_start_date']) !== ''
+                ? trim((string)$d['warranty_start_date']) : null;
+            $wEnd = isset($d['warranty_end_date']) && trim((string)$d['warranty_end_date']) !== ''
+                ? trim((string)$d['warranty_end_date']) : null;
+            $wRemarks = $d['warranty_remarks'] ?? null;
+            if ($wRemarks !== null && trim((string)$wRemarks) === '') {
+                $wRemarks = null;
+            }
+            $hasWStart = $wStart !== null;
+            $hasWEnd = $wEnd !== null;
+            if ($hasWStart xor $hasWEnd) {
+                $results[] = ['row'=>$row_num, 'status'=>'error',
+                    'asset_id'=>$d['asset_id'], 'serial'=>$d['serial_num']??'—',
+                    'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
+                    'msg'=>'Warranty incomplete: provide both warranty_start_date and warranty_end_date (or leave both empty).'];
+                $total_err++;
+                continue;
+            }
+            $anyWarranty = $hasWStart && $hasWEnd;
 
             try {
                 $pdo->beginTransaction();
@@ -118,14 +226,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     ':status_id'     => (int)$d['status_id'],
                     ':remarks'       => $d['remarks'],
                 ]);
+
+                $okParts = [];
+                if ($anyHo) {
+                    $stmt2 = $pdo->prepare('INSERT INTO handover (asset_id, staff_id, handover_date, handover_remarks) VALUES (:asset_id, :staff_id, :handover_date, :handover_remarks)');
+                    $stmt2->execute([
+                        ':asset_id' => $aid,
+                        ':staff_id' => $techStaffId,
+                        ':handover_date' => trim((string)$hoDate),
+                        ':handover_remarks' => $hoRemarks,
+                    ]);
+                    $handover_id = (int) $pdo->lastInsertId();
+                    $stmt3 = $pdo->prepare('INSERT INTO handover_staff (employee_no, handover_id) VALUES (:employee_no, :handover_id)');
+                    $stmt3->execute([
+                        ':employee_no' => $hoEmployee,
+                        ':handover_id' => $handover_id,
+                    ]);
+                    $okParts[] = 'handover';
+                }
+                if ($anyWarranty) {
+                    $stmtW = $pdo->prepare('INSERT INTO warranty (asset_id, warranty_start_date, warranty_end_date, warranty_remarks) VALUES (:asset_id, :start, :end, :remarks)');
+                    $stmtW->execute([
+                        ':asset_id' => $aid,
+                        ':start' => $wStart,
+                        ':end' => $wEnd,
+                        ':remarks' => $wRemarks,
+                    ]);
+                    $okParts[] = 'warranty';
+                }
+                $okMsg = 'Imported successfully' . ($okParts !== [] ? ' (+' . implode(', +', $okParts) . ')' : '');
+
                 $pdo->commit();
                 $results[] = ['row'=>$row_num, 'status'=>'ok',
                     'asset_id'=>$aid, 'serial'=>$d['serial_num'],
                     'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
-                    'msg'=>'Imported successfully'];
+                    'msg'=>$okMsg];
                 $total_ok++;
             } catch (PDOException $e) {
-                $pdo->rollBack();
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
                 $msg = str_contains($e->getMessage(), 'Duplicate')
                     ? 'Duplicate serial number or asset ID — skipped'
                     : 'DB error: '.$e->getMessage();
@@ -138,6 +278,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         }
         fclose($handle);
         $processed = true;
+        }
     }
 }
 ?>
@@ -411,7 +552,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
     <header class="page-header">
         <div class="page-title">
             <h1><i class="ri-file-upload-line"></i> Bulk Import Laptops</h1>
-            <p>Upload a CSV file to register multiple laptop assets at once.</p>
+            <p>Upload a CSV file to register laptops. Optional columns create a <strong>handover</strong> + recipient on <code>handover_staff</code> when filled.</p>
         </div>
         <a href="laptop.php" class="btn-back"><i class="ri-arrow-left-line"></i> Back to Inventory</a>
     </header>
@@ -500,11 +641,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             <span class="chip">invoice_num</span>
             <span class="chip">purchase_cost</span>
             <span class="chip">remarks</span>
+            <span class="chip">handover_date</span>
+            <span class="chip">handover_technician_staff_id</span>
+            <span class="chip">handover_remarks</span>
+            <span class="chip">recipient_employee_no</span>
+            <span class="chip">warranty_start_date</span>
+            <span class="chip">warranty_end_date</span>
+            <span class="chip">warranty_remarks</span>
         </div>
         <p style="font-size:0.83rem;color:var(--text-muted);margin-top:0.5rem;">
             <i class="ri-information-line"></i>
-            <strong>asset_id</strong> must be a unique number (e.g. <code>14260001</code>). Dates must be in <strong>YYYY-MM-DD</strong> format.
+            <strong>asset_id</strong> must be a unique number (e.g. <code>14260001</code>). Dates: <strong>YYYY-MM-DD</strong>.
             Status IDs: 1=Active, 2=Non-active, 3=Deploy, 4=Reserved, 5=Maintenance, 6=Faulty, 7=Disposed, 8=Lost.
+            First row must be headers. Columns are matched by name (case-insensitive); if a name is missing, that field falls back to column order in the template.
+            <strong>Handover:</strong> optional unless status is <strong>Deploy (3)</strong> — then <code>handover_date</code> and <code>recipient_employee_no</code> are required. Rows are written to <code>handover</code> (technician, date, remarks) and <code>handover_staff</code> (recipient).
+            <code>handover_technician_staff_id</code> is <code>users.staff_id</code> (defaults to you if empty). Recipient must exist in <code>staff</code>.
+            <strong>Warranty (optional):</strong> both <code>warranty_start_date</code> and <code>warranty_end_date</code> create a <code>warranty</code> row; <code>warranty_remarks</code> is optional.
         </p>
     </div>
 

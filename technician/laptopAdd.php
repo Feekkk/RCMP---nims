@@ -73,7 +73,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $is_deploy      = ($status_id === 3);
     $ho_employee_no = $str('employee_no');
-    $ho_assign_type = $str('assignment_type');
     $ho_date        = $date('handover_date');
     $ho_remarks     = $str('handover_remarks');
     $sessionStaff   = isset($_SESSION['staff_id']) ? trim((string)$_SESSION['staff_id']) : '';
@@ -89,8 +88,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error_message = 'Category is required (Asset ID is based on category).';
     } elseif (laptop_asset_id_prefix_for_category($category) === null) {
         $error_message = 'Invalid category for Asset ID generation.';
-    } elseif ($is_deploy && (!$ho_employee_no || !$ho_assign_type || !$ho_date)) {
-        $error_message = 'Handover details (assignee, assignment type, date) are required for Deploy status.';
+    } elseif ($is_deploy && (!$ho_employee_no || !$ho_date)) {
+        $error_message = 'Handover details (assignee and date) are required for Deploy status.';
     } elseif ($is_deploy && $sessionStaff === '') {
         $error_message = 'Session staff ID missing; log in again to record a handover.';
     } else {
@@ -128,8 +127,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt2 = $pdo->prepare("INSERT INTO handover (asset_id, staff_id, handover_date, handover_remarks) VALUES (:asset_id, :staff_id, :handover_date, :handover_remarks)");
                 $stmt2->execute([':asset_id' => $asset_id, ':staff_id' => $sessionStaff, ':handover_date' => $ho_date, ':handover_remarks' => $ho_remarks]);
                 $handover_id = (int)$pdo->lastInsertId();
-                $stmt3 = $pdo->prepare('INSERT INTO handover_staff (employee_no, handover_id, assignment_type) VALUES (:employee_no, :handover_id, :assignment_type)');
-                $stmt3->execute([':employee_no' => $ho_employee_no, ':handover_id' => $handover_id, ':assignment_type' => $ho_assign_type]);
+                $stmt3 = $pdo->prepare('INSERT INTO handover_staff (employee_no, handover_id) VALUES (:employee_no, :handover_id)');
+                $stmt3->execute([':employee_no' => $ho_employee_no, ':handover_id' => $handover_id]);
             }
 
             if ($has_warranty) {
@@ -692,16 +691,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <?php if (empty($staffForHandover)): ?>
                             <span class="field-hint err"><i class="ri-error-warning-line"></i> No staff rows found. Admin must import the staff CSV first.</span>
                         <?php endif; ?>
-                    </div>
-
-                    <div class="field">
-                        <label class="field-label">Assignment Type <span class="req">*</span></label>
-                        <select name="assignment_type" class="field-select handover-input" disabled>
-                            <option value="" disabled selected>Select type…</option>
-                            <option value="Permanent">Permanent</option>
-                            <option value="Temporary">Temporary</option>
-                            <option value="Loan">Loan</option>
-                        </select>
                     </div>
 
                     <div class="field">

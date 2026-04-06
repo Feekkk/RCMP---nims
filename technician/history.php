@@ -53,7 +53,6 @@ if ($filter_type === 'all' || $filter_type === 'handover') {
                 h.handover_id, h.asset_id, h.staff_id, h.handover_date, h.handover_remarks,
                 h.created_at,
                 CONCAT(l.brand, ' ', l.model) AS device, l.serial_num,
-                hs.assignment_type,
                 st.full_name AS recipient_name, st.department AS recipient_dept
             FROM handover h
             JOIN laptop l ON l.asset_id = h.asset_id
@@ -69,7 +68,7 @@ if ($filter_type === 'all' || $filter_type === 'handover') {
             'serial'   => $r['serial_num'] ?? '—',
             'actor'    => $r['recipient_name'] ?? $r['staff_id'],
             'dept'     => $r['recipient_dept'] ?? '—',
-            'assign'   => $r['assignment_type'] ?? '—',
+            'assign'   => $r['recipient_dept'] ?? '—',
             'remarks'  => $r['handover_remarks'],
         ];
     }
