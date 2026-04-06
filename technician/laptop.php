@@ -7,6 +7,28 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
 
 require_once '../config/database.php';
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_faulty'], $_POST['asset_id'])) {
+    $aid = (int)$_POST['asset_id'];
+    if ($aid <= 0) {
+        $_SESSION['laptop_flash'] = ['type' => 'error', 'msg' => 'Invalid asset.'];
+    } else {
+        $st = db()->prepare('UPDATE laptop SET status_id = 6 WHERE asset_id = ? AND status_id IN (1, 2)');
+        $st->execute([$aid]);
+        $_SESSION['laptop_flash'] = $st->rowCount() === 1
+            ? ['type' => 'ok', 'msg' => 'Asset marked as Faulty.']
+            : ['type' => 'error', 'msg' => 'Could not update (asset missing or not Active/Non-active).'];
+    }
+    $redir = 'laptop.php';
+    if (isset($_POST['redirect_status']) && $_POST['redirect_status'] !== '' && is_numeric($_POST['redirect_status'])) {
+        $redir .= '?status_id=' . (int)$_POST['redirect_status'];
+    }
+    header('Location: ' . $redir);
+    exit;
+}
+
+$laptop_flash = $_SESSION['laptop_flash'] ?? null;
+unset($_SESSION['laptop_flash']);
+
 //  Active status filter (from URL ?status_id=N) 
 $filter_status = isset($_GET['status_id']) && is_numeric($_GET['status_id'])
     ? (int)$_GET['status_id'] : null;
@@ -57,6 +79,12 @@ $sql = "
     LEFT JOIN handover_staff hs ON hs.handover_id = h.handover_id
     LEFT JOIN staff st ON st.employee_no = hs.employee_no
     LEFT JOIN warranty w ON w.asset_id = l.asset_id
+        AND w.warranty_id = (
+            SELECT w2.warranty_id FROM warranty w2
+            WHERE w2.asset_id = l.asset_id
+            ORDER BY w2.warranty_end_date DESC, w2.warranty_id DESC
+            LIMIT 1
+        )
 ";
 $params = [];
 if ($filter_status !== null) {
@@ -766,6 +794,30 @@ $status_meta = [
             color: white;
         }
 
+        .btn-action.faulty:hover {
+            background: var(--danger);
+            border-color: var(--danger);
+            color: white;
+        }
+
+        .btn-action.repair:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        .laptop-flash {
+            margin: 0 0 1rem;
+            padding: 0.75rem 1rem;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        .laptop-flash.ok { background: rgba(16,185,129,0.12); color: #047857; border: 1px solid rgba(16,185,129,0.35); }
+        .laptop-flash.err { background: rgba(239,68,68,0.1); color: #b91c1c; border: 1px solid rgba(239,68,68,0.3); }
+
+        form.inline-action { display: inline; }
+
         /* Pagination */
         .pagination {
             display: flex;
@@ -902,6 +954,12 @@ $status_meta = [
                 <p>Manage, track, and monitor all registered campus laptops.</p>
             </div>
         </header>
+
+        <?php if ($laptop_flash): ?>
+            <div class="laptop-flash <?= $laptop_flash['type'] === 'ok' ? 'ok' : 'err' ?>">
+                <?= htmlspecialchars($laptop_flash['msg'] ?? '', ENT_QUOTES) ?>
+            </div>
+        <?php endif; ?>
 
         <section class="stock-summary" aria-label="Stock summary">
             <div class="stock-card" title="In-stock: Active, Non-active, Reserved, Maintenance, Faulty">
@@ -1100,6 +1158,15 @@ $status_meta = [
                             <td><span class="badge <?= $meta['cls'] ?>"><i class="<?= $meta['icon'] ?>"></i> <?= htmlspecialchars($row['status_name']) ?></span></td>
                             <td>
                                 <button class="btn-action view" title="View Details"><i class="ri-eye-line"></i></button>
+                                <?php if ($sid === 1 || $sid === 2): ?>
+                                    <form method="post" class="inline-action" action="laptop.php<?= $filter_status !== null ? '?status_id=' . (int)$filter_status : '' ?>" onsubmit="return confirm('Mark this asset as Faulty?');">
+                                        <input type="hidden" name="mark_faulty" value="1">
+                                        <input type="hidden" name="asset_id" value="<?= (int)$row['asset_id'] ?>">
+                                        <input type="hidden" name="redirect_status" value="<?= $filter_status === null ? '' : (string)(int)$filter_status ?>">
+                                        <button type="submit" class="btn-action faulty" title="Mark as Faulty"><i class="ri-error-warning-line"></i></button>
+                                    </form>
+                                <?php endif; ?>
+
                                 <?php if ($sid === 1): ?>
                                     <a href="handoverForm.php?asset_id=<?= urlencode($row['asset_id']) ?>" class="btn-action handover" title="Handover Asset">
                                         <i class="ri-exchange-line"></i>
@@ -1116,6 +1183,18 @@ $status_meta = [
                                     <a href="warranty.php?asset_id=<?= urlencode($row['asset_id']) ?>" class="btn-action warranty" title="Warranty Claim">
                                         <i class="ri-shield-check-line"></i>
                                     </a>
+                                <?php endif; ?>
+
+                                <?php if ($sid === 6): ?>
+                                    <?php if ($inWarranty): ?>
+                                        <a href="warranty.php?asset_id=<?= urlencode((string)$row['asset_id']) ?>" class="btn-action warranty" title="Warranty claim (in warranty)">
+                                            <i class="ri-shield-check-line"></i>
+                                        </a>
+                                    <?php else: ?>
+                                        <a href="repair.php?asset_id=<?= urlencode((string)$row['asset_id']) ?>" class="btn-action repair" title="Log repair (no active warranty)">
+                                            <i class="ri-tools-line"></i>
+                                        </a>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                             </td>
                         </tr>
