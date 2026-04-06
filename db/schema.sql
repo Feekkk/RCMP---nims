@@ -114,7 +114,6 @@ CREATE TABLE IF NOT EXISTS av (
     `model` VARCHAR(100) DEFAULT NULL,
     `serial_num` VARCHAR(100) DEFAULT NULL,
     `status_id` INT UNSIGNED NOT NULL COMMENT '1=Active, 2=Non-active, 3=Deploy, 5=Maintenance, 6=Faulty, 7=Disposed, 8=Lost',
-    `location` VARCHAR(512) DEFAULT NULL,
     `PO_DATE` DATE DEFAULT NULL,
     `PO_NUM` VARCHAR(50) DEFAULT NULL,
     `DO_DATE` DATE DEFAULT NULL,
@@ -346,13 +345,9 @@ SET @av_has_loc = (
   SELECT COUNT(*) FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'av' AND COLUMN_NAME = 'location'
 );
-SET @av_table = (
-  SELECT COUNT(*) FROM information_schema.TABLES
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'av'
-);
-SET @sql_av_loc = IF(@av_has_loc = 0 AND @av_table > 0,
-  'ALTER TABLE av ADD COLUMN `location` VARCHAR(512) DEFAULT NULL AFTER `status_id`',
+SET @sql_av_drop_loc = IF(@av_has_loc > 0,
+  'ALTER TABLE av DROP COLUMN `location`',
   'SELECT 1');
-PREPARE _stmt_av_loc FROM @sql_av_loc;
-EXECUTE _stmt_av_loc;
-DEALLOCATE PREPARE _stmt_av_loc;
+PREPARE _stmt_av_drop_loc FROM @sql_av_drop_loc;
+EXECUTE _stmt_av_drop_loc;
+DEALLOCATE PREPARE _stmt_av_drop_loc;
