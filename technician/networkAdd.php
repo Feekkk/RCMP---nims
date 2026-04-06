@@ -71,6 +71,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
     $status_id = $int('status_id');
     $remarks = $str('remarks');
 
+    $warranty_start_date = $date('warranty_start_date');
+    $warranty_end_date = $date('warranty_end_date');
+    $warranty_remarks = $str('warranty_remarks');
+
     $deploy_building = $str('deployment_building');
     $deploy_level = $str('deployment_level');
     $deploy_zone = $str('deployment_zone');
@@ -97,6 +101,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
                 $error_message = 'Session staff ID missing; log in again.';
             } elseif (!$deploy_building || !$deploy_level || !$deploy_zone || !$deploy_date) {
                 $error_message = 'Deploy status requires building, level, zone, and deployment date.';
+            }
+        }
+        if ($error_message === '' && ($warranty_start_date || $warranty_end_date || $warranty_remarks)) {
+            if (!$warranty_start_date || !$warranty_end_date) {
+                $error_message = 'Warranty incomplete: provide both warranty start and end dates (or leave both empty).';
             }
         }
     }
@@ -152,10 +161,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
                     ':staff_id' => $session_staff_id,
                 ]);
             }
+
+            $anyWarranty = (bool) ($warranty_start_date || $warranty_end_date || $warranty_remarks);
+            if ($anyWarranty) {
+                $stmtW = $pdo->prepare('
+                    INSERT INTO warranty (asset_id, asset_type, warranty_start_date, warranty_end_date, warranty_remarks)
+                    VALUES (:asset_id, :asset_type, :start, :end, :remarks)
+                ');
+                $stmtW->execute([
+                    ':asset_id' => $asset_id,
+                    ':asset_type' => 'network',
+                    ':start' => $warranty_start_date,
+                    ':end' => $warranty_end_date,
+                    ':remarks' => $warranty_remarks,
+                ]);
+            }
             $pdo->commit();
-            $success_message = $status_id === 3
-                ? "Network asset {$asset_id} registered with deployment record."
-                : "Network asset {$asset_id} registered.";
+            $success_message = "Network asset {$asset_id} registered."
+                . ($status_id === 3 ? ' (+ deployment)' : '')
+                . ($anyWarranty ? ' (+ warranty)' : '');
             $next_asset_id = next_network_asset_id($pdo);
         } catch (PDOException $e) {
             if ($pdo->inTransaction()) {
@@ -622,6 +646,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
                     <div class="field">
                         <label class="field-label" for="purchase_cost">Purchase Cost (RM)</label>
                         <input type="number" step="0.01" id="purchase_cost" name="purchase_cost" class="field-input" placeholder="0.00">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <div class="section-head">
+                <div class="section-head-left">
+                    <div class="section-icon"><i class="ri-shield-check-line"></i></div>
+                    <div>
+                        <div class="section-title">Warranty</div>
+                        <div class="section-desc">Optional vendor warranty period</div>
+                    </div>
+                </div>
+                <span class="badge-tag badge-optional">Optional</span>
+            </div>
+            <div class="section-body">
+                <div class="form-grid">
+                    <div class="field">
+                        <label class="field-label" for="warranty_start_date">Warranty Start Date</label>
+                        <input type="date" id="warranty_start_date" name="warranty_start_date" class="field-input">
+                        <span class="field-hint"><i class="ri-information-line"></i> Fill both start and end dates to save warranty</span>
+                    </div>
+                    <div class="field">
+                        <label class="field-label" for="warranty_end_date">Warranty End Date</label>
+                        <input type="date" id="warranty_end_date" name="warranty_end_date" class="field-input">
+                    </div>
+                    <div class="field col-3">
+                        <label class="field-label" for="warranty_remarks">Warranty Remarks</label>
+                        <textarea id="warranty_remarks" name="warranty_remarks" class="field-textarea" rows="3" placeholder="e.g. 3-year onsite support" style="min-height:88px;"></textarea>
                     </div>
                 </div>
             </div>

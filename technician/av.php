@@ -10,6 +10,8 @@ require_once __DIR__ . '/../config/database.php';
 $filter_status = isset($_GET['status_id']) && is_numeric($_GET['status_id'])
     ? (int)$_GET['status_id']
     : null;
+$page = isset($_GET['page']) && is_numeric($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
+$perPage = 10;
 
 $in_stock_ids = [1, 2, 5, 6];
 $out_stock_ids = [3, 7, 8];
@@ -51,9 +53,27 @@ try {
 }
 
 $assets = [];
+$filteredTotal = 0;
+$totalPages = 1;
+$offset = 0;
 $dbError = false;
 try {
     $pdo = db();
+    $countSql = "SELECT COUNT(*) FROM av a";
+    $countParams = [];
+    if ($filter_status !== null) {
+        $countSql .= " WHERE a.status_id = :status_id";
+        $countParams[':status_id'] = $filter_status;
+    }
+    $countStmt = $pdo->prepare($countSql);
+    $countStmt->execute($countParams);
+    $filteredTotal = (int) $countStmt->fetchColumn();
+    $totalPages = max(1, (int) ceil($filteredTotal / $perPage));
+    if ($page > $totalPages) {
+        $page = $totalPages;
+    }
+    $offset = ($page - 1) * $perPage;
+
     $sql = "
         SELECT
             a.asset_id,
@@ -90,13 +110,16 @@ try {
         $sql .= " WHERE a.status_id = :status_id";
         $params[':status_id'] = $filter_status;
     }
-    $sql .= " ORDER BY a.asset_id DESC";
+    $sql .= " ORDER BY a.asset_id DESC LIMIT " . (int) $perPage . " OFFSET " . (int) $offset;
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $assets = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
     $dbError = true;
     $assets = [];
+    $filteredTotal = 0;
+    $totalPages = 1;
+    $offset = 0;
 }
 
 function av_badge_meta(int $statusId): array
@@ -114,6 +137,18 @@ function av_badge_meta(int $statusId): array
 }
 
 $searchPlaceholder = 'Search brand, model, serial, category, remarks...';
+$rowStart = $filteredTotal > 0 ? ($offset + 1) : 0;
+$rowEnd = min($offset + count($assets), $filteredTotal);
+$baseParams = [];
+if ($filter_status !== null) {
+    $baseParams['status_id'] = $filter_status;
+}
+$prevParams = $baseParams;
+$prevParams['page'] = max(1, $page - 1);
+$nextParams = $baseParams;
+$nextParams['page'] = min($totalPages, $page + 1);
+$prevHref = 'av.php?' . http_build_query($prevParams);
+$nextHref = 'av.php?' . http_build_query($nextParams);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -444,6 +479,22 @@ $searchPlaceholder = 'Search brand, model, serial, category, remarks...';
             margin-top: 1rem;
         }
         .page-info { color: var(--text-muted); font-size: 0.9rem; font-weight: 700; }
+        .page-nav { display: inline-flex; align-items: center; gap: 0.5rem; }
+        .page-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.5rem 0.85rem;
+            border-radius: 10px;
+            border: 1px solid var(--card-border);
+            background: var(--glass-panel);
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.88rem;
+        }
+        .page-btn:hover { border-color: rgba(37,99,235,0.2); color: var(--primary); background: rgba(37,99,235,0.06); }
+        .page-btn.disabled { pointer-events: none; opacity: 0.45; }
 
         @media (max-width: 1100px) {
             .main-content { margin-left: 0; max-width: 100vw; padding: 1.5rem; }
@@ -583,7 +634,6 @@ $searchPlaceholder = 'Search brand, model, serial, category, remarks...';
                             <th>Device</th>
                             <th>Asset ID</th>
                             <th>Serial No</th>
-                            <th>Deployed to</th>
                             <th>Status</th>
                             <th>Actions</th>
                         </tr>
@@ -604,14 +654,6 @@ $searchPlaceholder = 'Search brand, model, serial, category, remarks...';
                                 $meta = av_badge_meta($sid);
                                 $deviceName = trim(($row['category'] ?? '') . ' ' . ($row['brand'] ?? '') . ' ' . ($row['model'] ?? ''));
                                 if ($deviceName === '') $deviceName = 'AV Asset';
-                                $deployTo = '—';
-                                if ($sid === 3) {
-                                    $parts = [];
-                                    if (!empty($row['building'])) $parts[] = (string)$row['building'];
-                                    if (!empty($row['level'])) $parts[] = (string)$row['level'];
-                                    if (!empty($row['zone'])) $parts[] = (string)$row['zone'];
-                                    $deployTo = $parts ? implode(' / ', $parts) : '—';
-                                }
                             ?>
                                 <tr class="av-row">
                                     <td>
@@ -628,7 +670,6 @@ $searchPlaceholder = 'Search brand, model, serial, category, remarks...';
                                     </td>
                                     <td><code style="background:var(--glass-panel);padding:3px 8px;border-radius:8px;font-weight:900;color:var(--primary);"><?= htmlspecialchars((string)$row['asset_id']) ?></code></td>
                                     <td style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;"><?= htmlspecialchars((string)($row['serial_num'] ?? '—')) ?></td>
-                                    <td><?= htmlspecialchars($deployTo) ?></td>
                                     <td>
                                         <span class="badge <?= htmlspecialchars($meta['cls']) ?>"><i class="<?= htmlspecialchars($meta['icon']) ?>"></i> <?= htmlspecialchars((string)($row['status_name'] ?? '—')) ?></span>
                                     </td>
@@ -644,7 +685,16 @@ $searchPlaceholder = 'Search brand, model, serial, category, remarks...';
 
             <div class="pagination">
                 <div class="page-info">
-                    Showing <strong><span id="rowCount">0</span></strong> item(s)
+                    Showing <strong><?= (int)$rowStart ?>-<?= (int)$rowEnd ?></strong> of <strong><?= (int)$filteredTotal ?></strong> item(s)
+                    &nbsp;•&nbsp; Page <strong><?= (int)$page ?></strong> / <strong><?= (int)$totalPages ?></strong>
+                </div>
+                <div class="page-nav">
+                    <a class="page-btn <?= $page <= 1 ? 'disabled' : '' ?>" href="<?= htmlspecialchars($prevHref) ?>">
+                        <i class="ri-arrow-left-s-line"></i> Prev
+                    </a>
+                    <a class="page-btn <?= $page >= $totalPages ? 'disabled' : '' ?>" href="<?= htmlspecialchars($nextHref) ?>">
+                        Next <i class="ri-arrow-right-s-line"></i>
+                    </a>
                 </div>
             </div>
         </div>
@@ -672,13 +722,6 @@ $searchPlaceholder = 'Search brand, model, serial, category, remarks...';
 
         const searchInput = document.getElementById('searchInput');
         const tbody = document.getElementById('assetTbody');
-        const rowCount = document.getElementById('rowCount');
-
-        function updateCounts() {
-            const rows = Array.from(tbody.querySelectorAll('tr.av-row'));
-            const visible = rows.filter(r => r.style.display !== 'none');
-            rowCount.textContent = visible.length.toString();
-        }
 
         function applyFilters() {
             const q = (searchInput.value || '').toLowerCase();
@@ -687,11 +730,9 @@ $searchPlaceholder = 'Search brand, model, serial, category, remarks...';
                 const textOk = row.innerText.toLowerCase().includes(q);
                 row.style.display = textOk ? '' : 'none';
             });
-            updateCounts();
         }
 
         searchInput && searchInput.addEventListener('input', applyFilters);
-        updateCounts();
     </script>
 </body>
 </html>

@@ -82,6 +82,7 @@ if ($filter_type === 'all' || $filter_type === 'warranty') {
                 CONCAT(l.brand, ' ', l.model) AS device, l.serial_num
             FROM warranty w
             JOIN laptop l ON l.asset_id = w.asset_id
+            WHERE w.asset_type = 'laptop'
             ORDER BY w.created_at DESC";
     foreach ($pdo->query($sql)->fetchAll() as $r) {
         $events[] = [

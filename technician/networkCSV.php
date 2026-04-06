@@ -11,6 +11,9 @@ const NETWORK_CSV_HEADERS = [
     'Asset ID', 'Serial Number', 'Status', 'Brand', 'Model', 'MAC address', 'IP address',
     'PO date', 'PO number', 'DO date', 'DO number', 'Invoice Date', 'Invoice Number',
     'Purchase cost', 'Remarks',
+    'Deployment Building', 'Deployment Level', 'Deployment Zone', 'Deployment Date',
+    'Deployment Remarks', 'Deployment Staff ID',
+    'Warranty Start Date', 'Warranty End Date', 'Warranty Remarks',
 ];
 
 function norm_header(string $h): string
@@ -37,6 +40,15 @@ function network_csv_header_map(): array
         'invoice number' => 'invoice_num',
         'purchase cost' => 'purchase_cost',
         'remarks' => 'remarks',
+        'deployment building' => 'deployment_building',
+        'deployment level' => 'deployment_level',
+        'deployment zone' => 'deployment_zone',
+        'deployment date' => 'deployment_date',
+        'deployment remarks' => 'deployment_remarks',
+        'deployment staff id' => 'deployment_staff_id',
+        'warranty start date' => 'warranty_start_date',
+        'warranty end date' => 'warranty_end_date',
+        'warranty remarks' => 'warranty_remarks',
         'asset_id' => 'asset_id',
         'serial_num' => 'serial_num',
         'status_id' => 'status_id',
@@ -45,6 +57,24 @@ function network_csv_header_map(): array
         'po_num' => 'po_num',
         'do_num' => 'do_num',
         'invoice_num' => 'invoice_num',
+        'deployment_building' => 'deployment_building',
+        'deployment_level' => 'deployment_level',
+        'deployment_zone' => 'deployment_zone',
+        'deployment_date' => 'deployment_date',
+        'deployment_remarks' => 'deployment_remarks',
+        'deployment_staff_id' => 'deployment_staff_id',
+        'building' => 'deployment_building',
+        'level' => 'deployment_level',
+        'zone' => 'deployment_zone',
+        'deploy_building' => 'deployment_building',
+        'deploy_level' => 'deployment_level',
+        'deploy_zone' => 'deployment_zone',
+        'deploy_date' => 'deployment_date',
+        'deploy_remarks' => 'deployment_remarks',
+        'deploy_staff_id' => 'deployment_staff_id',
+        'warranty_start_date' => 'warranty_start_date',
+        'warranty_end_date' => 'warranty_end_date',
+        'warranty_remarks' => 'warranty_remarks',
     ];
 }
 
@@ -63,8 +93,11 @@ function network_csv_col_index(array $headerRow): array
         'asset_id', 'serial_num', 'status', 'brand', 'model', 'mac_address', 'ip_address',
         'po_date', 'po_num', 'do_date', 'do_num', 'invoice_date', 'invoice_num',
         'purchase_cost', 'remarks',
+        'deployment_building', 'deployment_level', 'deployment_zone', 'deployment_date',
+        'deployment_remarks', 'deployment_staff_id',
+        'warranty_start_date', 'warranty_end_date', 'warranty_remarks',
     ];
-    if (!isset($idx['asset_id'], $idx['serial_num']) && count($headerRow) >= 15) {
+    if (!isset($idx['asset_id'], $idx['serial_num']) && count($headerRow) >= 24) {
         foreach ($positional as $j => $key) {
             if (!isset($idx[$key])) {
                 $idx[$key] = $j;
@@ -106,6 +139,25 @@ function network_normalize_mac(?string $mac): ?string
     return (strlen($norm) === 12 && ctype_xdigit($norm)) ? $s : null;
 }
 
+function network_csv_date_ymd(?string $raw): ?string
+{
+    if ($raw === null || trim($raw) === '') {
+        return null;
+    }
+    $s = trim($raw);
+    foreach (['Y-m-d', 'd-m-y', 'd-m-Y'] as $fmt) {
+        $d = DateTime::createFromFormat($fmt, $s);
+        if ($d instanceof DateTime) {
+            $errors = DateTime::getLastErrors();
+            if (($errors['warning_count'] ?? 0) === 0 && ($errors['error_count'] ?? 0) === 0) {
+                return $d->format('Y-m-d');
+            }
+        }
+    }
+
+    return null;
+}
+
 if (isset($_GET['download_template'])) {
     header('Content-Type: text/csv; charset=UTF-8');
     header('Content-Disposition: attachment; filename="nims-network-assets-template.csv"');
@@ -115,7 +167,15 @@ if (isset($_GET['download_template'])) {
         '24260001', 'SN-NET-EX01', 'Online', 'Cisco', 'Catalyst 9200',
         'AA:BB:CC:DD:EE:FF', '10.20.30.40', '2026-01-10', 'PO-2026-101',
         '2026-01-12', 'DO-2026-88', '2026-01-15', 'INV-2026-500', '8500.00',
-        'IDF-2 stack member',
+        'IDF-2 stack member', '', '', '', '', '', '',
+        '', '', '',
+    ]);
+    fputcsv($out, [
+        '24260002', 'SN-NET-EX02', 'Deploy', 'Aruba', '2930F',
+        '11:22:33:44:55:66', '10.20.30.41', '2026-02-01', 'PO-2026-102',
+        '2026-02-05', 'DO-2026-89', '2026-02-08', 'INV-2026-501', '6200.00',
+        'Deployed switch', 'AVICENNA', 'Level 2', 'Lab 3A', '2026-03-01', 'Mounted in rack', '',
+        '2026-03-01', '2029-03-01', '3-year warranty',
     ]);
     fclose($out);
     exit;
@@ -170,16 +230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 }
                 $aid = (int)$assetTrim;
 
-                if ($serial === null) {
-                    $results[] = [
-                        'row' => $row_num, 'status' => 'error',
-                        'asset_id' => (string)$aid, 'serial' => '—',
-                        'brand' => trim((network_csv_cell($row, $idx, 'brand') ?? '') . ' ' . (network_csv_cell($row, $idx, 'model') ?? '')),
-                        'msg' => 'Serial Number is required.',
-                    ];
-                    $total_err++;
-                    continue;
-                }
+                // Serial Number is optional (network.serial_num allows NULL).
 
                 $status_id = null;
                 if ($statusRaw !== null && $statusRaw !== '') {
@@ -194,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 if ($status_id === null) {
                     $results[] = [
                         'row' => $row_num, 'status' => 'error',
-                        'asset_id' => (string)$aid, 'serial' => $serial,
+                        'asset_id' => (string)$aid, 'serial' => $serial ?? '—',
                         'brand' => trim((network_csv_cell($row, $idx, 'brand') ?? '') . ' ' . (network_csv_cell($row, $idx, 'model') ?? '')),
                         'msg' => 'Status missing or unknown (use status ID or name e.g. Online, 9).',
                     ];
@@ -206,7 +257,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 if (!$chk->fetch()) {
                     $results[] = [
                         'row' => $row_num, 'status' => 'error',
-                        'asset_id' => (string)$aid, 'serial' => $serial,
+                        'asset_id' => (string)$aid, 'serial' => $serial ?? '—',
                         'brand' => trim((network_csv_cell($row, $idx, 'brand') ?? '') . ' ' . (network_csv_cell($row, $idx, 'model') ?? '')),
                         'msg' => 'Invalid status_id — not in status table.',
                     ];
@@ -220,7 +271,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 if ($mac !== null && network_normalize_mac($mac) === null) {
                     $results[] = [
                         'row' => $row_num, 'status' => 'error',
-                        'asset_id' => (string)$aid, 'serial' => $serial,
+                        'asset_id' => (string)$aid, 'serial' => $serial ?? '—',
                         'brand' => trim(($brand ?? '') . ' ' . ($model ?? '')),
                         'msg' => 'Invalid MAC (expect 12 hex digits, optional separators).',
                     ];
@@ -231,7 +282,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 if ($ip !== null && filter_var($ip, FILTER_VALIDATE_IP) === false) {
                     $results[] = [
                         'row' => $row_num, 'status' => 'error',
-                        'asset_id' => (string)$aid, 'serial' => $serial,
+                        'asset_id' => (string)$aid, 'serial' => $serial ?? '—',
                         'brand' => trim(($brand ?? '') . ' ' . ($model ?? '')),
                         'msg' => 'Invalid IP address.',
                     ];
@@ -244,6 +295,112 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 $inv_date = network_csv_cell($row, $idx, 'invoice_date');
                 $pc = network_csv_cell($row, $idx, 'purchase_cost');
                 $purchase_cost = ($pc !== null && is_numeric($pc)) ? (float)$pc : null;
+
+                $depBuilding = network_csv_cell($row, $idx, 'deployment_building');
+                $depLevel = network_csv_cell($row, $idx, 'deployment_level');
+                $depZone = network_csv_cell($row, $idx, 'deployment_zone');
+                $depDateRaw = network_csv_cell($row, $idx, 'deployment_date');
+                $depRemarks = network_csv_cell($row, $idx, 'deployment_remarks');
+                $depStaffCsv = network_csv_cell($row, $idx, 'deployment_staff_id');
+                $depAny = $depBuilding !== null || $depLevel !== null || $depZone !== null || $depDateRaw !== null || $depRemarks !== null || $depStaffCsv !== null;
+
+                $depDate = null;
+                $depStaff = null;
+                if ($status_id === 3) {
+                    if ($depBuilding === null || trim((string) $depBuilding) === '') {
+                        $results[] = [
+                            'row' => $row_num, 'status' => 'error',
+                            'asset_id' => (string)$aid, 'serial' => $serial ?? '—',
+                            'brand' => trim(($brand ?? '') . ' ' . ($model ?? '')),
+                            'msg' => 'Deploy (3) requires deployment_building.',
+                        ];
+                        $total_err++;
+                        continue;
+                    }
+                    $depBuilding = trim((string) $depBuilding);
+                    $depLevel = $depLevel !== null && trim((string) $depLevel) !== '' ? trim((string) $depLevel) : '-';
+                    $depZone = $depZone !== null && trim((string) $depZone) !== '' ? trim((string) $depZone) : '-';
+
+                    if ($depDateRaw !== null && trim((string) $depDateRaw) !== '') {
+                        $depDate = network_csv_date_ymd($depDateRaw);
+                        if ($depDate === null) {
+                            $results[] = [
+                                'row' => $row_num, 'status' => 'error',
+                                'asset_id' => (string)$aid, 'serial' => $serial ?? '—',
+                                'brand' => trim(($brand ?? '') . ' ' . ($model ?? '')),
+                                'msg' => 'Deploy (3): deployment_date must be YYYY-MM-DD or DD-MM-YY.',
+                            ];
+                            $total_err++;
+                            continue;
+                        }
+                    } else {
+                        $depDate = date('Y-m-d');
+                    }
+
+                    $depStaff = $depStaffCsv ?? (string)($_SESSION['staff_id'] ?? '');
+                    if ($depStaff === '') {
+                        $results[] = [
+                            'row' => $row_num, 'status' => 'error',
+                            'asset_id' => (string)$aid, 'serial' => $serial ?? '—',
+                            'brand' => trim(($brand ?? '') . ' ' . ($model ?? '')),
+                            'msg' => 'Deploy needs deployment_staff_id or importer session staff_id.',
+                        ];
+                        $total_err++;
+                        continue;
+                    }
+                    $staffChk = $pdo->prepare('SELECT 1 FROM users WHERE staff_id = ? LIMIT 1');
+                    $staffChk->execute([$depStaff]);
+                    if (!$staffChk->fetchColumn()) {
+                        $results[] = [
+                            'row' => $row_num, 'status' => 'error',
+                            'asset_id' => (string)$aid, 'serial' => $serial ?? '—',
+                            'brand' => trim(($brand ?? '') . ' ' . ($model ?? '')),
+                            'msg' => 'deployment_staff_id not found in users.',
+                        ];
+                        $total_err++;
+                        continue;
+                    }
+                } elseif ($depAny) {
+                    $results[] = [
+                        'row' => $row_num, 'status' => 'error',
+                        'asset_id' => (string)$aid, 'serial' => $serial ?? '—',
+                        'brand' => trim(($brand ?? '') . ' ' . ($model ?? '')),
+                        'msg' => 'Deployment columns are only allowed for status Deploy (3).',
+                    ];
+                    $total_err++;
+                    continue;
+                }
+
+                $wStartRaw = network_csv_cell($row, $idx, 'warranty_start_date');
+                $wEndRaw = network_csv_cell($row, $idx, 'warranty_end_date');
+                $wRemarks = network_csv_cell($row, $idx, 'warranty_remarks');
+                $anyWarranty = $wStartRaw !== null || $wEndRaw !== null || $wRemarks !== null;
+                $wStart = null;
+                $wEnd = null;
+                if ($anyWarranty) {
+                    if ($wStartRaw === null || $wEndRaw === null) {
+                        $results[] = [
+                            'row' => $row_num, 'status' => 'error',
+                            'asset_id' => (string)$aid, 'serial' => $serial ?? '—',
+                            'brand' => trim(($brand ?? '') . ' ' . ($model ?? '')),
+                            'msg' => 'Warranty incomplete: provide both warranty_start_date and warranty_end_date (or leave all warranty fields empty).',
+                        ];
+                        $total_err++;
+                        continue;
+                    }
+                    $wStart = network_csv_date_ymd($wStartRaw);
+                    $wEnd = network_csv_date_ymd($wEndRaw);
+                    if ($wStart === null || $wEnd === null) {
+                        $results[] = [
+                            'row' => $row_num, 'status' => 'error',
+                            'asset_id' => (string)$aid, 'serial' => $serial ?? '—',
+                            'brand' => trim(($brand ?? '') . ' ' . ($model ?? '')),
+                            'msg' => 'Warranty dates must be YYYY-MM-DD or DD-MM-YY.',
+                        ];
+                        $total_err++;
+                        continue;
+                    }
+                }
 
                 try {
                     $pdo->beginTransaction();
@@ -260,7 +417,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     ');
                     $stmt->execute([
                         ':asset_id' => $aid,
-                        ':serial_num' => $serial,
+                            ':serial_num' => $serial,
                         ':brand' => $brand,
                         ':model' => $model,
                         ':mac_address' => $mac,
@@ -275,12 +432,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                         ':status_id' => $status_id,
                         ':remarks' => network_csv_cell($row, $idx, 'remarks'),
                     ]);
+                    if ($status_id === 3) {
+                        $stmtD = $pdo->prepare('
+                            INSERT INTO network_deployment (
+                                asset_id, building, level, zone, deployment_date, deployment_remarks, staff_id
+                            ) VALUES (
+                                :asset_id, :building, :level, :zone, :deployment_date, :deployment_remarks, :staff_id
+                            )
+                        ');
+                        $stmtD->execute([
+                            ':asset_id' => $aid,
+                            ':building' => $depBuilding,
+                            ':level' => $depLevel,
+                            ':zone' => $depZone,
+                            ':deployment_date' => $depDate,
+                            ':deployment_remarks' => $depRemarks,
+                            ':staff_id' => $depStaff,
+                        ]);
+                    }
+                    if ($anyWarranty) {
+                        $stmtW = $pdo->prepare('
+                            INSERT INTO warranty (asset_id, asset_type, warranty_start_date, warranty_end_date, warranty_remarks)
+                            VALUES (:asset_id, :asset_type, :start, :end, :remarks)
+                        ');
+                        $stmtW->execute([
+                            ':asset_id' => $aid,
+                            ':asset_type' => 'network',
+                            ':start' => $wStart,
+                            ':end' => $wEnd,
+                            ':remarks' => $wRemarks,
+                        ]);
+                    }
                     $pdo->commit();
                     $results[] = [
                         'row' => $row_num, 'status' => 'ok',
-                        'asset_id' => $aid, 'serial' => $serial,
+                        'asset_id' => $aid, 'serial' => $serial ?? '—',
                         'brand' => trim(($brand ?? '') . ' ' . ($model ?? '')),
-                        'msg' => 'Imported successfully',
+                        'msg' => 'Imported' . ($status_id === 3 ? ' (+ deployment)' : '') . ($anyWarranty ? ' (+ warranty)' : ''),
                     ];
                     $total_ok++;
                 } catch (PDOException $e) {
@@ -292,7 +480,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                         : 'DB error: ' . $e->getMessage();
                     $results[] = [
                         'row' => $row_num, 'status' => 'error',
-                        'asset_id' => $aid, 'serial' => $serial,
+                        'asset_id' => $aid, 'serial' => $serial ?? '—',
                         'brand' => trim(($brand ?? '') . ' ' . ($model ?? '')),
                         'msg' => $msg,
                     ];
@@ -572,8 +760,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         <div class="card-title"><i class="ri-table-line"></i> Columns</div>
         <div class="column-chips">
             <span class="chip required">Asset ID *</span>
-            <span class="chip required">Serial Number *</span>
             <span class="chip required">Status *</span>
+            <span class="chip">Serial Number</span>
             <span class="chip">Brand</span>
             <span class="chip">Model</span>
             <span class="chip">MAC address</span>
@@ -583,10 +771,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             <span class="chip">Invoice Date / Number</span>
             <span class="chip">Purchase cost</span>
             <span class="chip">Remarks</span>
+            <span class="chip">Deployment Building</span>
+            <span class="chip">Deployment Level</span>
+            <span class="chip">Deployment Zone</span>
+            <span class="chip">Deployment Date</span>
+            <span class="chip">Deployment Remarks</span>
+            <span class="chip">Deployment Staff ID</span>
+            <span class="chip">Warranty Start Date</span>
+            <span class="chip">Warranty End Date</span>
+            <span class="chip">Warranty Remarks</span>
         </div>
         <p style="font-size:0.85rem;color:var(--text-muted);line-height:1.5;">
             <strong>Status</strong> may be a numeric <code>status_id</code> or a name from the <code>status</code> table (e.g. <code>Online</code>, <code>9</code>).
-            Dates: <code>YYYY-MM-DD</code>. MAC: 12 hex digits with optional separators. Deploy rows here do <strong>not</strong> create <code>network_deployment</code> — use single registration for that.
+            Dates: <code>YYYY-MM-DD</code> (deployment date also accepts <code>DD-MM-YY</code>). MAC: 12 hex digits with optional separators.
+            For status <strong>Deploy (3)</strong>, importer creates <code>network_deployment</code> and requires <code>Deployment Building</code> and <code>Deployment Staff ID</code> (or it falls back to the logged-in technician). If <code>Deployment Level</code>, <code>Deployment Zone</code>, or <code>Deployment Date</code> are blank, they default to <code>-</code>, <code>-</code>, and today.
+            Warranty is optional: provide both <code>Warranty Start Date</code> and <code>Warranty End Date</code> (or leave both empty). Warranty dates accept <code>YYYY-MM-DD</code> or <code>DD-MM-YY</code>.
         </p>
     </div>
 

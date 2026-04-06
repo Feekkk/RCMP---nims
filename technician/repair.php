@@ -39,7 +39,7 @@ if ($assetId > 0) {
     $stmtW = $pdo->prepare('
         SELECT warranty_id, warranty_start_date, warranty_end_date, warranty_remarks
         FROM warranty
-        WHERE asset_id = ?
+        WHERE asset_id = ? AND asset_type = \'laptop\'
         ORDER BY warranty_end_date DESC, warranty_id DESC
         LIMIT 1
     ');
@@ -96,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmtW2 = $pdo->prepare('
                 SELECT warranty_start_date, warranty_end_date
                 FROM warranty
-                WHERE asset_id = ?
+                WHERE asset_id = ? AND asset_type = \'laptop\'
                 ORDER BY warranty_end_date DESC, warranty_id DESC
                 LIMIT 1
             ');

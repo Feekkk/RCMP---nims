@@ -81,7 +81,7 @@ $sql = "
     LEFT JOIN warranty w ON w.asset_id = l.asset_id
         AND w.warranty_id = (
             SELECT w2.warranty_id FROM warranty w2
-            WHERE w2.asset_id = l.asset_id
+            WHERE w2.asset_id = l.asset_id AND w2.asset_type = 'laptop'
             ORDER BY w2.warranty_end_date DESC, w2.warranty_id DESC
             LIMIT 1
         )
