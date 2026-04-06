@@ -54,10 +54,31 @@ function av_csv_device_label(?string $category, ?string $brand, ?string $model):
     return $t !== '' ? $t : '—';
 }
 
+function av_csv_date_ymd(?string $raw): ?string
+{
+    if ($raw === null || trim($raw) === '') {
+        return null;
+    }
+    $s = trim($raw);
+    // Accept common CSV date formats, normalize to Y-m-d for DB.
+    $formats = ['Y-m-d', 'd-m-y', 'd-m-Y'];
+    foreach ($formats as $fmt) {
+        $d = DateTime::createFromFormat($fmt, $s);
+        if ($d instanceof DateTime) {
+            $errors = DateTime::getLastErrors();
+            if (($errors['warning_count'] ?? 0) === 0 && ($errors['error_count'] ?? 0) === 0) {
+                return $d->format('Y-m-d');
+            }
+        }
+    }
+    return null;
+}
+
 if (isset($_GET['download_template'])) {
     $headers = [
         'asset_id', 'category', 'brand', 'model', 'serial_number',
         'po_date', 'po_num', 'do_date', 'do_num', 'invoice_date', 'invoice_no', 'purchase', 'status_id', 'remarks',
+        'deployment_building', 'deployment_level', 'deployment_zone', 'deployment_date', 'deployment_remarks', 'deployment_staff_id',
     ];
     header('Content-Type: text/csv');
     header('Content-Disposition: attachment; filename="av_import_template.csv"');
@@ -66,7 +87,14 @@ if (isset($_GET['download_template'])) {
     fputcsv($out, [
         'LEGACY-001', 'Projector', 'Epson', 'EB-L200X', 'SN-AV-EX01',
         '2024-01-15', 'PO-2024-001', '2024-01-20', 'DO-2024-001',
-        '2024-01-25', 'INV-2024-001', '3200.00', '1', 'Sample row — asset_id is legacy id; system assigns new id',
+        '2024-01-25', 'INV-2024-001', '3200.00', '1', 'Non-deploy — leave deployment columns empty',
+        '', '', '', '', '', '',
+    ]);
+    fputcsv($out, [
+        'LEGACY-002', 'Speaker', 'Bose', 'S1 Pro', 'SN-AV-DEP01',
+        '', '', '', '', '', '', '', '3', 'Deployed with full location row',
+        'Main Building', 'Level 2', 'Lab 3A', '2024-06-01', 'Wall-mounted',
+        '',
     ]);
     fclose($out);
     exit;
@@ -168,9 +196,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                             )
                         ');
 
-                        $staffId = (string) $_SESSION['staff_id'];
-                        $today = date('Y-m-d');
+                        $stmtUserExists = $pdo->prepare('SELECT 1 FROM users WHERE staff_id = ? LIMIT 1');
+
+                        $staffId = (string) ($_SESSION['staff_id'] ?? '');
                         $row_num = 1;
+
+                        $pick = static function (array $row, callable $get, array $keys): ?string {
+                            foreach ($keys as $k) {
+                                $v = $get($row, $k);
+                                if ($v !== null && $v !== '') {
+                                    return $v;
+                                }
+                            }
+                            return null;
+                        };
 
                         while (($row = fgetcsv($handle)) !== false) {
                             $row_num++;
@@ -223,11 +262,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                 $normPur = str_replace([',', ' '], '', $purRaw);
                                 $purchase_cost = is_numeric($normPur) ? (float) $normPur : null;
                             }
-                            $building = 'UNKNOWN';
-                            $level = '-';
-                            $zone = '-';
+
+                            $deployBuilding = $pick($row, $get, ['deployment_building', 'deploy_building', 'building']);
+                            $deployLevel = $pick($row, $get, ['deployment_level', 'deploy_level', 'level']);
+                            $deployZone = $pick($row, $get, ['deployment_zone', 'deploy_zone', 'zone']);
+                            $deployDateRaw = $pick($row, $get, ['deployment_date', 'deploy_date']);
+                            $deployRemarks = $pick($row, $get, ['deployment_remarks', 'deploy_remarks']);
+                            $deployStaffCsv = $pick($row, $get, ['deployment_staff_id', 'deploy_staff_id']);
+
+                            $anyDepField = $deployBuilding !== null || $deployLevel !== null || $deployZone !== null
+                                || $deployDateRaw !== null || $deployRemarks !== null || $deployStaffCsv !== null;
+
+                            $deployDate = null;
+                            if ($status_id === 3) {
+                                if ($deployBuilding === null || trim((string) $deployBuilding) === '') {
+                                    $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old, 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Deploy (3) requires deployment_building.'];
+                                    $total_err++;
+                                    continue;
+                                }
+                                $deployBuilding = trim((string) $deployBuilding);
+                                $deployLevel = $deployLevel !== null && trim((string) $deployLevel) !== '' ? trim((string) $deployLevel) : '-';
+                                $deployZone = $deployZone !== null && trim((string) $deployZone) !== '' ? trim((string) $deployZone) : '-';
+
+                                if ($deployDateRaw !== null && trim((string) $deployDateRaw) !== '') {
+                                    $deployDate = av_csv_date_ymd($deployDateRaw);
+                                    if ($deployDate === null) {
+                                        $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old, 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Deploy (3): deployment_date must be YYYY-MM-DD or DD-MM-YY.'];
+                                        $total_err++;
+                                        continue;
+                                    }
+                                } else {
+                                    $deployDate = date('Y-m-d');
+                                }
+
+                                $depStaff = $deployStaffCsv !== null ? trim((string) $deployStaffCsv) : $staffId;
+                                if ($depStaff === '') {
+                                    $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old, 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Deploy needs deployment_staff_id or importer session staff_id.'];
+                                    $total_err++;
+                                    continue;
+                                }
+                                $stmtUserExists->execute([$depStaff]);
+                                if (!$stmtUserExists->fetchColumn()) {
+                                    $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old, 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'deployment_staff_id not found in users.'];
+                                    $total_err++;
+                                    continue;
+                                }
+                            } elseif ($anyDepField) {
+                                $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old, 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Deployment columns only for status_id 3 (Deploy); remove them or set status to 3.'];
+                                $total_err++;
+                                continue;
+                            }
 
                             try {
+                                $pdo->beginTransaction();
                                 $stmtA->execute([
                                     ':asset_id' => $asset_id,
                                     ':asset_id_old' => $asset_id_old,
@@ -246,20 +333,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                     ':remarks' => $remarks,
                                 ]);
 
+                                $okMsg = 'Imported successfully';
                                 if ($status_id === 3) {
+                                    $depStaff = $deployStaffCsv !== null ? trim((string) $deployStaffCsv) : $staffId;
                                     $stmtD->execute([
                                         ':asset_id' => $asset_id,
-                                        ':building' => $building,
-                                        ':level' => $level,
-                                        ':zone' => $zone,
-                                        ':deployment_date' => $today,
-                                        ':deployment_remarks' => null,
-                                        ':staff_id' => $staffId,
+                                        ':building' => $deployBuilding,
+                                        ':level' => $deployLevel,
+                                        ':zone' => $deployZone,
+                                        ':deployment_date' => $deployDate,
+                                        ':deployment_remarks' => $deployRemarks,
+                                        ':staff_id' => $depStaff,
                                     ]);
+                                    $okMsg .= ' (+ deployment)';
                                 }
-                                $results[] = ['row' => $row_num, 'status' => 'ok', 'legacy' => $asset_id_old, 'new_id' => (string) $asset_id, 'serial' => $serial_raw, 'device' => $device, 'msg' => 'Imported successfully'];
+                                $pdo->commit();
+                                $results[] = ['row' => $row_num, 'status' => 'ok', 'legacy' => $asset_id_old, 'new_id' => (string) $asset_id, 'serial' => $serial_raw, 'device' => $device, 'msg' => $okMsg];
                                 $total_ok++;
                             } catch (PDOException $e) {
+                                if ($pdo->inTransaction()) {
+                                    $pdo->rollBack();
+                                }
                                 $msg = $e->getMessage();
                                 if ((string) $e->getCode() === '23000' && stripos($msg, 'Duplicate') !== false) {
                                     $results[] = ['row' => $row_num, 'status' => 'dup', 'legacy' => $asset_id_old, 'new_id' => (string) $asset_id, 'serial' => $serial_raw, 'device' => $device, 'msg' => 'Duplicate — skipped (asset_id or unique conflict).'];
@@ -574,11 +668,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             <span class="chip">invoice_no</span>
             <span class="chip">purchase</span>
             <span class="chip">remarks</span>
+            <span class="chip">deployment_building</span>
+            <span class="chip">deployment_level</span>
+            <span class="chip">deployment_zone</span>
+            <span class="chip">deployment_date</span>
+            <span class="chip">deployment_remarks</span>
+            <span class="chip">deployment_staff_id</span>
         </div>
         <p style="font-size:0.83rem;color:var(--text-muted);margin-top:0.5rem;">
             <i class="ri-information-line"></i>
             <code>asset_id</code> = previous/legacy id (saved as <code>asset_id_old</code>). You may use <code>asset_id_old</code> as the column name instead. Dates: <strong>YYYY-MM-DD</strong>.
             AV <code>status_id</code>: 1 Active, 2 Non-active, 3 Deploy, 5 Maintenance, 6 Faulty, 7 Disposed, 8 Lost. Optional <code>status</code> column resolves by name if present.
+            <strong>Deploy (3)</strong> requires <code>deployment_building</code> only. If <code>deployment_level</code>, <code>deployment_zone</code>, or <code>deployment_date</code> are blank, the importer saves <code>-</code>, <code>-</code>, and today’s date. Optional <code>deployment_remarks</code> and <code>deployment_staff_id</code> (must exist in <code>users</code>, else the logged-in technician is used). Do not fill deployment columns unless status is 3.
         </p>
     </div>
 
