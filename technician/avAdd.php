@@ -51,11 +51,6 @@ function av_parse_asset_id_string(?string $s): int
     return $digits !== '' ? (int) $digits : 0;
 }
 
-$mode = strtolower((string)($_GET['mode'] ?? 'single'));
-if (!in_array($mode, ['single', 'bulk'], true)) {
-    $mode = 'single';
-}
-
 $success_message = '';
 $error_message = '';
 
@@ -68,7 +63,7 @@ try {
         'SELECT status_id, name FROM status WHERE status_id IN (' . implode(',', array_map('intval', AV_STATUS_IDS)) . ') ORDER BY status_id'
     )->fetchAll(PDO::FETCH_ASSOC);
     $next_asset_id = next_av_asset_id($pdo);
-    if ($next_asset_id === null && $mode === 'single') {
+    if ($next_asset_id === null) {
         $error_message = 'AV asset ID sequence is full for this calendar year (maximum 999 per year).';
     }
 } catch (Throwable $e) {
@@ -76,159 +71,6 @@ try {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
-    if ($mode === 'bulk') {
-        $pdo = db();
-        if (!isset($_FILES['csv_file']) || (int)$_FILES['csv_file']['error'] !== UPLOAD_ERR_OK) {
-            $error_message = 'Please upload a valid CSV file.';
-        } else {
-            $tmpPath = (string)$_FILES['csv_file']['tmp_name'];
-            $handle = fopen($tmpPath, 'r');
-            if ($handle === false) {
-                $error_message = 'Could not read the uploaded CSV.';
-            } else {
-                $header = fgetcsv($handle);
-                if (!is_array($header) || $header === []) {
-                    $error_message = 'CSV is empty.';
-                } else {
-                    $norm = function (string $s): string {
-                        $s = strtolower(trim($s));
-                        $s = preg_replace('/[^a-z0-9]+/', '_', $s);
-                        return $s ?? '';
-                    };
-                    $keys = array_map($norm, $header);
-                    if (!in_array('asset_id', $keys, true)) {
-                        $error_message = 'CSV must have a header row containing at least `asset_id`.';
-                    } else {
-                        $keyToIndex = [];
-                        foreach ($keys as $i => $k) {
-                            if ($k === '') continue;
-                            $keyToIndex[$k] = $i;
-                        }
-
-                        $get = function (array $row, string $k) use ($keyToIndex): ?string {
-                            if (!array_key_exists($k, $keyToIndex)) return null;
-                            $idx = (int)$keyToIndex[$k];
-                            if (!array_key_exists($idx, $row)) return null;
-                            $v = trim((string)$row[$idx]);
-                            return $v === '' ? null : $v;
-                        };
-
-                        $stmtA = $pdo->prepare('
-                            INSERT INTO av (
-                                asset_id, asset_id_old, category, brand, model, serial_num, status_id, location,
-                                PO_DATE, PO_NUM, DO_DATE, DO_NUM,
-                                INVOICE_DATE, INVOICE_NUM, PURCHASE_COST, remarks
-                            ) VALUES (
-                                :asset_id, :asset_id_old, :category, :brand, :model, :serial_num, :status_id, :location,
-                                :po_date, :po_num, :do_date, :do_num,
-                                :invoice_date, :invoice_num, :purchase_cost, :remarks
-                            )
-                        ');
-
-                        $stmtD = $pdo->prepare('
-                            INSERT INTO av_deployment (
-                                asset_id, building, level, zone,
-                                deployment_date, deployment_remarks, staff_id
-                            ) VALUES (
-                                :asset_id, :building, :level, :zone,
-                                :deployment_date, :deployment_remarks, :staff_id
-                            )
-                        ');
-
-                        $staffId = (string)$_SESSION['staff_id'];
-                        $ok = 0; $dups = 0; $fails = 0;
-                        $today = date('Y-m-d');
-
-                        while (($row = fgetcsv($handle)) !== false) {
-                            if (!is_array($row) || $row === []) continue;
-
-                            $asset_id = av_parse_asset_id_string($get($row, 'asset_id'));
-                            if ($asset_id < 1) {
-                                $fails++;
-                                continue;
-                            }
-
-                            $asset_id_old = $get($row, 'asset_id_old');
-                            $category = $get($row, 'category') ?? 'AV';
-                            $brand = $get($row, 'brand');
-                            $model = $get($row, 'model');
-                            $serial_num = $get($row, 'serial_num') ?? $get($row, 'serial');
-                            $status_id = (int)($get($row, 'status_id') ?? 0);
-
-                            if ($serial_num === null || $serial_num === '' || $status_id < 1 || !in_array($status_id, AV_STATUS_IDS, true)) {
-                                $fails++;
-                                continue;
-                            }
-
-                            $location = $get($row, 'location');
-                            $po_date = $get($row, 'po_date');
-                            $po_num = $get($row, 'po_num');
-                            $do_date = $get($row, 'do_date');
-                            $do_num = $get($row, 'do_num');
-                            $invoice_date = $get($row, 'invoice_date');
-                            $invoice_num = $get($row, 'invoice_num');
-                            $purchase_cost = $get($row, 'purchase_cost');
-                            $remarks = $get($row, 'remarks');
-
-                            $building = $get($row, 'building') ?? 'UNKNOWN';
-                            $level = $get($row, 'level') ?? '-';
-                            $zone = $get($row, 'zone') ?? '-';
-                            $deployment_date = $get($row, 'deployment_date') ?? $today;
-                            $deployment_remarks = $get($row, 'deployment_remarks');
-
-                            if ($status_id === 3 && ($location === null || $location === '')) {
-                                $location = (string)$building . ' / ' . (string)$level . ' / ' . (string)$zone;
-                            }
-
-                            try {
-                                $stmtA->execute([
-                                    ':asset_id' => $asset_id,
-                                    ':asset_id_old' => $asset_id_old,
-                                    ':category' => $category,
-                                    ':brand' => $brand,
-                                    ':model' => $model,
-                                    ':serial_num' => $serial_num,
-                                    ':status_id' => $status_id,
-                                    ':location' => $location,
-                                    ':po_date' => $po_date,
-                                    ':po_num' => $po_num,
-                                    ':do_date' => $do_date,
-                                    ':do_num' => $do_num,         
-                                    ':invoice_date' => $invoice_date,
-                                    ':invoice_num' => $invoice_num,
-                                    ':purchase_cost' => $purchase_cost,
-                                    ':remarks' => $remarks,
-                                ]);
-
-                                if ($status_id === 3) {
-                                    $stmtD->execute([
-                                        ':asset_id' => $asset_id,
-                                        ':building' => (string)$building,
-                                        ':level' => (string)$level,
-                                        ':zone' => (string)$zone,
-                                        ':deployment_date' => $deployment_date,
-                                        ':deployment_remarks' => $deployment_remarks,
-                                        ':staff_id' => $staffId,
-                                    ]);
-                                }
-                                $ok++;
-                            } catch (PDOException $e) {
-                                $msg = $e->getMessage();
-                                if ((string)$e->getCode() === '23000' && stripos($msg, 'Duplicate') !== false) {
-                                    $dups++;
-                                } else {
-                                    $fails++;
-                                }
-                            }
-                        }
-                        fclose($handle);
-
-                        $success_message = "Bulk import completed. OK: {$ok}, Duplicates: {$dups}, Failed rows: {$fails}.";
-                    }
-                }
-            }
-        }
-    } else {
         $pdo = db();
         $str = fn(string $k): ?string => isset($_POST[$k]) ? trim((string)$_POST[$k]) : null;
         $int = fn(string $k): int => isset($_POST[$k]) && $_POST[$k] !== '' ? (int)$_POST[$k] : 0;
@@ -243,7 +85,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
         $model = $str('model');
         $serial_num = $str('serial_num');
         $status_id = $int('status_id');
-        $location_text = $str('location_text');
 
         $po_date = $date('po_date');
         $po_num = $str('po_num');
@@ -268,18 +109,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
             $error_message = 'Category is required.';
         } elseif (!in_array($status_id, AV_STATUS_IDS, true)) {
             $error_message = 'Invalid status for AV assets.';
-        } else {
-            $location = $location_text;
-            if ($status_id === 3) {
-                if ($deploy_building === null || $deploy_building === '' || $deploy_level === null || $deploy_level === '' || $deploy_zone === null || $deploy_zone === '' || !$deploy_date) {
-                    $error_message = 'Deploy status requires building, level, zone, and deployment date.';
-                } else {
-                    if ($location === null || $location === '') {
-                        $location = (string)$deploy_building . ' / ' . (string)$deploy_level . ' / ' . (string)$deploy_zone;
-                    }
-                }
-            } else {
-                if ($location !== null && $location === '') $location = null;
+        } elseif ($status_id === 3) {
+            if ($deploy_building === null || $deploy_building === '' || $deploy_level === null || $deploy_level === '' || $deploy_zone === null || $deploy_zone === '' || !$deploy_date) {
+                $error_message = 'Deploy status requires building, level, zone, and deployment date.';
             }
         }
 
@@ -294,12 +126,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
                 $stmt = $pdo->prepare('
                     INSERT INTO av (
                         asset_id, asset_id_old, category, brand, model, serial_num,
-                        status_id, location,
+                        status_id,
                         PO_DATE, PO_NUM, DO_DATE, DO_NUM,
                         INVOICE_DATE, INVOICE_NUM, PURCHASE_COST, remarks
                     ) VALUES (
                         :asset_id, :asset_id_old, :category, :brand, :model, :serial_num,
-                        :status_id, :location,
+                        :status_id,
                         :po_date, :po_num, :do_date, :do_num,
                         :invoice_date, :invoice_num, :purchase_cost, :remarks
                     )
@@ -312,7 +144,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
                     ':model' => $model,
                     ':serial_num' => $serial_num,
                     ':status_id' => $status_id,
-                    ':location' => $location,
                     ':po_date' => $po_date,
                     ':po_num' => $po_num,
                     ':do_date' => $do_date,
@@ -363,7 +194,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
                     : 'Database error: ' . $e->getMessage();
             }
         }
-    }
 }
 ?>
 <!DOCTYPE html>
@@ -560,19 +390,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
         .btn-outline { background: var(--card-bg); border: 1.5px solid var(--card-border); color: var(--text-muted); }
         .btn-outline:hover { border-color: var(--danger); color: var(--danger); }
 
-        .bulk-note {
-            color: var(--text-muted);
-            font-size: 0.85rem;
-            line-height: 1.55;
-            margin-top: 0.6rem;
-        }
-        .file-input {
-            width: 100%;
-            padding: 0.85rem 0.9rem;
-            border: 1.5px dashed rgba(226,232,240,1);
-            border-radius: 11px;
-            background: var(--glass);
-        }
     </style>
 </head>
 <body>
@@ -581,20 +398,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
 <main class="main-content">
     <header class="page-header">
         <div>
-            <h1 class="page-title">
-                <?php if ($mode === 'bulk'): ?>
-                    Register AV Assets (Bulk)
-                <?php else: ?>
-                    Register AV Asset
-                <?php endif; ?>
-            </h1>
-            <div class="page-subtitle">
-                <?php if ($mode === 'bulk'): ?>
-                    Upload a CSV file to register multiple AV assets at once.
-                <?php else: ?>
-                    Add a new audio/visual asset to the inventory.
-                <?php endif; ?>
-            </div>
+            <h1 class="page-title">Register AV Asset</h1>
+            <div class="page-subtitle">Add a new audio/visual asset to the inventory.</div>
         </div>
         <a href="av.php" class="btn-back">
             <i class="ri-arrow-left-line"></i> Back to AV inventory
@@ -614,36 +419,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
         </div>
     <?php endif; ?>
 
-    <?php if ($mode === 'bulk'): ?>
-        <div class="form-section">
-            <div class="section-head">
-                <div class="section-head-left">
-                    <div class="section-icon"><i class="ri-upload-cloud-line"></i></div>
-                    <div>
-                        <div class="section-title">Bulk import (CSV)</div>
-                        <div class="section-desc">Requires header row. <code>asset_id</code> must exist (integer, e.g. <code>8826001</code>).</div>
-                    </div>
-                </div>
-                <span class="badge-tag badge-required">Required</span>
-            </div>
-            <div class="section-body">
-                <form method="post" action="" enctype="multipart/form-data">
-                    <div class="field">
-                        <label class="field-label" for="csv_file">CSV file <span class="req">*</span></label>
-                        <input class="field-input file-input" id="csv_file" name="csv_file" type="file" accept=".csv,text/csv" required>
-                        <div class="bulk-note">
-                            Suggested headers:
-                            <code>asset_id, asset_id_old, category, brand, model, serial_num, status_id, location, building, level, zone, deployment_date, po_date, po_num, do_date, do_num, invoice_date, invoice_num, purchase_cost, remarks</code>.
-                            Format: class 88 + 2-digit year + 3-digit sequence (stored as one number).
-                        </div>
-                    </div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-primary"><i class="ri-upload-line"></i> Upload CSV</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    <?php else: ?>
         <?php if ($error_message === '' && $status_options !== [] && $next_asset_id !== null): ?>
             <form method="post" action="" id="avForm">
                 <div class="form-section">
@@ -748,7 +523,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
                                 <i class="ri-map-pin-user-line" style="color: var(--warning);"></i>
                             </div>
                             <div>
-                                <div class="section-title">Deployment location</div>
+                                <div class="section-title">Deployment site</div>
                                 <div class="section-desc">Required when status is Deploy (3)</div>
                             </div>
                         </div>
@@ -785,10 +560,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
                                 <label class="field-label">Deployment remarks</label>
                                 <textarea name="deployment_remarks" id="deployment_remarks" class="field-textarea deploy-input" disabled style="min-height:70px;"></textarea>
                             </div>
-                            <div class="field col-3">
-                                <label class="field-label">Location text (optional)</label>
-                                <input type="text" name="location_text" id="location_text" class="field-input deploy-input" placeholder="e.g. Block A — Lab 3" disabled>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -823,7 +594,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
                 <span>No valid AV statuses found in <code>status</code> table. Check status IDs.</span>
             </div>
         <?php endif; ?>
-    <?php endif; ?>
 </main>
 
 <script>
@@ -852,22 +622,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (el) el.setAttribute('required', 'required');
             });
         }
-
-        syncLocationText();
-    }
-
-    function syncLocationText() {
-        var loc = document.getElementById('location_text');
-        var b = document.getElementById('deployment_building');
-        var l = document.getElementById('deployment_level');
-        var z = document.getElementById('deployment_zone');
-        if (!loc || !b || !l || !z) return;
-        if (loc.value && loc.value.trim() !== '') return;
-        var bv = (b.value || '').trim();
-        var lv = (l.value || '').trim();
-        var zv = (z.value || '').trim();
-        if (!bv || !lv || !zv) return;
-        loc.value = bv + ' / ' + lv + ' / ' + zv;
     }
 
     var sel = document.getElementById('status_id');
@@ -875,13 +629,6 @@ document.addEventListener('DOMContentLoaded', function () {
         sel.addEventListener('change', syncDeploymentSection);
         syncDeploymentSection();
     }
-
-    ['deployment_building','deployment_level','deployment_zone','location_text'].forEach(function (id) {
-        var el = document.getElementById(id);
-        if (!el) return;
-        el.addEventListener('input', function () { syncLocationText(); });
-        el.addEventListener('change', function () { syncLocationText(); });
-    });
 });
 </script>
 </body>

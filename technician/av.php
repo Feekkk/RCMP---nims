@@ -64,7 +64,6 @@ try {
             a.serial_num,
             a.status_id,
             s.name AS status_name,
-            a.location,
             a.PO_DATE,
             a.PO_NUM,
             a.INVOICE_DATE,
@@ -114,7 +113,7 @@ function av_badge_meta(int $statusId): array
     };
 }
 
-$searchPlaceholder = 'Search brand, model, serial, category, location, remarks...';
+$searchPlaceholder = 'Search brand, model, serial, category, remarks...';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -514,11 +513,11 @@ $searchPlaceholder = 'Search brand, model, serial, category, location, remarks..
                         <i class="ri-arrow-down-s-line" style="margin-left:4px;"></i>
                     </button>
                     <div class="action-dropdown" id="registerDropdown" onclick="event.stopPropagation()">
-                        <a href="avAdd.php?mode=single" class="action-dropdown-item">
+                        <a href="avAdd.php" class="action-dropdown-item">
                             <i class="ri-macbook-line" style="color: var(--primary);"></i> Single asset
                         </a>
-                        <a href="avAdd.php?mode=bulk" class="action-dropdown-item">
-                            <i class="ri-stack-line" style="color: var(--secondary);"></i> Bulk assets (CSV)
+                        <a href="avCSV.php" class="action-dropdown-item">
+                            <i class="ri-stack-line" style="color: var(--secondary);"></i> Import CSV
                         </a>
                     </div>
                 </div>
@@ -611,9 +610,7 @@ $searchPlaceholder = 'Search brand, model, serial, category, location, remarks..
                                     if (!empty($row['building'])) $parts[] = (string)$row['building'];
                                     if (!empty($row['level'])) $parts[] = (string)$row['level'];
                                     if (!empty($row['zone'])) $parts[] = (string)$row['zone'];
-                                    $deployTo = $parts ? implode(' / ', $parts) : (string)($row['location'] ?? '—');
-                                } elseif (!empty($row['location'])) {
-                                    $deployTo = (string)$row['location'];
+                                    $deployTo = $parts ? implode(' / ', $parts) : '—';
                                 }
                             ?>
                                 <tr class="av-row">
