@@ -198,15 +198,16 @@ CREATE TABLE IF NOT EXISTS handover_staff(
 CREATE TABLE IF NOT EXISTS warranty(
   `warranty_id` INT(11) NOT NULL AUTO_INCREMENT,
   `asset_id` INT(11) NOT NULL,
+  `asset_type` ENUM('laptop','network') NOT NULL DEFAULT 'laptop',
   `warranty_start_date` DATE NOT NULL,
   `warranty_end_date` DATE NOT NULL,
   `warranty_remarks` TEXT DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (warranty_id),
-  FOREIGN KEY (asset_id) REFERENCES laptop(asset_id),
   INDEX idx_warranty_id (warranty_id),
-  INDEX idx_asset_id (asset_id)
+  INDEX idx_asset_id (asset_id),
+  INDEX idx_asset_type_asset (asset_type, asset_id)
 );
 
 -- In-house repairs for laptops with no (or expired) vendor warranty; logged by technician
