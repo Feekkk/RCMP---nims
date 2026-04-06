@@ -10,6 +10,8 @@ require_once __DIR__ . '/../config/database.php';
 $filter_status = isset($_GET['status_id']) && is_numeric($_GET['status_id'])
     ? (int)$_GET['status_id']
     : null;
+$page = isset($_GET['page']) && is_numeric($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
+$perPage = 10;
 
 $stats = [
     'total'        => 0,
@@ -19,6 +21,9 @@ $stats = [
 ];
 $assets = [];
 $status_counts = [];
+$filteredTotal = 0;
+$totalPages = 1;
+$offset = 0;
 $dbError = false;
 
 try {
@@ -38,6 +43,21 @@ try {
         ORDER BY s.status_id
     ")->fetchAll(PDO::FETCH_ASSOC);
 
+    $countSql = 'SELECT COUNT(*) FROM network n';
+    $countParams = [];
+    if ($filter_status !== null) {
+        $countSql .= ' WHERE n.status_id = :status_id';
+        $countParams[':status_id'] = $filter_status;
+    }
+    $countStmt = $pdo->prepare($countSql);
+    $countStmt->execute($countParams);
+    $filteredTotal = (int) $countStmt->fetchColumn();
+    $totalPages = max(1, (int) ceil($filteredTotal / $perPage));
+    if ($page > $totalPages) {
+        $page = $totalPages;
+    }
+    $offset = ($page - 1) * $perPage;
+
     $sql = '
         SELECT n.asset_id, n.serial_num, n.brand, n.model, n.mac_address, n.ip_address,
                n.status_id, n.remarks, s.name AS status_name
@@ -49,7 +69,7 @@ try {
         $sql .= ' WHERE n.status_id = :status_id';
         $params[':status_id'] = $filter_status;
     }
-    $sql .= ' ORDER BY n.asset_id DESC';
+    $sql .= ' ORDER BY n.asset_id DESC LIMIT ' . (int) $perPage . ' OFFSET ' . (int) $offset;
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $assets = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -57,6 +77,9 @@ try {
     $dbError = true;
     $assets = [];
     $status_counts = [];
+    $filteredTotal = 0;
+    $totalPages = 1;
+    $offset = 0;
 }
 
 function network_filter_status(int $statusId): string
@@ -83,6 +106,19 @@ function network_badge_class(int $statusId): string
         default => 'badge-unknown',
     };
 }
+
+$rowStart = $filteredTotal > 0 ? ($offset + 1) : 0;
+$rowEnd = min($offset + count($assets), $filteredTotal);
+$baseParams = [];
+if ($filter_status !== null) {
+    $baseParams['status_id'] = $filter_status;
+}
+$prevParams = $baseParams;
+$prevParams['page'] = max(1, $page - 1);
+$nextParams = $baseParams;
+$nextParams['page'] = min($totalPages, $page + 1);
+$prevHref = 'network.php?' . http_build_query($prevParams);
+$nextHref = 'network.php?' . http_build_query($nextParams);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -610,13 +646,29 @@ function network_badge_class(int $statusId): string
         .pagination {
             display: flex;
             align-items: center;
-            justify-content: flex-end;
-            gap: 0.5rem;
+            justify-content: space-between;
+            gap: 1rem;
             padding-top: 1.25rem;
             border-top: 1px solid rgba(226,232,240,0.6);
             margin-top: 1rem;
         }
         .page-info { color: var(--text-muted); font-size: 0.9rem; font-weight: 600; }
+        .page-nav { display: inline-flex; align-items: center; gap: 0.5rem; }
+        .page-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.5rem 0.85rem;
+            border-radius: 10px;
+            border: 1px solid var(--card-border);
+            background: var(--glass-panel);
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.88rem;
+        }
+        .page-btn:hover { border-color: rgba(37,99,235,0.2); color: var(--primary); background: rgba(37,99,235,0.06); }
+        .page-btn.disabled { pointer-events: none; opacity: 0.45; }
 
         @media (max-width: 1100px) {
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -850,7 +902,18 @@ function network_badge_class(int $statusId): string
                 </table>
             </div>
             <div class="pagination">
-                <div class="page-info">Showing <strong><span id="rowCount">0</span></strong> item(s)</div>
+                <div class="page-info">
+                    Showing <strong><?= (int)$rowStart ?>-<?= (int)$rowEnd ?></strong> of <strong><?= (int)$filteredTotal ?></strong> item(s)
+                    &nbsp;•&nbsp; Page <strong><?= (int)$page ?></strong> / <strong><?= (int)$totalPages ?></strong>
+                </div>
+                <div class="page-nav">
+                    <a class="page-btn <?= $page <= 1 ? 'disabled' : '' ?>" href="<?= htmlspecialchars($prevHref) ?>">
+                        <i class="ri-arrow-left-s-line"></i> Prev
+                    </a>
+                    <a class="page-btn <?= $page >= $totalPages ? 'disabled' : '' ?>" href="<?= htmlspecialchars($nextHref) ?>">
+                        Next <i class="ri-arrow-right-s-line"></i>
+                    </a>
+                </div>
             </div>
         </div>
     </main>
@@ -890,13 +953,6 @@ function network_badge_class(int $statusId): string
 
         const searchInput = document.getElementById('searchInput');
         const tbody = document.getElementById('assetTbody');
-        const rowCount = document.getElementById('rowCount');
-
-        function updateCounts() {
-            const rows = Array.from(tbody.querySelectorAll('tr.network-row'));
-            const visible = rows.filter(r => r.style.display !== 'none');
-            rowCount.textContent = visible.length.toString();
-        }
 
         function applyFilters() {
             const q = (searchInput.value || '').toLowerCase();
@@ -906,13 +962,9 @@ function network_badge_class(int $statusId): string
                 const textOk = row.innerText.toLowerCase().includes(q);
                 row.style.display = textOk ? '' : 'none';
             });
-
-            updateCounts();
         }
 
         searchInput.addEventListener('input', applyFilters);
-
-        updateCounts();
     </script>
 </body>
 </html>
