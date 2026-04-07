@@ -1067,12 +1067,12 @@ $status_meta = [
                             <th>Device Identity</th>
                             <?php if ($filter_status === 5): ?>
                                 <th>Warranty Details</th>
-                            <?php elseif ($filter_status === null): ?>
-                                <th>Asset Information</th>
-                                <th>Purchase Date</th>
-                            <?php else: ?>
+                            <?php elseif ($filter_status === 3): ?>
                                 <th>Department</th>
                                 <th>Assigned To</th>
+                                <th>Purchase Date</th>
+                            <?php else: ?>
+                                <th>Asset Information</th>
                                 <th>Purchase Date</th>
                             <?php endif; ?>
                             <th>Status</th>
@@ -1083,7 +1083,7 @@ $status_meta = [
                         <?php if (empty($laptops)): ?>
                         <tr>
                             <?php
-                                $colspan = ($filter_status === 5) ? 4 : (($filter_status === null) ? 5 : 6);
+                                $colspan = ($filter_status === 5) ? 4 : (($filter_status === 3) ? 6 : 5);
                             ?>
                             <td colspan="<?= (int)$colspan ?>" style="text-align:center; padding: 3rem; color: var(--text-muted);">
                                 <i class="ri-inbox-line" style="font-size:2rem; display:block; margin-bottom:0.5rem;"></i>
@@ -1143,16 +1143,16 @@ $status_meta = [
                                         <?= htmlspecialchars($warrantyText) ?>
                                     </span>
                                 </td>
-                            <?php elseif ($filter_status === null): ?>
+                            <?php elseif ($filter_status === 3): ?>
+                                <td><?= $department ?></td>
+                                <td><?= $assignee ?></td>
+                                <td><?= $po_date ?></td>
+                            <?php else: ?>
                                 <td>
                                     <span style="font-size:0.85rem; color: var(--text-muted);">
                                         <?= $assetInfoText ?>
                                     </span>
                                 </td>
-                                <td><?= $po_date ?></td>
-                            <?php else: ?>
-                                <td><?= $department ?></td>
-                                <td><?= $assignee ?></td>
                                 <td><?= $po_date ?></td>
                             <?php endif; ?>
                             <td><span class="badge <?= $meta['cls'] ?>"><i class="<?= $meta['icon'] ?>"></i> <?= htmlspecialchars($row['status_name']) ?></span></td>
