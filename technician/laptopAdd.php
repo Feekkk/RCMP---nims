@@ -7,29 +7,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
 }
 
 require_once '../config/database.php';
-
-function laptop_asset_id_prefix_for_category(?string $category): ?string
-{
-    return match ($category) {
-        'Desktop AIO', 'Desktop IO' => '14',
-        'Notebook', 'Notebook Standby' => '12',
-        default => null,
-    };
-}
-
-function laptop_compute_next_asset_id(PDO $pdo, string $twoCharCategoryPrefix): int
-{
-    $yy     = date('y');
-    $prefix = $twoCharCategoryPrefix . $yy;
-    $stmt   = $pdo->prepare('SELECT MAX(asset_id) FROM laptop WHERE asset_id LIKE ?');
-    $stmt->execute([$prefix . '%']);
-    $max_val = (int)$stmt->fetchColumn();
-    if ($max_val === 0) return (int)($prefix . '001');
-    $plen = strlen($prefix);
-    $next = (int)substr((string)$max_val, $plen) + 1;
-    $pad  = max(3, strlen((string)$next));
-    return (int)($prefix . str_pad((string)$next, $pad, '0', STR_PAD_LEFT));
-}
+require_once __DIR__ . '/../config/laptop_asset_id.php';
 
 $pdoPreview    = db();
 $next_desktop  = laptop_compute_next_asset_id($pdoPreview, '14');
@@ -86,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error_message = 'Serial Number and Status are required.';
     } elseif ($category === null || $category === '') {
         $error_message = 'Category is required (Asset ID is based on category).';
-    } elseif (laptop_asset_id_prefix_for_category($category) === null) {
+    } elseif (laptop_category_to_asset_prefix($category) === null) {
         $error_message = 'Invalid category for Asset ID generation.';
     } elseif ($is_deploy && (!$ho_employee_no || !$ho_date)) {
         $error_message = 'Handover details (assignee and date) are required for Deploy status.';
@@ -96,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $pdo = db();
             $pdo->beginTransaction();
-            $prefix2  = laptop_asset_id_prefix_for_category($category);
+            $prefix2  = laptop_category_to_asset_prefix($category);
             $asset_id = laptop_compute_next_asset_id($pdo, $prefix2);
 
             $stmt = $pdo->prepare("
