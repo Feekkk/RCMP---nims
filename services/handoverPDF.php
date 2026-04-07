@@ -47,6 +47,31 @@ function handover_draw_header(TCPDF $pdf, string $docTitle = '', array $opts = [
     $pdf->Ln(5);
 }
 
+function handover_draw_footer(TCPDF $pdf): void
+{
+    $margins = $pdf->getMargins();
+    $left = $margins['left'];
+    $right = $margins['right'];
+    $bottom = $margins['bottom'];
+
+    // Draw footer at fixed position near bottom without triggering auto page break.
+    $pdf->SetAutoPageBreak(false, 0);
+
+    // Position ~20mm from bottom.
+    $pdf->SetY(-20);
+    $y = $pdf->GetY();
+
+    $pdf->SetDrawColor(150, 150, 150);
+    $pdf->Line($left, $y, $pdf->getPageWidth() - $right, $y);
+    $pdf->SetY($y + 3);
+    $pdf->SetFont('helvetica', 'I', 8);
+    $pdf->SetTextColor(80, 80, 80);
+    $pdf->Cell(0, 4, 'This document is computer generated. No signature is required.', 0, 1, 'C');
+
+    // Restore auto page break with original bottom margin.
+    $pdf->SetAutoPageBreak(true, $bottom);
+}
+
 function handover_get(string $key, string $default = ''): string
 {
     if (!isset($_GET[$key])) {
@@ -142,22 +167,7 @@ function handover_page1(TCPDF $pdf): void
 
     $pdf->Ln(3);
     $pdf->MultiCell($w, 5, 'I am fully aware of the software use policies of UNIKL RCMP and agree to uphold those policies', 0, 'L');
-    $pdf->Ln(12);
-
-    $pdf->Line($pdf->GetX(), $pdf->GetY(), $pdf->GetX() + 75, $pdf->GetY());
-    $pdf->Ln(1);
-    $pdf->SetFont('helvetica', '', 9);
-    $pdf->Cell(0, 4, 'Employee Signature', 0, 1, 'L');
-    $pdf->Ln(3);
-    $pdf->SetFont('helvetica', '', 10);
-    $pdf->Cell(42, 6, 'Employee Name:', 0, 0, 'L');
-    $pdf->Cell(0, 6, '_________________________________________________________________', 0, 1, 'L');
-    $pdf->Cell(42, 6, 'Employee Designation:', 0, 0, 'L');
-    $pdf->Cell(0, 6, '_________________________________________________________________', 0, 1, 'L');
-    $pdf->Cell(42, 6, 'Staff ID:', 0, 0, 'L');
-    $pdf->Cell(0, 6, '_________________________________________________________________', 0, 1, 'L');
-    $pdf->Cell(42, 6, 'Date:', 0, 0, 'L');
-    $pdf->Cell(0, 6, '_________________________________________________________________', 0, 1, 'L');
+    handover_draw_footer($pdf);
 }
 
 // --- Page 2: Handing over asset ---
@@ -227,7 +237,7 @@ function handover_page2(TCPDF $pdf, array $data): void
     $pdf->Ln(2);
 
     $req = [
-        'i.' => 'To comply with Company Notebook/Desktop Usage Policy. (Please refer to it.rcmp.unikl.edu.my)',
+        'i.' => 'To comply with Company Notebook/Desktop Usage Policy. (Please refer to it.rcmp@unikl.edu.my)',
         'ii.' => 'To use this Notebook/Desktop for working purposes only.',
         'iii.' => 'To use for teaching purposes and use at appropriate place only. (If related)',
         'iv.' => 'Installation of any unauthorized/illegal software into this Notebook/Desktop is strictly prohibited.',
@@ -250,9 +260,9 @@ function handover_page2(TCPDF $pdf, array $data): void
     $pdf->Cell(0, 6, '', 'B', 1, 'L');
 
     $pdf->Cell(38, 6, 'Date:', 0, 0, 'L');
-    $pdf->Cell(60, 6, $handoverDate, 'B', 0, 'L');
-    $pdf->SetFont('helvetica', '', 9);
-    $pdf->Cell(0, 6, 'Signature: _________________________________', 0, 1, 'R');
+    $pdf->Cell(60, 6, $handoverDate, 'B', 1, 'L');
+
+    handover_draw_footer($pdf);
 }
 
 // --- Page 3: Receipt & liability ---
@@ -292,15 +302,7 @@ function handover_page3(TCPDF $pdf, array $data): void
     $pdf->SetFont('helvetica', '', 10);
     $pdf->MultiCell($w, 5, 'My signature below indicates my agreement with the above liability statement', 0, 'L');
 
-    $pdf->Ln(28);
-    $y = $pdf->GetY();
-    $pdf->Line($lm, $y, $lm + 78, $y);
-    $x2 = $pdf->getPageWidth() - $pdf->getMargins()['right'] - 55;
-    $pdf->Line($x2, $y, $x2 + 48, $y);
-    $pdf->Ln(0.5);
-    $pdf->SetFont('helvetica', '', 9);
-    $pdf->Cell(78, 4, 'Signature', 0, 0, 'L');
-    $pdf->Cell(0, 4, 'Date', 0, 1, 'R');
+    handover_draw_footer($pdf);
 }
 
 // --- Build PDF ---
