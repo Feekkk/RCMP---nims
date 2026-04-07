@@ -148,6 +148,26 @@ CREATE TABLE IF NOT EXISTS av_deployment (
   INDEX idx_asset_id (asset_id)
 );
 
+-- Return records for AV deployments (speaker, mic, projector, etc.)
+CREATE TABLE IF NOT EXISTS av_return (
+  `return_id` INT(11) NOT NULL AUTO_INCREMENT,
+  `deployment_id` INT(11) NOT NULL,
+  `returned_by` VARCHAR(32) NOT NULL,
+  `return_date` DATE NOT NULL,
+  `return_time` TIME DEFAULT NULL,
+  `return_place` VARCHAR(128) DEFAULT NULL,
+  `condition` VARCHAR(64) DEFAULT NULL,
+  `return_remarks` TEXT DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`return_id`),
+  FOREIGN KEY (`deployment_id`) REFERENCES `av_deployment`(`deployment_id`),
+  FOREIGN KEY (`returned_by`) REFERENCES `users`(`staff_id`),
+  INDEX `idx_av_return_deployment` (`deployment_id`),
+  INDEX `idx_av_return_returned_by` (`returned_by`),
+  INDEX `idx_av_return_date` (`return_date`)
+);
+
 CREATE TABLE IF NOT EXISTS handover (
   `handover_id` INT(11) NOT NULL AUTO_INCREMENT,
   `asset_id` INT(11) NOT NULL,
