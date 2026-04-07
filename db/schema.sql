@@ -260,6 +260,7 @@ CREATE TABLE IF NOT EXISTS handover_return (
   `return_date` DATE NOT NULL,
   `return_time` TIME DEFAULT NULL,
   `return_place` VARCHAR(128) DEFAULT NULL,
+  `condition` VARCHAR(64) DEFAULT NULL,
   `return_remarks` TEXT DEFAULT NULL,
   `return_status_id` INT UNSIGNED DEFAULT NULL,
   `return_dedupe_key` VARCHAR(48) GENERATED ALWAYS AS (

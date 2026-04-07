@@ -14,11 +14,18 @@ const DEFAULT_RETURN_PLACE = 'ITD office';
 $pdo = db();
 
 $handoverReturnHasPlaceColumn = false;
+$handoverReturnHasConditionColumn = false;
 try {
     $col = $pdo->query("SHOW COLUMNS FROM `handover_return` LIKE 'handover_id'");
     $handoverReturnHasPlaceColumn = (bool) $col->fetch(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
     $handoverReturnHasPlaceColumn = false;
+}
+try {
+    $col = $pdo->query("SHOW COLUMNS FROM `handover_return` LIKE 'condition'");
+    $handoverReturnHasConditionColumn = (bool) $col->fetch(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    $handoverReturnHasConditionColumn = false;
 }
 
 $assetId = isset($_GET['asset_id']) ? (int)$_GET['asset_id'] : (isset($_POST['asset_id']) ? (int)$_POST['asset_id'] : 0);
@@ -104,6 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($returnPlace === '') {
         $returnPlace = DEFAULT_RETURN_PLACE;
     }
+    $returnCondition = isset($_POST['return_condition']) ? trim((string)$_POST['return_condition']) : '';
     $returnRemarks = isset($_POST['return_remarks']) ? trim((string)$_POST['return_remarks']) : '';
     $returnStatusId = isset($_POST['return_status_id']) ? (int)$_POST['return_status_id'] : DEFAULT_RETURN_STATUS_ID;
 
@@ -184,9 +192,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($handoverReturnHasPlaceColumn) {
                 $stmtInsertReturn = $pdo->prepare('
                     INSERT INTO handover_return
-                        (handover_staff_id, handover_id, returned_by, return_date, return_time, return_place, return_remarks, return_status_id)
+                        (handover_staff_id, handover_id, returned_by, return_date, return_time, return_place, `condition`, return_remarks, return_status_id)
                     VALUES
-                        (:handover_staff_id, :handover_id, :returned_by, :return_date, :return_time, :return_place, :return_remarks, :return_status_id)
+                        (:handover_staff_id, :handover_id, :returned_by, :return_date, :return_time, :return_place, :condition, :return_remarks, :return_status_id)
                 ');
                 $stmtInsertReturn->execute([
                     ':handover_staff_id' => $handoverStaffId,
@@ -195,15 +203,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':return_date' => $returnDate,
                     ':return_time' => $returnTime !== '' ? $returnTime : null,
                     ':return_place' => $returnPlace,
+                    ':condition' => ($handoverReturnHasConditionColumn && $returnCondition !== '') ? $returnCondition : null,
                     ':return_remarks' => $returnRemarks !== '' ? $returnRemarks : null,
                     ':return_status_id' => $returnStatusId,
                 ]);
             } else {
                 $stmtInsertReturn = $pdo->prepare('
                     INSERT INTO handover_return
-                        (handover_staff_id, returned_by, return_date, return_time, return_place, return_remarks, return_status_id)
+                        (handover_staff_id, returned_by, return_date, return_time, return_place, `condition`, return_remarks, return_status_id)
                     VALUES
-                        (:handover_staff_id, :returned_by, :return_date, :return_time, :return_place, :return_remarks, :return_status_id)
+                        (:handover_staff_id, :returned_by, :return_date, :return_time, :return_place, :condition, :return_remarks, :return_status_id)
                 ');
                 $stmtInsertReturn->execute([
                     ':handover_staff_id' => $handoverStaffId,
@@ -211,6 +220,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':return_date' => $returnDate,
                     ':return_time' => $returnTime !== '' ? $returnTime : null,
                     ':return_place' => $returnPlace,
+                    ':condition' => ($handoverReturnHasConditionColumn && $returnCondition !== '') ? $returnCondition : null,
                     ':return_remarks' => $returnRemarks !== '' ? $returnRemarks : null,
                     ':return_status_id' => $returnStatusId,
                 ]);
@@ -260,6 +270,7 @@ $fieldReturnDate = isset($_POST['return_date']) ? trim((string) $_POST['return_d
 $fieldReturnTime = isset($_POST['return_time']) ? trim((string) $_POST['return_time']) : '';
 $rp = isset($_POST['return_place']) ? trim((string) $_POST['return_place']) : '';
 $fieldReturnPlace = $rp !== '' ? $rp : DEFAULT_RETURN_PLACE;
+$fieldReturnCondition = isset($_POST['return_condition']) ? trim((string) $_POST['return_condition']) : '';
 $fieldReturnRemarks = isset($_POST['return_remarks']) ? trim((string) $_POST['return_remarks']) : '';
 ?>
 <!DOCTYPE html>
@@ -475,6 +486,26 @@ $fieldReturnRemarks = isset($_POST['return_remarks']) ? trim((string) $_POST['re
                                     placeholder="Defaults to <?= htmlspecialchars(DEFAULT_RETURN_PLACE) ?> if cleared"
                                     value="<?= htmlspecialchars($fieldReturnPlace) ?>"
                                 >
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="return_condition">Asset condition</label>
+                                <select id="return_condition" name="return_condition" class="form-select">
+                                    <?php
+                                        $cond = $fieldReturnCondition !== '' ? $fieldReturnCondition : 'Good';
+                                        $opts = ['Good', 'Fair', 'Damaged', 'Missing accessories', 'Other'];
+                                        foreach ($opts as $opt):
+                                    ?>
+                                        <option value="<?= htmlspecialchars($opt, ENT_QUOTES, 'UTF-8') ?>" <?= $opt === $cond ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($opt) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <?php if (!$handoverReturnHasConditionColumn): ?>
+                                    <div class="footer-note" style="margin-top:0.5rem;color:var(--warning)">
+                                        Database column <code>handover_return.condition</code> not found yet. Run the updated <code>db/schema.sql</code> (or migration) to save this field.
+                                    </div>
+                                <?php endif; ?>
                             </div>
 
                             <div class="form-group">
