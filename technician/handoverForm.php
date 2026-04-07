@@ -30,7 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $receiver_designation = $str('receiver_designation') ?? '';
     $handover_date = $date('handover_date');
     $handover_time = $str('handover_time') ?? '';
-    $handover_place = $str('handover_place') ?? '';
+    $handover_place = trim((string)($str('handover_place') ?? ''));
+    if ($handover_place === '') {
+        $handover_place = 'ITD office';
+    }
 
     $technician_staff_id = $str('technician_staff_id') ?? '';
     $session_staff_id = isset($_SESSION['staff_id']) ? trim((string)$_SESSION['staff_id']) : '';
@@ -41,8 +44,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $error_message = '';
 
-    if (!$asset_id || $receiver_staff_id === '' || !$handover_date || $handover_time === '' || $handover_place === '') {
-        $error_message = 'Missing required handover fields.';
+    if (!$asset_id || !$handover_date) {
+        $error_message = 'Date is required.';
     } elseif ($technician_staff_id === '' || $technician_staff_id !== $session_staff_id) {
         $error_message = 'Technician identity mismatch; please log in again.';
     } else {
@@ -57,24 +60,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Asset not found.');
             }
 
+            $receiverRow = null;
             $stmtReceiver = $pdo->prepare('
                 SELECT employee_no, full_name, department, email, phone
                 FROM staff
                 WHERE employee_no = ?
                 LIMIT 1
             ');
-            $stmtReceiver->execute([$receiver_staff_id]);
-            $receiverRow = $stmtReceiver->fetch(PDO::FETCH_ASSOC);
-            if (!$receiverRow) {
-                throw new RuntimeException('Receiver staff ID not found.');
+            if ($receiver_staff_id !== '') {
+                $stmtReceiver->execute([$receiver_staff_id]);
+                $receiverRow = $stmtReceiver->fetch(PDO::FETCH_ASSOC);
+                if (!$receiverRow) {
+                    if ($receiver_name === '') {
+                        throw new RuntimeException(
+                            'This Staff ID is not in the directory yet. Enter the receiver full name and optional details below, then submit to add them and record the handover.'
+                        );
+                    }
+                    $stmtInsertStaff = $pdo->prepare('
+                        INSERT INTO staff (employee_no, full_name, department, email, phone)
+                        VALUES (:employee_no, :full_name, :department, :email, :phone)
+                    ');
+                    try {
+                        $stmtInsertStaff->execute([
+                            ':employee_no' => $receiver_staff_id,
+                            ':full_name' => $receiver_name,
+                            ':department' => $receiver_designation !== '' ? $receiver_designation : null,
+                            ':email' => $receiver_email !== '' ? $receiver_email : null,
+                            ':phone' => $receiver_phone !== '' ? $receiver_phone : null,
+                        ]);
+                    } catch (PDOException $e) {
+                        $ei = $e->errorInfo ?? [];
+                        $dup = ($ei[0] ?? '') === '23000' || (int)($ei[1] ?? 0) === 1062;
+                        if (!$dup) {
+                            throw $e;
+                        }
+                    }
+                    $stmtReceiver->execute([$receiver_staff_id]);
+                    $receiverRow = $stmtReceiver->fetch(PDO::FETCH_ASSOC);
+                    if (!$receiverRow) {
+                        throw new RuntimeException('Could not load the receiver after saving to the staff directory.');
+                    }
+                }
             }
 
-            $handover_remarks = trim($handover_place);
-            $handover_remarks .= ' | Time: ' . trim((string)$handover_time);
+            $handover_remarks = $handover_place;
+            if ($handover_time !== '') {
+                $handover_remarks .= ' | Time: ' . trim((string)$handover_time);
+            }
+            if ($receiver_name !== '') {
+                $handover_remarks .= ' | Receiver: ' . trim($receiver_name);
+            }
             if ($receiver_designation !== '') {
                 $handover_remarks .= ' | Designation: ' . trim($receiver_designation);
             }
-            if ($receiver_email !== '' && $receiver_phone !== '') {
+            if ($receiver_email !== '' || $receiver_phone !== '') {
                 $handover_remarks .= ' | Receiver Contact: ' . trim($receiver_email) . ' / ' . trim($receiver_phone);
             }
 
@@ -90,14 +129,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             $handover_id = (int)$pdo->lastInsertId();
 
-            $stmtHandoverStaff = $pdo->prepare('
-                INSERT INTO handover_staff (employee_no, handover_id)
-                VALUES (:employee_no, :handover_id)
-            ');
-            $stmtHandoverStaff->execute([
-                ':employee_no' => $receiver_staff_id,
-                ':handover_id' => $handover_id,
-            ]);
+            if ($receiverRow !== null) {
+                $stmtHandoverStaff = $pdo->prepare('
+                    INSERT INTO handover_staff (employee_no, handover_id)
+                    VALUES (:employee_no, :handover_id)
+                ');
+                $stmtHandoverStaff->execute([
+                    ':employee_no' => $receiver_staff_id,
+                    ':handover_id' => $handover_id,
+                ]);
+            }
 
             $stmtUpdateAsset = $pdo->prepare('
                 UPDATE laptop
@@ -119,6 +160,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error_message = 'Database error: ' . $e->getMessage();
         }
     }
+}
+
+$DEFAULT_HANDOVER_PLACE = 'ITD office';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $field_handover_date = trim((string)($_POST['handover_date'] ?? ''));
+    $p = trim((string)($_POST['handover_place'] ?? ''));
+    $field_handover_place = $p !== '' ? $p : $DEFAULT_HANDOVER_PLACE;
+    $field_handover_time = trim((string)($_POST['handover_time'] ?? ''));
+    $field_receiver_staff_id = trim((string)($_POST['receiver_staff_id'] ?? ''));
+    $field_receiver_name = trim((string)($_POST['receiver_name'] ?? ''));
+    $field_receiver_designation = trim((string)($_POST['receiver_designation'] ?? ''));
+    $field_receiver_email = trim((string)($_POST['receiver_email'] ?? ''));
+    $field_receiver_phone = trim((string)($_POST['receiver_phone'] ?? ''));
+} else {
+    $field_handover_date = '';
+    $field_handover_place = $DEFAULT_HANDOVER_PLACE;
+    $field_handover_time = '';
+    $field_receiver_staff_id = '';
+    $field_receiver_name = '';
+    $field_receiver_designation = '';
+    $field_receiver_email = '';
+    $field_receiver_phone = '';
 }
 
 // Staff directory lookup for receiver auto-fill
@@ -598,10 +661,10 @@ try {
                                 id="receiver_staff_id"
                                 name="receiver_staff_id"
                                 class="form-control"
-                                placeholder="e.g. IT-12345"
+                                placeholder="Optional — e.g. IT-12345"
                                 list="staffDirectory"
                                 autocomplete="off"
-                                required
+                                value="<?= htmlspecialchars($field_receiver_staff_id, ENT_QUOTES, 'UTF-8') ?>"
                             >
                             <datalist id="staffDirectory">
                                 <?php foreach ($staffForLookup as $st): ?>
@@ -618,22 +681,22 @@ try {
 
                         <div class="form-group">
                             <label class="form-label" for="receiver_name">Staff Name (Receiver)</label>
-                            <input type="text" id="receiver_name" name="receiver_name" class="form-control" placeholder="Receiver full name" required>
+                            <input type="text" id="receiver_name" name="receiver_name" class="form-control" placeholder="Auto-filled from directory, or enter if new staff" value="<?= htmlspecialchars($field_receiver_name, ENT_QUOTES, 'UTF-8') ?>">
                         </div>
 
                         <div class="form-group">
                             <label class="form-label" for="receiver_designation">Designation / Department (Receiver)</label>
-                            <input type="text" id="receiver_designation" name="receiver_designation" class="form-control" placeholder="e.g. Lecturer, Officer" required>
+                            <input type="text" id="receiver_designation" name="receiver_designation" class="form-control" placeholder="Optional" value="<?= htmlspecialchars($field_receiver_designation, ENT_QUOTES, 'UTF-8') ?>">
                         </div>
 
                         <div class="form-group">
                             <label class="form-label" for="receiver_email">Email (Receiver)</label>
-                            <input type="email" id="receiver_email" name="receiver_email" class="form-control" placeholder="Receiver email" readonly>
+                            <input type="email" id="receiver_email" name="receiver_email" class="form-control" placeholder="Optional — editable if not in directory" value="<?= htmlspecialchars($field_receiver_email, ENT_QUOTES, 'UTF-8') ?>">
                         </div>
 
                         <div class="form-group">
                             <label class="form-label" for="receiver_phone">Phone (Receiver)</label>
-                            <input type="text" id="receiver_phone" name="receiver_phone" class="form-control" placeholder="Receiver phone" readonly>
+                            <input type="text" id="receiver_phone" name="receiver_phone" class="form-control" placeholder="Optional — editable if not in directory" value="<?= htmlspecialchars($field_receiver_phone, ENT_QUOTES, 'UTF-8') ?>">
                         </div>
                     </div>
 
@@ -644,17 +707,17 @@ try {
                         <div class="form-row-inline">
                             <div class="form-group">
                                 <label class="form-label" for="handover_date">Date</label>
-                                <input type="date" id="handover_date" name="handover_date" class="form-control" required>
+                                <input type="date" id="handover_date" name="handover_date" class="form-control" value="<?= htmlspecialchars($field_handover_date, ENT_QUOTES, 'UTF-8') ?>" required>
                             </div>
                             <div class="form-group">
                                 <label class="form-label" for="handover_time">Time</label>
-                                <input type="time" id="handover_time" name="handover_time" class="form-control" required>
+                                <input type="time" id="handover_time" name="handover_time" class="form-control" value="<?= htmlspecialchars($field_handover_time, ENT_QUOTES, 'UTF-8') ?>">
                             </div>
                         </div>
 
                         <div class="form-group">
                             <label class="form-label" for="handover_place">Place</label>
-                            <input type="text" id="handover_place" name="handover_place" class="form-control" placeholder="e.g. UniKL RCMP IT Counter, Lab 3" required>
+                            <input type="text" id="handover_place" name="handover_place" class="form-control" value="<?= htmlspecialchars($field_handover_place, ENT_QUOTES, 'UTF-8') ?>" placeholder="Defaults to ITD office if left blank">
                         </div>
 
                         <div class="section-title" style="margin-top: 1.25rem;">Handover By (Technician)</div>
@@ -668,28 +731,17 @@ try {
                                 class="form-control"
                                 value="<?= htmlspecialchars($_SESSION['user_name'] ?? '') ?>"
                                 placeholder="Technician full name"
-                                required
+                                readonly
                             >
                         </div>
 
-                        <div class="form-group">
-                            <label class="form-label" for="technician_staff_id">Technician Staff ID</label>
-                            <input
-                                type="text"
-                                id="technician_staff_id"
-                                name="technician_staff_id"
-                                class="form-control"
-                                value="<?= htmlspecialchars($_SESSION['staff_id'] ?? '') ?>"
-                                placeholder="e.g. IT-00001"
-                                required
-                            >
-                        </div>
+                        <input type="hidden" name="technician_staff_id" value="<?= htmlspecialchars($_SESSION['staff_id'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                     </div>
                 </div>
 
                 <div class="form-footer">
                     <div class="footer-note">
-                        System will automatically email the form to the receiver for approval.
+                        Only date and place are required. Place defaults to ITD office if cleared. If the receiver Staff ID is not in the directory, enter their full name (and optional contact) — they are added to staff on submit. Time is optional.
                     </div>
                     <div>
                         <button type="button" class="btn btn-ghost" onclick="window.location.href='laptop.php'">
@@ -728,11 +780,13 @@ try {
             }
         }
 
-        function setReceiverLookupStatus(msg, isError) {
+        function setReceiverLookupStatus(msg, isError, isInfo) {
             const status = document.getElementById('receiver_lookup_status');
             if (!status) return;
             status.textContent = msg || '';
-            status.style.color = isError ? 'var(--danger)' : 'var(--text-muted)';
+            if (isError) status.style.color = 'var(--danger)';
+            else if (isInfo) status.style.color = 'var(--primary)';
+            else status.style.color = 'var(--text-muted)';
         }
 
         function fillReceiverFields(staff) {
@@ -766,6 +820,7 @@ try {
             async function onReceiverStaffChange() {
                 const employeeNo = (staffIdEl.value || '').trim();
                 if (!employeeNo) {
+                    clearReceiverFields();
                     setReceiverLookupStatus('', false);
                     return;
                 }
@@ -780,13 +835,16 @@ try {
                 }
 
                 if (!data.staff) {
-                    clearReceiverFields();
-                    setReceiverLookupStatus('Staff not found for this Staff ID.', true);
+                    setReceiverLookupStatus(
+                        'Not in directory — enter full name and optional department, email, and phone below. They will be added to staff when you complete the handover.',
+                        false,
+                        true
+                    );
                     return;
                 }
 
                 fillReceiverFields(data.staff);
-                setReceiverLookupStatus('', false);
+                setReceiverLookupStatus('', false, false);
             }
 
             staffIdEl.addEventListener('change', onReceiverStaffChange);
@@ -798,4 +856,3 @@ try {
     </script>
 </body>
 </html>
-

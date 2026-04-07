@@ -9,14 +9,26 @@ require_once '../config/database.php';
 
 const DEPLOY_STATUS_ID = 3;
 const DEFAULT_RETURN_STATUS_ID = 1; // Active
+const DEFAULT_RETURN_PLACE = 'ITD office';
 
 $pdo = db();
+
+$handoverReturnHasPlaceColumn = false;
+try {
+    $col = $pdo->query("SHOW COLUMNS FROM `handover_return` LIKE 'handover_id'");
+    $handoverReturnHasPlaceColumn = (bool) $col->fetch(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    $handoverReturnHasPlaceColumn = false;
+}
+
 $assetId = isset($_GET['asset_id']) ? (int)$_GET['asset_id'] : (isset($_POST['asset_id']) ? (int)$_POST['asset_id'] : 0);
 
 $error_message = '';
 
 $laptop = null;
+$latestHandover = null;
 $latestRecipient = null;
+$returnAlreadyRecorded = false;
 $statusOptions = [];
 
 try {
@@ -31,7 +43,7 @@ try {
     $statusOptions = [];
 }
 
-// Fetch laptop + current recipient (who last received it in the latest handover)
+// Latest handover for asset; recipient only if that handover has a staff row (else place-only handover)
 if ($assetId > 0) {
     $stmtLaptop = $pdo->prepare("
         SELECT l.asset_id, l.serial_num, l.brand, l.model, l.status_id, s.name AS status_name
@@ -43,31 +55,55 @@ if ($assetId > 0) {
     $stmtLaptop->execute([$assetId]);
     $laptop = $stmtLaptop->fetch(PDO::FETCH_ASSOC);
 
-    $stmtRecipient = $pdo->prepare("
-        SELECT
-            hs.handover_staff_id,
-            hs.employee_no,
-            st.full_name AS recipient_name,
-            st.department AS recipient_dept
-        FROM handover h
-        JOIN handover_staff hs ON hs.handover_id = h.handover_id
-        JOIN staff st ON st.employee_no = hs.employee_no
-        WHERE h.asset_id = ?
-        ORDER BY h.handover_date DESC, h.created_at DESC, hs.handover_staff_id DESC
+    $stmtHandover = $pdo->prepare("
+        SELECT handover_id, handover_date, handover_remarks
+        FROM handover
+        WHERE asset_id = ?
+        ORDER BY handover_date DESC, created_at DESC
         LIMIT 1
     ");
-    $stmtRecipient->execute([$assetId]);
-    $latestRecipient = $stmtRecipient->fetch(PDO::FETCH_ASSOC);
+    $stmtHandover->execute([$assetId]);
+    $latestHandover = $stmtHandover->fetch(PDO::FETCH_ASSOC);
+
+    if ($latestHandover) {
+        $stmtRecipient = $pdo->prepare("
+            SELECT
+                hs.handover_staff_id,
+                hs.employee_no,
+                st.full_name AS recipient_name,
+                st.department AS recipient_dept
+            FROM handover_staff hs
+            JOIN staff st ON st.employee_no = hs.employee_no
+            WHERE hs.handover_id = ?
+            ORDER BY hs.handover_staff_id DESC
+            LIMIT 1
+        ");
+        $stmtRecipient->execute([(int)$latestHandover['handover_id']]);
+        $latestRecipient = $stmtRecipient->fetch(PDO::FETCH_ASSOC);
+    }
 
     if ($laptop && (int)$laptop['status_id'] !== DEPLOY_STATUS_ID) {
         $error_message = 'Return can only be recorded when asset status is Deploy.';
+    } elseif ($laptop && (int)$laptop['status_id'] === DEPLOY_STATUS_ID && $latestHandover) {
+        if ($latestRecipient) {
+            $chk = $pdo->prepare('SELECT 1 FROM handover_return WHERE handover_staff_id = ? LIMIT 1');
+            $chk->execute([(int)$latestRecipient['handover_staff_id']]);
+            $returnAlreadyRecorded = (bool) $chk->fetchColumn();
+        } elseif ($handoverReturnHasPlaceColumn) {
+            $chk = $pdo->prepare('SELECT 1 FROM handover_return WHERE handover_id = ? AND handover_staff_id IS NULL LIMIT 1');
+            $chk->execute([(int)$latestHandover['handover_id']]);
+            $returnAlreadyRecorded = (bool) $chk->fetchColumn();
+        }
     }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $returnDate = isset($_POST['return_date']) ? trim((string)$_POST['return_date']) : '';
     $returnTime = isset($_POST['return_time']) ? trim((string)$_POST['return_time']) : '';
-    $returnPlace = isset($_POST['return_place']) ? trim((string)$_POST['return_place']) : '';
+    $returnPlace = trim((string)($_POST['return_place'] ?? ''));
+    if ($returnPlace === '') {
+        $returnPlace = DEFAULT_RETURN_PLACE;
+    }
     $returnRemarks = isset($_POST['return_remarks']) ? trim((string)$_POST['return_remarks']) : '';
     $returnStatusId = isset($_POST['return_status_id']) ? (int)$_POST['return_status_id'] : DEFAULT_RETURN_STATUS_ID;
 
@@ -79,24 +115,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error_message = 'Asset not found.';
     } elseif ((int)$laptop['status_id'] !== DEPLOY_STATUS_ID) {
         $error_message = 'Return can only be recorded when asset status is Deploy.';
-    } elseif ($latestRecipient && empty($returnDate)) {
-        $error_message = 'Missing return date.';
-    } elseif ($latestRecipient && empty($returnTime)) {
-        $error_message = 'Missing return time.';
-    } elseif (empty($returnRemarks)) {
-        $error_message = 'Missing return remarks.';
+    } elseif ($returnDate === '') {
+        $error_message = 'Return date is required.';
     } elseif ($sessionStaffId === '') {
         $error_message = 'Technician not found in session. Please log in again.';
-    } elseif (!$latestRecipient) {
-        $error_message = 'No handover recipient found for this asset.';
+    } elseif (!$latestHandover) {
+        $error_message = 'No handover record found for this asset.';
+    } elseif (!$latestRecipient && !$handoverReturnHasPlaceColumn) {
+        $error_message = 'Place-based returns need the database updated: run db/migrate_handover_return_place.sql (adds handover_id to handover_return).';
+    } elseif ($returnAlreadyRecorded) {
+        $error_message = 'Return has already been recorded for this deployment.';
     } else {
-        $handoverStaffId = (int)$latestRecipient['handover_staff_id'];
-
         try {
             $pdo->beginTransaction();
 
-            // Re-check current state inside transaction
-            // asset_id is the PK, so we don't need LIMIT. Use FOR UPDATE for concurrency safety.
             $stmtLockLaptop = $pdo->prepare('SELECT status_id FROM laptop WHERE asset_id = ? FOR UPDATE');
             $stmtLockLaptop->execute([$assetId]);
             $rowLock = $stmtLockLaptop->fetch(PDO::FETCH_ASSOC);
@@ -109,29 +141,86 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Asset is no longer in Deploy status.');
             }
 
-            // Insert return record (UNIQUE(handover_staff_id) will prevent duplicates)
-            $stmtInsertReturn = $pdo->prepare("
-                INSERT INTO handover_return
-                    (handover_staff_id, returned_by, return_date, return_time, return_place, return_remarks, return_status_id)
-                VALUES
-                    (:handover_staff_id, :returned_by, :return_date, :return_time, :return_place, :return_remarks, :return_status_id)
+            $stmtH = $pdo->prepare("
+                SELECT handover_id
+                FROM handover
+                WHERE asset_id = ?
+                ORDER BY handover_date DESC, created_at DESC
+                LIMIT 1
             ");
-            $stmtInsertReturn->execute([
-                ':handover_staff_id' => $handoverStaffId,
-                ':returned_by' => $sessionStaffId,
-                ':return_date' => $returnDate,
-                ':return_time' => $returnTime,
-                ':return_place' => $returnPlace !== '' ? $returnPlace : null,
-                ':return_remarks' => $returnRemarks,
-                ':return_status_id' => $returnStatusId,
-            ]);
+            $stmtH->execute([$assetId]);
+            $rowH = $stmtH->fetch(PDO::FETCH_ASSOC);
+            if (!$rowH) {
+                throw new RuntimeException('No handover record found for this asset.');
+            }
+            $handoverId = (int) $rowH['handover_id'];
 
-            // Update asset status after return
-            $stmtUpdateAsset = $pdo->prepare("
+            $stmtR = $pdo->prepare("
+                SELECT handover_staff_id
+                FROM handover_staff
+                WHERE handover_id = ?
+                ORDER BY handover_staff_id DESC
+                LIMIT 1
+            ");
+            $stmtR->execute([$handoverId]);
+            $rowR = $stmtR->fetch(PDO::FETCH_ASSOC);
+
+            $handoverStaffId = $rowR ? (int) $rowR['handover_staff_id'] : null;
+
+            if ($handoverStaffId !== null) {
+                $dup = $pdo->prepare('SELECT 1 FROM handover_return WHERE handover_staff_id = ? LIMIT 1');
+                $dup->execute([$handoverStaffId]);
+                if ($dup->fetchColumn()) {
+                    throw new RuntimeException('Return already recorded for this handover recipient.');
+                }
+            } elseif ($handoverReturnHasPlaceColumn) {
+                $dup = $pdo->prepare('SELECT 1 FROM handover_return WHERE handover_id = ? AND handover_staff_id IS NULL LIMIT 1');
+                $dup->execute([$handoverId]);
+                if ($dup->fetchColumn()) {
+                    throw new RuntimeException('Return already recorded for this place handover.');
+                }
+            }
+
+            if ($handoverReturnHasPlaceColumn) {
+                $stmtInsertReturn = $pdo->prepare('
+                    INSERT INTO handover_return
+                        (handover_staff_id, handover_id, returned_by, return_date, return_time, return_place, return_remarks, return_status_id)
+                    VALUES
+                        (:handover_staff_id, :handover_id, :returned_by, :return_date, :return_time, :return_place, :return_remarks, :return_status_id)
+                ');
+                $stmtInsertReturn->execute([
+                    ':handover_staff_id' => $handoverStaffId,
+                    ':handover_id' => $handoverStaffId !== null ? null : $handoverId,
+                    ':returned_by' => $sessionStaffId,
+                    ':return_date' => $returnDate,
+                    ':return_time' => $returnTime !== '' ? $returnTime : null,
+                    ':return_place' => $returnPlace,
+                    ':return_remarks' => $returnRemarks !== '' ? $returnRemarks : null,
+                    ':return_status_id' => $returnStatusId,
+                ]);
+            } else {
+                $stmtInsertReturn = $pdo->prepare('
+                    INSERT INTO handover_return
+                        (handover_staff_id, returned_by, return_date, return_time, return_place, return_remarks, return_status_id)
+                    VALUES
+                        (:handover_staff_id, :returned_by, :return_date, :return_time, :return_place, :return_remarks, :return_status_id)
+                ');
+                $stmtInsertReturn->execute([
+                    ':handover_staff_id' => $handoverStaffId,
+                    ':returned_by' => $sessionStaffId,
+                    ':return_date' => $returnDate,
+                    ':return_time' => $returnTime !== '' ? $returnTime : null,
+                    ':return_place' => $returnPlace,
+                    ':return_remarks' => $returnRemarks !== '' ? $returnRemarks : null,
+                    ':return_status_id' => $returnStatusId,
+                ]);
+            }
+
+            $stmtUpdateAsset = $pdo->prepare('
                 UPDATE laptop
                 SET status_id = :status_id
                 WHERE asset_id = :asset_id
-            ");
+            ');
             $stmtUpdateAsset->execute([
                 ':status_id' => $returnStatusId,
                 ':asset_id' => $assetId,
@@ -141,23 +230,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: laptop.php?status_id=' . (int)$returnStatusId);
             exit;
         } catch (PDOException $e) {
-            if (isset($pdo) && $pdo->inTransaction()) {
+            if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
 
-            if ((int)$e->getCode() === 23000) {
-                $error_message = 'Return already recorded for this handover recipient.';
+            if ((int) $e->getCode() === 23000) {
+                $error_message = 'Return already recorded for this deployment.';
             } else {
                 $error_message = 'Database error: ' . $e->getMessage();
             }
         } catch (Throwable $e) {
-            if (isset($pdo) && $pdo->inTransaction()) {
+            if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
             $error_message = 'Error: ' . $e->getMessage();
         }
     }
 }
+
+$placeReturnNeedsMigration = $latestHandover && !$latestRecipient && !$handoverReturnHasPlaceColumn;
+
+$canSubmitReturn = $laptop
+    && (int) $laptop['status_id'] === DEPLOY_STATUS_ID
+    && $latestHandover
+    && !$returnAlreadyRecorded
+    && !$placeReturnNeedsMigration;
+
+$fieldReturnDate = isset($_POST['return_date']) ? trim((string) $_POST['return_date']) : '';
+$fieldReturnTime = isset($_POST['return_time']) ? trim((string) $_POST['return_time']) : '';
+$rp = isset($_POST['return_place']) ? trim((string) $_POST['return_place']) : '';
+$fieldReturnPlace = $rp !== '' ? $rp : DEFAULT_RETURN_PLACE;
+$fieldReturnRemarks = isset($_POST['return_remarks']) ? trim((string) $_POST['return_remarks']) : '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -269,15 +372,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <form action="" method="post">
                     <input type="hidden" name="asset_id" value="<?= htmlspecialchars((string)$assetId) ?>">
-                    <?php if ($latestRecipient): ?>
-                        <input type="hidden" name="handover_staff_id" value="<?= (int)$latestRecipient['handover_staff_id'] ?>">
-                    <?php endif; ?>
 
                     <div class="form-grid">
                         <div>
-                            <div class="section-title">Returned Recipient</div>
+                            <div class="section-title">Deployment context</div>
 
-                            <?php if ($latestRecipient): ?>
+                            <?php if ($returnAlreadyRecorded): ?>
+                                <div class="form-group">
+                                    <div class="alert" style="background:rgba(245,158,11,0.12);border-color:rgba(245,158,11,0.35);color:#f59e0b">
+                                        A return is already recorded for this deployment.
+                                    </div>
+                                </div>
+                            <?php elseif ($latestRecipient): ?>
+                                <div class="form-group">
+                                    <label class="form-label">Return from (staff)</label>
+                                    <p class="footer-note" style="margin-bottom:0.75rem">Handover included a staff recipient.</p>
+                                </div>
                                 <div class="form-group">
                                     <label class="form-label">Staff ID</label>
                                     <input class="form-control" value="<?= htmlspecialchars((string)$latestRecipient['employee_no']) ?>" disabled>
@@ -290,10 +400,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <label class="form-label">Department</label>
                                     <input class="form-control" value="<?= htmlspecialchars((string)($latestRecipient['recipient_dept'] ?? '—')) ?>" disabled>
                                 </div>
+                            <?php elseif ($latestHandover && !$handoverReturnHasPlaceColumn): ?>
+                                <div class="form-group">
+                                    <div class="alert">
+                                        This deployment is a <strong>place</strong> handover (no staff recipient). Your database table <code>handover_return</code> is missing column <code>handover_id</code>.
+                                        Run <code>db/migrate_handover_return_place.sql</code> (adjust the <code>DROP FOREIGN KEY</code> name if needed), then reload this page.
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Handover date</label>
+                                    <input class="form-control" value="<?= htmlspecialchars((string)$latestHandover['handover_date']) ?>" disabled>
+                                </div>
+                            <?php elseif ($latestHandover): ?>
+                                <div class="form-group">
+                                    <label class="form-label">Return from (place)</label>
+                                    <p class="footer-note" style="margin-bottom:0.75rem">
+                                        Latest handover had no staff recipient (deployed to a place). Record where the unit was collected and optional notes.
+                                    </p>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Handover date</label>
+                                    <input class="form-control" value="<?= htmlspecialchars((string)$latestHandover['handover_date']) ?>" disabled>
+                                </div>
+                                <?php if (($latestHandover['handover_remarks'] ?? '') !== ''): ?>
+                                    <div class="form-group">
+                                        <label class="form-label">Handover notes</label>
+                                        <textarea class="form-textarea" style="min-height:72px" disabled><?= htmlspecialchars((string)$latestHandover['handover_remarks']) ?></textarea>
+                                    </div>
+                                <?php endif; ?>
                             <?php else: ?>
                                 <div class="form-group">
                                     <div class="alert" style="background:rgba(245,158,11,0.12);border-color:rgba(245,158,11,0.35);color:#f59e0b">
-                                        No recipient found for this asset.
+                                        No handover record found for this asset.
                                     </div>
                                 </div>
                             <?php endif; ?>
@@ -311,7 +449,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         name="return_date"
                                         class="form-control"
                                         required
-                                        value="<?= isset($_POST['return_date']) ? htmlspecialchars((string)$_POST['return_date']) : '' ?>"
+                                        value="<?= htmlspecialchars($fieldReturnDate) ?>"
                                     >
                                 </div>
                                 <div class="form-group">
@@ -321,32 +459,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         id="return_time"
                                         name="return_time"
                                         class="form-control"
-                                        required
-                                        value="<?= isset($_POST['return_time']) ? htmlspecialchars((string)$_POST['return_time']) : '' ?>"
+                                        value="<?= htmlspecialchars($fieldReturnTime) ?>"
                                     >
                                 </div>
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label" for="return_place">Return Place (optional)</label>
+                                <label class="form-label" for="return_place">Return place</label>
                                 <input
                                     type="text"
                                     id="return_place"
                                     name="return_place"
                                     class="form-control"
-                                    placeholder="e.g. UniKL RCMP IT Counter"
-                                    value="<?= isset($_POST['return_place']) ? htmlspecialchars((string)$_POST['return_place']) : '' ?>"
+                                    required
+                                    placeholder="Defaults to <?= htmlspecialchars(DEFAULT_RETURN_PLACE) ?> if cleared"
+                                    value="<?= htmlspecialchars($fieldReturnPlace) ?>"
                                 >
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label" for="return_remarks">Asset Remarks (required)</label>
+                                <label class="form-label" for="return_remarks">Asset remarks</label>
                                 <textarea
                                     id="return_remarks"
                                     name="return_remarks"
                                     class="form-textarea"
-                                    placeholder="e.g. Charger and bag included, screen OK"
-                                    required><?= isset($_POST['return_remarks']) ? htmlspecialchars((string)$_POST['return_remarks']) : '' ?></textarea>
+                                    placeholder="Optional — condition, accessories, etc."
+                                ><?= htmlspecialchars($fieldReturnRemarks) ?></textarea>
                             </div>
 
                             <div class="form-group">
@@ -368,13 +506,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <div class="form-footer">
                         <div class="footer-note">
-                            Logged in as: <strong><?= htmlspecialchars((string)($_SESSION['user_name'] ?? $_SESSION['staff_id'] ?? 'Technician')) ?></strong>
+                            Logged in as: <strong><?= htmlspecialchars((string)($_SESSION['user_name'] ?? $_SESSION['staff_id'] ?? 'Technician')) ?></strong>.
+                            Date and place are required; place defaults to <?= htmlspecialchars(DEFAULT_RETURN_PLACE) ?> if empty. Time and remarks are optional.
                         </div>
                         <div>
                             <button type="button" class="btn btn-ghost" onclick="window.location.href='laptop.php?status_id=<?= (int)DEPLOY_STATUS_ID ?>'">
                                 Cancel
                             </button>
-                            <button type="submit" class="btn btn-primary">
+                            <button type="submit" class="btn btn-primary" <?= $canSubmitReturn ? '' : 'disabled' ?>>
                                 <i class="ri-check-line"></i> Complete Return
                             </button>
                         </div>
