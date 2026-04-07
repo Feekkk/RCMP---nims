@@ -256,7 +256,6 @@ function handover_page2(TCPDF $pdf, array $data): void
     $pdf->Ln(1);
     $pdf->Cell(38, 6, 'Name:', 0, 0, 'L');
     $pdf->Cell(0, 6, $techName, 'B', 1, 'L');
-    $pdf->Cell(38, 6, 'Designation:', 0, 0, 'L');
     $pdf->Cell(0, 6, '', 'B', 1, 'L');
 
     $pdf->Cell(38, 6, 'Date:', 0, 0, 'L');
