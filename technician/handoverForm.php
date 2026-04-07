@@ -6,6 +6,7 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
 }
 
 require_once '../config/database.php';
+require_once '../config/mailer.php';
 
 $DEPLOY_STATUS_ID = 3;
 
@@ -48,6 +49,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error_message = 'Date is required.';
     } elseif ($technician_staff_id === '' || $technician_staff_id !== $session_staff_id) {
         $error_message = 'Technician identity mismatch; please log in again.';
+    } elseif ($receiver_staff_id === '' && $receiver_email === '') {
+        $error_message = 'Receiver email is required for confirmation.';
     } else {
         try {
             $pdo = db();
@@ -102,6 +105,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
             }
+            if ($receiverRow !== null && $receiver_email !== '') {
+                // Prefer explicit email if provided in form.
+                $receiverRow['email'] = $receiver_email;
+                $stmtUpdateStaff = $pdo->prepare('UPDATE staff SET email = :email WHERE employee_no = :employee_no');
+                $stmtUpdateStaff->execute([
+                    ':email' => $receiver_email,
+                    ':employee_no' => $receiver_staff_id,
+                ]);
+            }
+            if ($receiverRow !== null && $receiver_phone !== '') {
+                $stmtUpdateStaffPhone = $pdo->prepare('UPDATE staff SET phone = :phone WHERE employee_no = :employee_no');
+                $stmtUpdateStaffPhone->execute([
+                    ':phone' => $receiver_phone,
+                    ':employee_no' => $receiver_staff_id,
+                ]);
+            }
 
             $handover_remarks = $handover_place;
             if ($handover_time !== '') {
@@ -151,7 +170,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
 
             $pdo->commit();
-            header('Location: laptop.php?status_id=' . $DEPLOY_STATUS_ID);
+
+            // Email receiver a confirmation link. On click, the system generates and emails the PDF back.
+            $toEmail = '';
+            $toName = '';
+            $employeeNo = '';
+            if ($receiverRow !== null) {
+                $toEmail = (string)($receiverRow['email'] ?? '');
+                $toName = (string)($receiverRow['full_name'] ?? '');
+                $employeeNo = (string)($receiverRow['employee_no'] ?? '');
+            } else {
+                $toEmail = $receiver_email;
+                $toName = $receiver_name;
+                $employeeNo = $receiver_staff_id; // may be empty; link validation will reject if not linked
+            }
+
+            if (trim($toEmail) === '') {
+                throw new RuntimeException('Receiver email is required to send confirmation.');
+            }
+
+            $app = require __DIR__ . '/../config/app.php';
+            $appKey = (string)($app['app_key'] ?? 'dev-insecure-change-me');
+            $exp = time() + 86400; // 24h
+            $payload = $handover_id . '|' . $employeeNo . '|' . $exp;
+            $sig = hash_hmac('sha256', $payload, $appKey);
+
+            $baseUrl = (string)($app['app_url'] ?? '');
+            if ($baseUrl === '') {
+                $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                $basePath = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
+                // /technician -> (project root) then /services/handoverPDF.php
+                $baseUrl = $scheme . '://' . $host . preg_replace('#/technician$#', '', $basePath);
+            }
+
+            $confirmUrl = rtrim($baseUrl, '/') . '/services/handoverPDF.php?handover_id=' . urlencode((string)$handover_id)
+                . '&employee_no=' . urlencode($employeeNo)
+                . '&exp=' . urlencode((string)$exp)
+                . '&sig=' . urlencode($sig);
+
+            $subject = 'NIMS Handover Confirmation - Asset ' . $asset_id;
+            $body = "Hi " . ($toName !== '' ? $toName : 'Staff') . ",\n\n"
+                . "Please confirm your device handover by clicking the link below.\n\n"
+                . $confirmUrl . "\n\n"
+                . "After confirmation, the system will generate the handover form PDF and email it back to you.\n\n"
+                . "If you did not request this, you may ignore this email.\n";
+
+            smtp_send($toEmail, $subject, $body);
+
+            header('Location: laptop.php?status_id=' . $DEPLOY_STATUS_ID . '&handover_email=sent');
             exit;
         } catch (Throwable $e) {
             if (isset($pdo) && $pdo->inTransaction()) {
