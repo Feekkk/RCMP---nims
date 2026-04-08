@@ -14,10 +14,9 @@ $page = isset($_GET['page']) && is_numeric($_GET['page']) ? max(1, (int) $_GET['
 $perPage = 10;
 
 $stats = [
-    'total'        => 0,
-    'online'       => 0,
-    'offline'      => 0,
-    'maint_faulty' => 0,
+    'total'     => 0,
+    'in_stock'  => 0,
+    'out_stock' => 0,
 ];
 $assets = [];
 $status_counts = [];
@@ -29,10 +28,11 @@ $dbError = false;
 try {
     $pdo = db();
     $stats['total'] = (int)$pdo->query('SELECT COUNT(*) FROM network')->fetchColumn();
-    $stats['online'] = (int)$pdo->query('SELECT COUNT(*) FROM network WHERE status_id = 9')->fetchColumn();
-    $stats['offline'] = (int)$pdo->query('SELECT COUNT(*) FROM network WHERE status_id = 10')->fetchColumn();
-    $stats['maint_faulty'] = (int)$pdo->query(
-        'SELECT COUNT(*) FROM network WHERE status_id IN (5, 6)'
+    $stats['in_stock'] = (int)$pdo->query(
+        'SELECT COUNT(*) FROM network WHERE status_id IN (9, 10, 5, 6)'
+    )->fetchColumn();
+    $stats['out_stock'] = (int)$pdo->query(
+        'SELECT COUNT(*) FROM network WHERE status_id IN (3, 7, 8)'
     )->fetchColumn();
     $status_counts = $pdo->query("
         SELECT s.status_id, s.name, COUNT(n.asset_id) AS total
@@ -77,6 +77,7 @@ try {
     $dbError = true;
     $assets = [];
     $status_counts = [];
+    $stats = ['total' => 0, 'in_stock' => 0, 'out_stock' => 0];
     $filteredTotal = 0;
     $totalPages = 1;
     $offset = 0;
@@ -418,39 +419,62 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
 
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 1.25rem;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1rem 1.25rem;
             margin-bottom: 1.75rem;
+            max-width: 960px;
         }
         .stat-card {
             background: var(--card-bg);
             border: 1px solid var(--card-border);
-            border-radius: 18px;
-            padding: 1.25rem 1.5rem;
-            box-shadow: 0 2px 12px rgba(15,23,42,0.06);
+            border-radius: 14px;
+            padding: 1.1rem 1.25rem;
+            box-shadow: 0 2px 10px rgba(15,23,42,0.06);
             display: flex;
             align-items: center;
             gap: 1rem;
+            min-width: 0;
         }
         .stat-icon {
-            width: 52px; height: 52px; border-radius: 14px;
+            width: 48px; height: 48px; border-radius: 12px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 1.5rem; flex-shrink: 0;
+            font-size: 1.35rem; flex-shrink: 0;
+        }
+        .stat-card-body {
+            flex: 1;
+            min-width: 0;
+        }
+        .stat-card-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.88rem;
+            font-weight: 800;
+            color: var(--text-main);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            line-height: 1.2;
+        }
+        .stat-card-sub {
+            margin-top: 0.3rem;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            line-height: 1.4;
+        }
+        .stat-card-value {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2rem;
+            font-weight: 800;
+            line-height: 1;
+            color: var(--text-main);
+            letter-spacing: -0.02em;
+            margin-left: auto;
+            flex-shrink: 0;
+            padding-left: 0.75rem;
         }
         .icon-blue { background: rgba(37,99,235,0.12); color: var(--primary); border: 1px solid rgba(37,99,235,0.25); }
         .icon-green { background: rgba(16,185,129,0.12); color: var(--success); border: 1px solid rgba(16,185,129,0.25); }
         .icon-red { background: rgba(239,68,68,0.12); color: var(--danger); border: 1px solid rgba(239,68,68,0.25); }
         .icon-amber { background: rgba(245,158,11,0.12); color: var(--warning); border: 1px solid rgba(245,158,11,0.25); }
-        .stat-num { font-family:'Outfit',sans-serif; font-size: 1.9rem; font-weight: 800; line-height: 1; }
-        .stat-label { margin-top: 0.25rem; font-size: 0.78rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; }
-        .stat-schema {
-            font-size: 0.7rem;
-            color: var(--text-muted);
-            font-weight: 600;
-            margin-top: 0.35rem;
-            line-height: 1.35;
-            opacity: 0.9;
-        }
 
         .alert-db {
             background: rgba(239, 68, 68, 0.1);
@@ -670,8 +694,8 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
         .page-btn:hover { border-color: rgba(37,99,235,0.2); color: var(--primary); background: rgba(37,99,235,0.06); }
         .page-btn.disabled { pointer-events: none; opacity: 0.45; }
 
-        @media (max-width: 1100px) {
-            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        @media (max-width: 640px) {
+            .stats-grid { grid-template-columns: 1fr; max-width: none; }
         }
         @media (max-width: 900px) {
             .sidebar { transform: translateX(-100%); width: 260px; }
@@ -714,34 +738,22 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
             </div>
         </header>
 
-        <section class="stats-grid" aria-label="Network inventory summary">
-            <div class="stat-card" title="All rows in network table">
-                <div class="stat-icon icon-blue"><i class="ri-router-line"></i></div>
-                <div>
-                    <div class="stat-num"><?= (int)$stats['total'] ?></div>
-                    <div class="stat-label">Total network assets</div>
+        <section class="stats-grid" aria-label="Network stock summary">
+            <div class="stat-card" title="Online, Offline, Maintenance, Faulty (9, 10, 5, 6)">
+                <div class="stat-icon icon-green"><i class="ri-box-3-line"></i></div>
+                <div class="stat-card-body">
+                    <div class="stat-card-title">In-stock</div>
+                    <div class="stat-card-sub">Online, Offline, Maintenance, Faulty</div>
                 </div>
+                <div class="stat-card-value"><?= (int)$stats['in_stock'] ?></div>
             </div>
-            <div class="stat-card" title="status table: Online">
-                <div class="stat-icon icon-green"><i class="ri-wifi-line"></i></div>
-                <div>
-                    <div class="stat-num"><?= (int)$stats['online'] ?></div>
-                    <div class="stat-label">Online</div>
+            <div class="stat-card" title="Deploy, Disposed, Lost (3, 7, 8)">
+                <div class="stat-icon icon-blue"><i class="ri-truck-line"></i></div>
+                <div class="stat-card-body">
+                    <div class="stat-card-title">Out-stock</div>
+                    <div class="stat-card-sub">Deploy, Disposed, Lost</div>
                 </div>
-            </div>
-            <div class="stat-card" title="status table: Offline">
-                <div class="stat-icon icon-red"><i class="ri-wifi-off-line"></i></div>
-                <div>
-                    <div class="stat-num"><?= (int)$stats['offline'] ?></div>
-                    <div class="stat-label">Offline</div>
-                </div>
-            </div>
-            <div class="stat-card" title="Per network.status_id comment: Maintenance + Faulty">
-                <div class="stat-icon icon-amber"><i class="ri-tools-line"></i></div>
-                <div>
-                    <div class="stat-num"><?= (int)$stats['maint_faulty'] ?></div>
-                    <div class="stat-label">Maintenance / Faulty</div>
-                </div>
+                <div class="stat-card-value"><?= (int)$stats['out_stock'] ?></div>
             </div>
         </section>
 
@@ -894,6 +906,16 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
                                 <td style="text-align:right;">
                                     <div class="row-actions">
                                         <button type="button" class="icon-btn" title="View (soon)" disabled><i class="ri-eye-line"></i></button>
+                                        <?php if ((int)$row['status_id'] === 9): ?>
+                                            <a class="icon-btn" title="Deploy" href="networkDeploy.php?asset_id=<?= (int)$row['asset_id'] ?>">
+                                                <i class="ri-upload-2-line"></i>
+                                            </a>
+                                        <?php endif; ?>
+                                        <?php if ((int)$row['status_id'] === 3): ?>
+                                            <a class="icon-btn" title="Return" href="networkReturn.php?asset_id=<?= (int)$row['asset_id'] ?>">
+                                                <i class="ri-inbox-unarchive-line"></i>
+                                            </a>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
                             </tr>
