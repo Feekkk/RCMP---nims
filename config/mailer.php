@@ -6,16 +6,8 @@
  * Usage:
  *   require_once __DIR__ . '/mailer.php';
  *   smtp_send('to@example.com', 'Subject', "Body\n");
+ *   smtp_send_return_completion_pdf(...) — return form PDF to technician (see services/returnPDF.php).
  */
-
-function smtp__read_banner($fp): void
-{
-    while (($l = fgets($fp, 515)) !== false) {
-        if (isset($l[3]) && $l[3] === ' ') {
-            return;
-        }
-    }
-}
 
 function smtp__read_reply($fp): string
 {
@@ -33,6 +25,27 @@ function smtp__cmd($fp, string $c): string
     return smtp__read_reply($fp);
 }
 
+function smtp__first_line(string $reply): string
+{
+    $reply = trim($reply);
+    $p = strpos($reply, "\r\n");
+    if ($p === false) {
+        return $reply;
+    }
+    return trim(substr($reply, 0, $p));
+}
+
+function smtp__expect_ok(string $reply, string $step): void
+{
+    if ($reply === '') {
+        throw new RuntimeException('SMTP: empty response at ' . $step);
+    }
+    $c = $reply[0] ?? '';
+    if ($c !== '2' && $c !== '3') {
+        throw new RuntimeException('SMTP at ' . $step . ': ' . smtp__first_line($reply));
+    }
+}
+
 function smtp__send_raw(string $to, string $rawMessage, ?string $from = null): void
 {
     $cfg = require __DIR__ . '/mail.php';
@@ -42,18 +55,18 @@ function smtp__send_raw(string $to, string $rawMessage, ?string $from = null): v
 
     $fp = fsockopen($host, $port, $errno, $errstr, 10);
     if (!$fp) {
-        throw new RuntimeException("SMTP connect failed: {$errstr} ({$errno})");
+        throw new RuntimeException("SMTP connect failed: {$errstr} ({$errno}) — check MAIL_HOST/MAIL_PORT or start Mailpit");
     }
 
-    smtp__read_banner($fp);
-    smtp__cmd($fp, 'EHLO nims.local');
-    smtp__cmd($fp, 'MAIL FROM:<' . $fromAddr . '>');
-    smtp__cmd($fp, 'RCPT TO:<' . $to . '>');
-    smtp__cmd($fp, 'DATA');
+    smtp__expect_ok(smtp__read_reply($fp), 'greeting');
+    smtp__expect_ok(smtp__cmd($fp, 'EHLO nims.local'), 'EHLO');
+    smtp__expect_ok(smtp__cmd($fp, 'MAIL FROM:<' . $fromAddr . '>'), 'MAIL FROM');
+    smtp__expect_ok(smtp__cmd($fp, 'RCPT TO:<' . $to . '>'), 'RCPT TO');
+    smtp__expect_ok(smtp__cmd($fp, 'DATA'), 'DATA');
 
     $rawMessage = preg_replace("/\r?\n/", "\r\n", (string) $rawMessage);
     fwrite($fp, $rawMessage . "\r\n.\r\n");
-    smtp__read_reply($fp);
+    smtp__expect_ok(smtp__read_reply($fp), 'message body');
     smtp__cmd($fp, 'QUIT');
     fclose($fp);
 }
@@ -126,4 +139,24 @@ function smtp_send_with_attachment(
 
     $raw = implode("\r\n", $headers) . "\r\n\r\n" . implode("\r\n", $parts);
     smtp__send_raw($to, $raw, $from);
+}
+
+/**
+ * Email the laptop/desktop return form PDF to the technician who completed the return (NIMS user).
+ */
+function smtp_send_return_completion_pdf(
+    string $toEmail,
+    string $technicianName,
+    string $pdfBytes,
+    int $assetId,
+    ?string $from = null
+): void {
+    $name = trim($technicianName) !== '' ? trim($technicianName) : 'Technician';
+    $subject = 'NIMS - Return form PDF (Asset ' . $assetId . ')';
+    $body = 'Hi ' . $name . ",\n\n"
+        . 'Thank you for completing the equipment return in NIMS. Attached is the generated return form PDF for your records.' . "\n\n"
+        . 'Asset ID: ' . $assetId . "\n\n"
+        . 'If you did not perform this return, please contact the IT Department.' . "\n";
+    $filename = 'UNIKL_RCMP_Return_Form_' . $assetId . '.pdf';
+    smtp_send_with_attachment($toEmail, $subject, $body, $pdfBytes, $filename, $from);
 }
