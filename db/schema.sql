@@ -201,6 +201,26 @@ CREATE TABLE IF NOT EXISTS network_deployment (
   INDEX idx_asset_id (asset_id)
 );
 
+-- Return records for Network deployments (switches, routers, APs, firewalls)
+CREATE TABLE IF NOT EXISTS network_return (
+  `return_id` INT(11) NOT NULL AUTO_INCREMENT,
+  `deployment_id` INT(11) NOT NULL,
+  `returned_by` VARCHAR(32) NOT NULL,
+  `return_date` DATE NOT NULL,
+  `return_time` TIME DEFAULT NULL,
+  `return_place` VARCHAR(128) DEFAULT NULL,
+  `condition` VARCHAR(64) DEFAULT NULL,
+  `return_remarks` TEXT DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`return_id`),
+  FOREIGN KEY (`deployment_id`) REFERENCES `network_deployment`(`deployment_id`),
+  FOREIGN KEY (`returned_by`) REFERENCES `users`(`staff_id`),
+  INDEX `idx_network_return_deployment` (`deployment_id`),
+  INDEX `idx_network_return_returned_by` (`returned_by`),
+  INDEX `idx_network_return_date` (`return_date`)
+);
+
 -- One row per recipient on a handover; person details live in staff.
 CREATE TABLE IF NOT EXISTS handover_staff(
   `handover_staff_id` INT(11) NOT NULL AUTO_INCREMENT,
