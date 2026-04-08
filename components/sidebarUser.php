@@ -5,6 +5,7 @@ $isDashboard = $currentPage === 'dashboard.php';
 $isLaptop    = $currentPage === 'laptop.php';
 $isAV        = $currentPage === 'av.php';
 $isNetwork   = $currentPage === 'network.php';
+$isInventoryGroup = $isLaptop || $isAV || $isNetwork;
 $isRequest   = str_starts_with($currentPage, 'request')
     || $currentPage === 'nextAdd.php'
     || $currentPage === 'nextListitem.php'
@@ -134,12 +135,33 @@ $isProfile   = $currentPage === 'profile.php';
         font-weight: 600;
         transition: all 0.2s ease;
         border: 1px solid transparent;
+        position: relative; /* for ::before dot indicator */
+    }
+
+    /* Small dot indicator on inventory dropdown items */
+    .nav-dropdown-item::before {
+        content: '';
+        position: absolute;
+        left: -1rem;
+        top: 50%;
+        width: 6px;
+        height: 6px;
+        background: rgba(255,255,255,0.20);
+        border-radius: 50%;
+        transform: translateY(-50%);
+        transition: all 0.2s ease;
+        pointer-events: none;
     }
 
     .nav-dropdown-item:hover {
         background: rgba(255,255,255,0.07);
         color: #ffffff;
         border-color: rgba(255,255,255,0.10);
+    }
+
+    .nav-dropdown-item:hover::before,
+    .nav-dropdown-item.active::before {
+        background: rgba(96,165,250,0.95);
     }
 
     .nav-dropdown-item.active {
@@ -225,13 +247,13 @@ $isProfile   = $currentPage === 'profile.php';
             <i class="ri-dashboard-2-line"></i> Dashboard
         </a>
         <div class="nav-group">
-            <a href="#" class="nav-item <?= $isLaptop ? 'open' : '' ?>" onclick="toggleDropdown(this, event)" style="justify-content: space-between;">
+            <a href="#" class="nav-item <?= $isInventoryGroup ? 'open' : '' ?>" onclick="toggleDropdown(this, event)" style="justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 1rem;">
                     <i class="ri-macbook-line"></i> Inventory
                 </div>
                 <i class="ri-arrow-down-s-line chevron" style="transition: transform 0.3s ease; font-size: 1.2rem;"></i>
             </a>
-            <div class="nav-dropdown <?= $isLaptop ? 'show' : '' ?>">
+            <div class="nav-dropdown <?= $isInventoryGroup ? 'show' : '' ?>">
                 <a href="../technician/laptop.php" class="nav-dropdown-item <?= $isLaptop ? 'active' : '' ?>">Laptop</a>
                 <a href="../technician/av.php" class="nav-dropdown-item <?= $isAV ? 'active' : '' ?>">AV</a>
                 <a href="../technician/network.php" class="nav-dropdown-item <?= $isNetwork ? 'active' : '' ?>">Network</a>
