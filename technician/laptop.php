@@ -1173,7 +1173,9 @@ $status_meta = [
                             <?php endif; ?>
                             <td><span class="badge <?= $meta['cls'] ?>"><i class="<?= $meta['icon'] ?>"></i> <?= htmlspecialchars($row['status_name']) ?></span></td>
                             <td>
-                                <button class="btn-action view" title="View Details"><i class="ri-eye-line"></i></button>
+                                <a href="laptopView.php?asset_id=<?= urlencode((string)$row['asset_id']) ?>" class="btn-action view" title="View Details">
+                                    <i class="ri-eye-line"></i>
+                                </a>
                                 <?php if ($sid === 1 || $sid === 2): ?>
                                     <form method="post" class="inline-action" action="laptop.php<?= $filter_status !== null ? '?status_id=' . (int)$filter_status : '' ?>" onsubmit="return confirm('Mark this asset as Faulty?');">
                                         <input type="hidden" name="mark_faulty" value="1">
