@@ -6,6 +6,7 @@ if (!isset($_SESSION['staff_id']) || (int)($_SESSION['role_id'] ?? 0) !== 1) {
 }
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/nextcheck_shared.php';
 
 const NEXCHECK_POOL_STATUS = 11;
 const NEXCHECK_ASSIGN_TARGET_STATUS = 13;
@@ -21,6 +22,12 @@ function nexcheck_format_program(string $p): string {
         'club_society'   => 'Club / society activities',
         default          => $p,
     };
+}
+
+/** Request line labels use "Name — Group" from users/form.php; only Laptop lines use the laptop table. */
+function nexcheck_request_item_asset_class(string $category): string {
+    $head = trim(explode('—', $category, 2)[0] ?? '');
+    return strcasecmp($head, 'Laptop') === 0 ? 'laptop' : 'av';
 }
 
 $nexcheckId = isset($_GET['nexcheck_id']) ? (int)$_GET['nexcheck_id'] : 0;
@@ -59,9 +66,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_returns'])) {
                 $pdo = db();
                 $pdo->beginTransaction();
                 $stmtLock = $pdo->prepare('
-                    SELECT a.assignment_id, a.nexcheck_id, a.asset_id, a.returned_at, l.status_id AS laptop_status_id
+                    SELECT a.assignment_id, a.nexcheck_id, a.asset_id, a.returned_at,
+                           l.status_id AS laptop_status_id, v.status_id AS av_status_id
                     FROM nexcheck_assignment a
-                    INNER JOIN laptop l ON l.asset_id = a.asset_id
+                    LEFT JOIN laptop l ON l.asset_id = a.asset_id
+                    LEFT JOIN av v ON v.asset_id = a.asset_id
                     WHERE a.assignment_id = ?
                     FOR UPDATE
                 ');
@@ -71,6 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_returns'])) {
                     WHERE assignment_id = ? AND nexcheck_id = ? AND returned_at IS NULL
                 ');
                 $stmtUpL = $pdo->prepare('UPDATE laptop SET status_id = ? WHERE asset_id = ?');
+                $stmtUpV = $pdo->prepare('UPDATE av SET status_id = ? WHERE asset_id = ?');
                 foreach ($toProcess as $assignId => $condText) {
                     $stmtLock->execute([$assignId]);
                     $row = $stmtLock->fetch(PDO::FETCH_ASSOC);
@@ -80,14 +90,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_returns'])) {
                     if ($row['returned_at'] !== null && $row['returned_at'] !== '') {
                         throw new RuntimeException('Assignment #' . $assignId . ' was already returned.');
                     }
-                    if ((int)$row['laptop_status_id'] !== NEXCHECK_RETURN_FROM_STATUS) {
+                    $lSid = $row['laptop_status_id'] ?? null;
+                    $vSid = $row['av_status_id'] ?? null;
+                    $curSid = $lSid !== null && $lSid !== '' ? (int)$lSid : ($vSid !== null && $vSid !== '' ? (int)$vSid : null);
+                    if ($curSid === null) {
+                        throw new RuntimeException('Asset #' . (int)$row['asset_id'] . ' not found in laptop or AV inventory.');
+                    }
+                    if ($curSid !== NEXCHECK_RETURN_FROM_STATUS) {
                         throw new RuntimeException('Asset #' . (int)$row['asset_id'] . ' is not in checkout (status ' . NEXCHECK_RETURN_FROM_STATUS . ').');
                     }
                     $stmtUpA->execute([$condText, $staffId, $assignId, $nexcheckId]);
                     if ($stmtUpA->rowCount() !== 1) {
                         throw new RuntimeException('Could not update assignment #' . $assignId . '.');
                     }
-                    $stmtUpL->execute([NEXCHECK_RETURN_TO_STATUS, (int)$row['asset_id']]);
+                    if ($lSid !== null && $lSid !== '') {
+                        $stmtUpL->execute([NEXCHECK_RETURN_TO_STATUS, (int)$row['asset_id']]);
+                    } elseif ($vSid !== null && $vSid !== '') {
+                        $stmtUpV->execute([NEXCHECK_RETURN_TO_STATUS, (int)$row['asset_id']]);
+                    } else {
+                        throw new RuntimeException('Could not resolve inventory table for asset #' . (int)$row['asset_id'] . '.');
+                    }
                 }
                 $pdo->commit();
                 header('Location: nextItems.php?nexcheck_id=' . $nexcheckId . '&returned=1#nexcheck-return');
@@ -129,22 +151,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_assignments'])) 
             try {
                 $pdo = db();
                 $pdo->beginTransaction();
-                $stmtItem      = $pdo->prepare('SELECT request_item_id, nexcheck_id FROM nexcheck_request_item WHERE request_item_id = ? FOR UPDATE');
+                $stmtItem      = $pdo->prepare('SELECT request_item_id, nexcheck_id, category FROM nexcheck_request_item WHERE request_item_id = ? FOR UPDATE');
                 $stmtHasAssign = $pdo->prepare('SELECT assignment_id FROM nexcheck_assignment WHERE request_item_id = ? FOR UPDATE');
                 $stmtLaptop    = $pdo->prepare('SELECT asset_id, status_id FROM laptop WHERE asset_id = ? FOR UPDATE');
+                $stmtAv        = $pdo->prepare('SELECT asset_id, status_id FROM av WHERE asset_id = ? FOR UPDATE');
                 $stmtIns       = $pdo->prepare('INSERT INTO nexcheck_assignment (nexcheck_id, request_item_id, asset_id, assigned_by, assigned_at, checkout_at) VALUES (?, ?, ?, ?, NOW(), NOW())');
-                $stmtUp        = $pdo->prepare('UPDATE laptop SET status_id = ? WHERE asset_id = ?');
+                $stmtUpL       = $pdo->prepare('UPDATE laptop SET status_id = ? WHERE asset_id = ?');
+                $stmtUpV       = $pdo->prepare('UPDATE av SET status_id = ? WHERE asset_id = ?');
                 foreach ($pairs as $requestItemId => $assetId) {
                     $stmtItem->execute([$requestItemId]);
                     $itemRow = $stmtItem->fetch(PDO::FETCH_ASSOC);
                     if (!$itemRow || (int)$itemRow['nexcheck_id'] !== $nexcheckId) { throw new RuntimeException('Invalid line item.'); }
                     $stmtHasAssign->execute([$requestItemId]);
                     if ($stmtHasAssign->fetch()) { throw new RuntimeException('Line #' . $requestItemId . ' is already assigned.'); }
-                    $stmtLaptop->execute([$assetId]);
-                    $lap = $stmtLaptop->fetch(PDO::FETCH_ASSOC);
-                    if (!$lap || (int)$lap['status_id'] !== NEXCHECK_POOL_STATUS) { throw new RuntimeException('Asset ' . $assetId . ' is not available.'); }
-                    $stmtIns->execute([$nexcheckId, $requestItemId, $assetId, $staffId]);
-                    $stmtUp->execute([NEXCHECK_ASSIGN_TARGET_STATUS, $assetId]);
+                    $lineClass = nexcheck_request_item_asset_class((string)($itemRow['category'] ?? ''));
+                    if ($lineClass === 'laptop') {
+                        $stmtLaptop->execute([$assetId]);
+                        $inv = $stmtLaptop->fetch(PDO::FETCH_ASSOC);
+                        if (!$inv || (int)$inv['status_id'] !== NEXCHECK_POOL_STATUS) { throw new RuntimeException('Laptop asset ' . $assetId . ' is not available.'); }
+                        $stmtIns->execute([$nexcheckId, $requestItemId, $assetId, $staffId]);
+                        $stmtUpL->execute([NEXCHECK_ASSIGN_TARGET_STATUS, $assetId]);
+                    } else {
+                        if (!nextcheck_checkout_table_exists($pdo, 'av')) {
+                            throw new RuntimeException('AV inventory is not available for this request line.');
+                        }
+                        $stmtAv->execute([$assetId]);
+                        $inv = $stmtAv->fetch(PDO::FETCH_ASSOC);
+                        if (!$inv || (int)$inv['status_id'] !== NEXCHECK_POOL_STATUS) { throw new RuntimeException('AV asset ' . $assetId . ' is not available.'); }
+                        $stmtIns->execute([$nexcheckId, $requestItemId, $assetId, $staffId]);
+                        $stmtUpV->execute([NEXCHECK_ASSIGN_TARGET_STATUS, $assetId]);
+                    }
                 }
                 $pdo->commit();
                 header('Location: nextItems.php?nexcheck_id=' . $nexcheckId . '&saved=1');
@@ -167,26 +203,70 @@ try {
     $request = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$request) { header('Location: nextCheckout.php'); exit; }
 
-    $stmtI = $pdo->prepare('
-        SELECT
-            i.request_item_id, i.category, i.quantity,
-            a.assignment_id, a.asset_id AS assigned_asset_id, a.assigned_at,
-            a.returned_at, a.return_condition,
-            l.serial_num AS assigned_serial, l.brand AS assigned_brand, l.model AS assigned_model,
-            l.status_id AS laptop_status_id
-        FROM nexcheck_request_item i
-        LEFT JOIN nexcheck_assignment a ON a.request_item_id = i.request_item_id
-        LEFT JOIN laptop l ON l.asset_id = a.asset_id
-        WHERE i.nexcheck_id = ?
-        ORDER BY i.request_item_id ASC
-    ');
+    $hasAvTable = nextcheck_checkout_table_exists($pdo, 'av');
+    if ($hasAvTable) {
+        $stmtI = $pdo->prepare('
+            SELECT
+                i.request_item_id, i.category, i.quantity,
+                a.assignment_id, a.asset_id AS assigned_asset_id, a.assigned_at,
+                a.returned_at, a.return_condition,
+                COALESCE(l.serial_num, av.serial_num) AS assigned_serial,
+                COALESCE(l.brand, av.brand) AS assigned_brand,
+                COALESCE(l.model, av.model) AS assigned_model,
+                COALESCE(l.status_id, av.status_id) AS asset_status_id
+            FROM nexcheck_request_item i
+            LEFT JOIN nexcheck_assignment a ON a.request_item_id = i.request_item_id
+            LEFT JOIN laptop l ON l.asset_id = a.asset_id
+            LEFT JOIN av av ON av.asset_id = a.asset_id
+            WHERE i.nexcheck_id = ?
+            ORDER BY i.request_item_id ASC
+        ');
+    } else {
+        $stmtI = $pdo->prepare('
+            SELECT
+                i.request_item_id, i.category, i.quantity,
+                a.assignment_id, a.asset_id AS assigned_asset_id, a.assigned_at,
+                a.returned_at, a.return_condition,
+                l.serial_num AS assigned_serial,
+                l.brand AS assigned_brand,
+                l.model AS assigned_model,
+                l.status_id AS asset_status_id
+            FROM nexcheck_request_item i
+            LEFT JOIN nexcheck_assignment a ON a.request_item_id = i.request_item_id
+            LEFT JOIN laptop l ON l.asset_id = a.asset_id
+            WHERE i.nexcheck_id = ?
+            ORDER BY i.request_item_id ASC
+        ');
+    }
     $stmtI->execute([$nexcheckId]);
     $items = $stmtI->fetchAll(PDO::FETCH_ASSOC);
 
+    $pool = [];
     $stmtP = $pdo->prepare('SELECT l.asset_id, l.serial_num, l.brand, l.model, l.category FROM laptop l WHERE l.status_id = ? ORDER BY l.category ASC, l.asset_id DESC');
     $stmtP->execute([NEXCHECK_POOL_STATUS]);
-    $pool = $stmtP->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($stmtP->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $row['asset_class'] = 'laptop';
+        $pool[] = $row;
+    }
+    if (nextcheck_checkout_table_exists($pdo, 'av')) {
+        $stmtA = $pdo->prepare('SELECT a.asset_id, a.serial_num, a.brand, a.model, a.category FROM av a WHERE a.status_id = ? ORDER BY a.category ASC, a.asset_id DESC');
+        $stmtA->execute([NEXCHECK_POOL_STATUS]);
+        foreach ($stmtA->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $row['asset_class'] = 'av';
+            $pool[] = $row;
+        }
+    }
 } catch (Throwable $e) { $request = null; }
+
+$poolLaptopCount = 0;
+$poolAvCount     = 0;
+foreach ($pool as $p) {
+    if (($p['asset_class'] ?? '') === 'av') {
+        $poolAvCount++;
+    } else {
+        $poolLaptopCount++;
+    }
+}
 
 $needCount  = 0; $doneCount = 0; $returnableCount = 0;
 foreach ($items as $it) {
@@ -195,7 +275,7 @@ foreach ($items as $it) {
     } else {
         $doneCount++;
         $hasRet = !empty($it['returned_at']);
-        $sid    = isset($it['laptop_status_id']) ? (int)$it['laptop_status_id'] : 0;
+        $sid    = isset($it['asset_status_id']) ? (int)$it['asset_status_id'] : 0;
         if (!$hasRet && $sid === NEXCHECK_RETURN_FROM_STATUS) {
             $returnableCount++;
         }
@@ -606,7 +686,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                 Assign Items
                 <span class="request-badge">#<?= (int)$nexcheckId ?></span>
             </h1>
-            <p>Match each line to a pooled laptop (status <?= NEXCHECK_POOL_STATUS ?>). Saved assets are moved to Checkout status (<?= NEXCHECK_ASSIGN_TARGET_STATUS ?>).</p>
+            <p>Match each line to a pooled asset (status <?= NEXCHECK_POOL_STATUS ?>): <strong>Laptop</strong> lines use the laptop table; other equipment uses <strong>AV</strong>. Saved rows move to Checkout (<?= NEXCHECK_ASSIGN_TARGET_STATUS ?>).</p>
         </div>
         <a class="btn-ghost" href="nextCheckout.php"><i class="ri-arrow-left-line"></i> All requests</a>
     </header>
@@ -615,7 +695,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
     <?php if ($success): ?>
         <div class="banner banner-success">
             <i class="ri-checkbox-circle-line"></i>
-            <div><strong>Assignments saved.</strong> The laptops have been moved to Checkout status.</div>
+            <div><strong>Assignments saved.</strong> Assets are now in Checkout status.</div>
         </div>
     <?php endif; ?>
     <?php if ($form_error !== ''): ?>
@@ -650,7 +730,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
             <span class="ps-label">Assigned</span>
         </div>
         <div class="divider-v"></div>
-        <div class="progress-stat" title="Assigned laptops still in checkout — not yet returned to pool">
+        <div class="progress-stat" title="Assigned items still in checkout — not yet returned to pool">
             <span class="ps-num c-return"><?= $returnableCount ?></span>
             <span class="ps-label">To return</span>
         </div>
@@ -716,13 +796,13 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
             <div class="card-bd">
                 <div style="margin-bottom:0.85rem">
                     <?php if (count($pool) > 0): ?>
-                        <span class="pool-pill ok"><i class="ri-checkbox-circle-line"></i> <?= count($pool) ?> laptop<?= count($pool) !== 1 ? 's' : '' ?> available</span>
+                        <span class="pool-pill ok"><i class="ri-checkbox-circle-line"></i> <?= $poolLaptopCount ?> laptop<?= $poolLaptopCount !== 1 ? 's' : '' ?>, <?= $poolAvCount ?> AV — <?= count($pool) ?> total</span>
                     <?php else: ?>
-                        <span class="pool-pill warn"><i class="ri-alert-line"></i> No laptops in pool</span>
+                        <span class="pool-pill warn"><i class="ri-alert-line"></i> Nothing in pool (laptop + AV)</span>
                     <?php endif; ?>
                 </div>
                 <p style="font-size:0.82rem;color:var(--text-muted);line-height:1.55;margin-bottom:0.85rem">
-                    Only <strong>Active (nextcheck)</strong> laptops appear in the assignment dropdowns below.
+                    Only <strong>pool (<?= NEXCHECK_POOL_STATUS ?>)</strong> laptop and AV assets appear in each line’s dropdown (matched to the line type).
                     <?php if (count($pool) === 0): ?>
                         <a href="nextAdd.php" style="color:var(--primary);font-weight:700">Add stock →</a>
                     <?php endif; ?>
@@ -732,7 +812,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                     <div style="display:flex;flex-direction:column;gap:0.35rem;max-height:155px;overflow-y:auto">
                         <?php foreach (array_slice($pool, 0, 7) as $p): ?>
                         <div class="pool-preview-item">
-                            <i class="ri-laptop-line" style="color:var(--primary);font-size:0.9rem;flex-shrink:0"></i>
+                            <i class="<?= ($p['asset_class'] ?? '') === 'av' ? 'ri-film-line' : 'ri-laptop-line' ?>" style="color:<?= ($p['asset_class'] ?? '') === 'av' ? 'var(--warning)' : 'var(--primary)' ?>;font-size:0.9rem;flex-shrink:0"></i>
                             <span style="font-weight:700">#<?= (int)$p['asset_id'] ?></span>
                             <span style="color:var(--text-muted);font-size:0.78rem"><?= htmlspecialchars(trim((string)$p['brand'] . ' ' . (string)$p['model'])) ?></span>
                         </div>
@@ -768,7 +848,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
             <div class="tbl-header">
                 <span>#</span>
                 <span>Category</span>
-                <span>Laptop assignment</span>
+                <span>Asset assignment</span>
                 <span>Status</span>
             </div>
 
@@ -778,15 +858,18 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                 $hasA       = !empty($it['assignment_id']);
                 $assignId   = $hasA ? (int)$it['assignment_id'] : 0;
                 $brandModel = trim((string)$it['assigned_brand'] . ' ' . (string)$it['assigned_model']);
-                $lapSid     = $hasA ? (int)($it['laptop_status_id'] ?? 0) : 0;
+                $assetSid   = $hasA ? (int)($it['asset_status_id'] ?? 0) : 0;
                 $isReturned = $hasA && !empty($it['returned_at']);
+                $lineClass  = nexcheck_request_item_asset_class((string)($it['category'] ?? ''));
+                $linePool   = array_values(array_filter($pool, static fn ($row) => ($row['asset_class'] ?? 'laptop') === $lineClass));
+                $selLabel   = $lineClass === 'laptop' ? 'laptop' : 'AV';
             ?>
             <div class="line-row">
                 <div class="row-num"><?= $idx + 1 ?></div>
 
                 <div>
                     <div class="item-cat-name">
-                        <i class="ri-laptop-line" style="color:var(--primary);margin-right:0.3rem"></i><?= htmlspecialchars((string)$it['category']) ?>
+                        <i class="<?= $lineClass === 'av' ? 'ri-film-line' : 'ri-laptop-line' ?>" style="color:<?= $lineClass === 'av' ? 'var(--warning)' : 'var(--primary)' ?>;margin-right:0.3rem"></i><?= htmlspecialchars((string)$it['category']) ?>
                     </div>
                     <div class="item-cat-sub">Item #<?= $rid ?></div>
                 </div>
@@ -803,9 +886,9 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                         </span>
                     <?php else: ?>
                         <div class="asset-select-wrap">
-                            <select class="asset-select" name="assign[<?= $rid ?>]" id="assign-sel-<?= $rid ?>" aria-label="Select laptop for line <?= $idx + 1 ?>">
-                                <option value="">— Select laptop —</option>
-                                <?php foreach ($pool as $p):
+                            <select class="asset-select" name="assign[<?= $rid ?>]" id="assign-sel-<?= $rid ?>" aria-label="Select <?= htmlspecialchars($selLabel) ?> for line <?= $idx + 1 ?>">
+                                <option value="">— Select <?= htmlspecialchars($selLabel) ?> —</option>
+                                <?php foreach ($linePool as $p):
                                     $pAid = (int)$p['asset_id'];
                                     $optLabel = '#' . $pAid;
                                     $pBm = trim((string)($p['brand'] ?? '') . ' ' . (string)($p['model'] ?? ''));
@@ -821,7 +904,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                             </select>
                             <p class="asset-select-hint">
                                 <i class="ri-information-line" style="color:var(--secondary)"></i>
-                                Assets: status <?= NEXCHECK_POOL_STATUS ?> (<?= count($pool) ?> available)
+                                <?= count($linePool) ?> in <?= htmlspecialchars($lineClass === 'av' ? 'AV' : 'Laptop') ?> pool (status <?= NEXCHECK_POOL_STATUS ?>)
                             </p>
                         </div>
                     <?php endif; ?>
@@ -831,7 +914,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                     <?php if ($isReturned): ?>
                         <span class="status-badge returned"><span class="dot" style="background:#0ea5e9"></span>Returned</span>
                         <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.35rem;max-width:14rem"><?= htmlspecialchars(mb_substr((string)($it['return_condition'] ?? ''), 0, 80)) ?><?= mb_strlen((string)($it['return_condition'] ?? '')) > 80 ? '…' : '' ?></div>
-                    <?php elseif ($hasA && $lapSid === NEXCHECK_RETURN_FROM_STATUS): ?>
+                    <?php elseif ($hasA && $assetSid === NEXCHECK_RETURN_FROM_STATUS): ?>
                         <span class="status-badge checkout"><span class="dot" style="background:#8b5cf6"></span>Checkout (<?= NEXCHECK_RETURN_FROM_STATUS ?>)</span>
                     <?php elseif ($hasA): ?>
                         <span class="status-badge" style="color:#047857"><span class="dot green"></span>Assigned</span>
@@ -857,10 +940,10 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                     </button>
                     <p class="footer-note">
                         <?php if (count($pool) === 0): ?>
-                            <strong style="color:#b45309"><i class="ri-alert-line"></i> No laptops in pool.</strong>
+                            <strong style="color:#b45309"><i class="ri-alert-line"></i> No assets in pool.</strong>
                             <a href="nextAdd.php" style="color:var(--primary);font-weight:700">Add items first →</a>
                         <?php else: ?>
-                            Choose a laptop for each pending row, then save. Only rows with a selection are processed.
+                            Choose an asset for each pending row (type must match the line). Only rows with a selection are processed.
                         <?php endif; ?>
                     </p>
                 </div>
@@ -875,7 +958,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
             <span class="hd-extra"><?= $returnableCount ?> in checkout</span>
         </div>
         <p style="padding:0.85rem 1.4rem 0;font-size:0.84rem;color:var(--text-muted);line-height:1.5">
-            Items still in status <strong><?= NEXCHECK_RETURN_FROM_STATUS ?></strong> (checkout). Describe condition, then save — laptops go back to pool (<strong><?= NEXCHECK_RETURN_TO_STATUS ?></strong>).
+            Items still in status <strong><?= NEXCHECK_RETURN_FROM_STATUS ?></strong> (checkout). Describe condition, then save — assets go back to pool (<strong><?= NEXCHECK_RETURN_TO_STATUS ?></strong>) in laptop or AV inventory as applicable.
         </p>
         <form method="post" action="">
             <input type="hidden" name="save_returns" value="1">
@@ -884,7 +967,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                 if (empty($it['assignment_id']) || !empty($it['returned_at'])) {
                     continue;
                 }
-                if ((int)($it['laptop_status_id'] ?? 0) !== NEXCHECK_RETURN_FROM_STATUS) {
+                if ((int)($it['asset_status_id'] ?? 0) !== NEXCHECK_RETURN_FROM_STATUS) {
                     continue;
                 }
                 $aid = (int)$it['assignment_id'];

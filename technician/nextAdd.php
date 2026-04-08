@@ -10,21 +10,47 @@ require_once __DIR__ . '/nextcheck_shared.php';
 
 const NEXTADD_SUGGEST_STATUS_ID = 1;
 
-/** @return 'laptop'|'av'|'network' */
+/** @return 'laptop'|'av' */
 function nextadd_asset_class_strict(): string
 {
     $c = strtolower(trim((string)($_GET['asset_class'] ?? $_GET['type'] ?? 'laptop')));
-    return in_array($c, ['laptop', 'av', 'network'], true) ? $c : 'laptop';
+    return $c === 'av' ? 'av' : 'laptop';
 }
 
-/** @return 'laptop'|'av'|'network'|'all' */
+/** @return 'laptop'|'av'|'all' */
 function nextadd_suggest_asset_class(): string
 {
     $c = strtolower(trim((string)($_GET['asset_class'] ?? $_GET['type'] ?? 'all')));
     if ($c === 'all') {
         return 'all';
     }
-    return in_array($c, ['laptop', 'av', 'network'], true) ? $c : 'all';
+    return $c === 'av' ? 'av' : ($c === 'laptop' ? 'laptop' : 'all');
+}
+
+/** @param int[] $ids */
+function nextadd_verify_status_and_lock(PDO $pdo, string $table, array $ids, int $requiredStatusId): void
+{
+    if ($ids === []) {
+        return;
+    }
+    $ids = array_values(array_unique(array_map('intval', $ids)));
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $stmt = $pdo->prepare("SELECT asset_id, status_id FROM `{$table}` WHERE asset_id IN ($placeholders) FOR UPDATE");
+    $stmt->execute($ids);
+    $byId = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $byId[(int)$row['asset_id']] = (int)$row['status_id'];
+    }
+    foreach ($ids as $id) {
+        if (!array_key_exists($id, $byId)) {
+            throw new RuntimeException('Missing ' . $table . ' asset: ' . $id);
+        }
+        if ($byId[$id] !== $requiredStatusId) {
+            throw new RuntimeException(
+                'Only status id ' . $requiredStatusId . ' assets can be added. Asset ' . $id . ' is not eligible.'
+            );
+        }
+    }
 }
 
 if (isset($_GET['lookup_asset_id'])) {
@@ -37,20 +63,12 @@ if (isset($_GET['lookup_asset_id'])) {
     }
     try {
         $pdo = db();
-        if ($class === 'network') {
-            $stmt = $pdo->prepare("
-                SELECT n.asset_id, n.serial_num, n.brand, n.model, s.name AS status_name
-                FROM network n
-                JOIN status s ON s.status_id = n.status_id
-                WHERE n.asset_id = ?
-                LIMIT 1
-            ");
-        } elseif ($class === 'av') {
+        if ($class === 'av') {
             $stmt = $pdo->prepare("
                 SELECT a.asset_id, a.serial_num, a.brand, a.model, s.name AS status_name
                 FROM av a
                 JOIN status s ON s.status_id = a.status_id
-                WHERE a.asset_id = ?
+                WHERE a.asset_id = ? AND a.status_id = ?
                 LIMIT 1
             ");
         } else {
@@ -58,14 +76,14 @@ if (isset($_GET['lookup_asset_id'])) {
                 SELECT l.asset_id, l.serial_num, l.brand, l.model, s.name AS status_name
                 FROM laptop l
                 JOIN status s ON s.status_id = l.status_id
-                WHERE l.asset_id = ?
+                WHERE l.asset_id = ? AND l.status_id = ?
                 LIMIT 1
             ");
         }
-        $stmt->execute([(int)$id]);
+        $stmt->execute([(int)$id, NEXTADD_SUGGEST_STATUS_ID]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$row) {
-            echo json_encode(['ok' => false, 'error' => 'Asset not found']);
+            echo json_encode(['ok' => false, 'error' => 'Asset not found or not eligible (laptop/AV, status id ' . NEXTADD_SUGGEST_STATUS_ID . ' only)']);
             exit;
         }
         echo json_encode([
@@ -103,7 +121,7 @@ if ($suggest_q !== '') {
         $pdo = db();
         $items = [];
         if ($class === 'all') {
-            foreach (['laptop', 'network', 'av'] as $cls) {
+            foreach (['laptop', 'av'] as $cls) {
                 if ($cls === 'laptop') {
                     $stmt = $pdo->prepare("
                         SELECT l.asset_id, l.serial_num, l.brand, l.model, s.name AS status_name
@@ -111,15 +129,6 @@ if ($suggest_q !== '') {
                         JOIN status s ON s.status_id = l.status_id
                         WHERE l.status_id = ? AND CAST(l.asset_id AS CHAR) LIKE CONCAT(?, '%')
                         ORDER BY l.asset_id DESC
-                        LIMIT 8
-                    ");
-                } elseif ($cls === 'network') {
-                    $stmt = $pdo->prepare("
-                        SELECT n.asset_id, n.serial_num, n.brand, n.model, s.name AS status_name
-                        FROM network n
-                        JOIN status s ON s.status_id = n.status_id
-                        WHERE n.status_id = ? AND CAST(n.asset_id AS CHAR) LIKE CONCAT(?, '%')
-                        ORDER BY n.asset_id DESC
                         LIMIT 8
                     ");
                 } else {
@@ -152,26 +161,6 @@ if ($suggest_q !== '') {
             }
             usort($items, static fn ($a, $b) => $b['asset_id'] <=> $a['asset_id']);
             $items = array_slice($items, 0, 8);
-        } elseif ($class === 'network') {
-            $stmt = $pdo->prepare("
-                SELECT n.asset_id, n.serial_num, n.brand, n.model, s.name AS status_name
-                FROM network n
-                JOIN status s ON s.status_id = n.status_id
-                WHERE n.status_id = ? AND CAST(n.asset_id AS CHAR) LIKE CONCAT(?, '%')
-                ORDER BY n.asset_id DESC
-                LIMIT 8
-            ");
-            $stmt->execute([NEXTADD_SUGGEST_STATUS_ID, $suggest_q]);
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $items[] = [
-                    'asset_class' => $class,
-                    'asset_id' => (int)$r['asset_id'],
-                    'serial' => (string)($r['serial_num'] ?? ''),
-                    'brand' => (string)($r['brand'] ?? ''),
-                    'model' => (string)($r['model'] ?? ''),
-                    'status' => (string)($r['status_name'] ?? '—'),
-                ];
-            }
         } elseif ($class === 'av') {
             $stmt = $pdo->prepare("
                 SELECT a.asset_id, a.serial_num, a.brand, a.model, s.name AS status_name
@@ -237,14 +226,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_checkout'])) 
     } elseif (count($decoded) > CHECKOUT_MAX_SELECTION) {
         $checkout_error = 'Too many items (max ' . CHECKOUT_MAX_SELECTION . ').';
     } else {
-        $buckets = ['laptop' => [], 'network' => [], 'av' => []];
+        $buckets = ['laptop' => [], 'av' => []];
         foreach ($decoded as $row) {
             if (!is_array($row)) {
                 continue;
             }
             $cls = strtolower(trim((string)($row['asset_class'] ?? 'laptop')));
-            if (!in_array($cls, ['laptop', 'network', 'av'], true)) {
-                $checkout_error = 'Invalid asset type in list.';
+            if (!in_array($cls, ['laptop', 'av'], true)) {
+                $checkout_error = 'Only laptop and AV assets are allowed.';
                 break;
             }
             $aid = $row['asset_id'] ?? '';
@@ -262,7 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_checkout'])) 
             $checkout_error = 'AV inventory table is not available. Remove AV items or contact IT.';
         }
         if ($checkout_error === '') {
-            $total = count($buckets['laptop']) + count($buckets['network']) + count($buckets['av']);
+            $total = count($buckets['laptop']) + count($buckets['av']);
             if ($total === 0) {
                 $checkout_error = 'No items in the list.';
             } else {
@@ -271,9 +260,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_checkout'])) 
                     $pdo = db();
                     $pdo->beginTransaction();
                     $target = CHECKOUT_CONFIRM_TARGET_STATUS_ID;
+                    $sid = NEXTADD_SUGGEST_STATUS_ID;
+                    nextadd_verify_status_and_lock($pdo, 'laptop', $buckets['laptop'], $sid);
                     nextcheck_lock_and_update($pdo, 'laptop', $buckets['laptop'], $target);
-                    nextcheck_lock_and_update($pdo, 'network', $buckets['network'], $target);
                     if ($buckets['av'] !== []) {
+                        nextadd_verify_status_and_lock($pdo, 'av', $buckets['av'], $sid);
                         nextcheck_lock_and_update($pdo, 'av', $buckets['av'], $target);
                     }
                     $pdo->commit();
@@ -302,7 +293,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_checkout'])) 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Add items — NextCheck — RCMP NIMS</title>
+    <title>Add items — NexCheck — RCMP NIMS</title>
     <link rel="icon" type="image/png" href="../public/rcmp.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -703,8 +694,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_checkout'])) 
     <main class="main-content">
         <header class="page-header">
             <div class="title">
-                <h1><i class="ri-add-circle-line"></i> Add to NextCheck</h1>
-                <p>Search by asset ID, build your list, then confirm to set status <strong><?= (int)CHECKOUT_CONFIRM_TARGET_STATUS_ID ?></strong> (Active nextcheck). View all pipeline rows on <a href="nextListitem.php" style="color:var(--primary);font-weight:700">List items</a>.</p>
+                <h1><i class="ri-add-circle-line"></i> Add to NexCheck</h1>
+                <p>Search by asset ID (laptop or AV with status id <strong><?= (int)NEXTADD_SUGGEST_STATUS_ID ?></strong> only), build your list, then confirm to set status <strong><?= (int)CHECKOUT_CONFIRM_TARGET_STATUS_ID ?></strong> (Active nextcheck). View all pipeline rows on <a href="nextListitem.php" style="color:var(--primary);font-weight:700">List items</a>.</p>
             </div>
             <a class="btn btn-ghost" href="nextListitem.php"><i class="ri-list-check-2"></i> List items</a>
         </header>
@@ -754,7 +745,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_checkout'])) 
                             <button type="button" class="on" data-filter="all">All</button>
                             <button type="button" data-filter="laptop">Laptop</button>
                             <button type="button" data-filter="av">AV</button>
-                            <button type="button" data-filter="network">Network</button>
                         </div>
                         <div id="listEmpty" class="muted" style="padding:0.5rem 0.1rem 0.75rem">
                             No assets yet. Use the search field above to add items for daily checkout.
@@ -788,7 +778,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_checkout'])) 
                             </button>
                         </div>
                         <p class="footer-hint" id="checkoutFooterHint">
-                            Submits the list with <code style="font-size:0.8em">Asset IDs</code> and updates each row to status id <code style="font-size:0.8em"><?= (int)CHECKOUT_CONFIRM_TARGET_STATUS_ID ?></code> in the correct inventory table.
+                            Laptop and AV only (status id <code style="font-size:0.8em"><?= (int)NEXTADD_SUGGEST_STATUS_ID ?></code>); confirms to status id <code style="font-size:0.8em"><?= (int)CHECKOUT_CONFIRM_TARGET_STATUS_ID ?></code> in the laptop or <code style="font-size:0.8em">av</code> table.
                         </p>
                         <input type="hidden" name="asset_ids" id="asset_ids" value="<?= htmlspecialchars((string)($_POST['asset_ids'] ?? '[]')) ?>">
                     </div>
@@ -960,7 +950,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_checkout'])) 
                 alert('Please enter a valid numeric Asset ID.');
                 return;
             }
-            const tryClasses = classOverride ? [classOverride] : ['laptop', 'network', 'av'];
+            const tryClasses = classOverride ? [classOverride] : ['laptop', 'av'];
             const quietLookup = tryClasses.length > 1;
             let data = null;
             let resolvedCls = 'laptop';
@@ -978,7 +968,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_checkout'])) 
                 break;
             }
             if (!data) {
-                alert('Asset not found in laptop, network, or AV inventory.');
+                alert('Asset not found or not eligible (laptop/AV, status id <?= (int)NEXTADD_SUGGEST_STATUS_ID ?> only).');
                 return;
             }
             const ac = data.asset_class || resolvedCls;
@@ -1100,6 +1090,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_checkout'])) 
             for (const row of INITIAL_CHECKOUT_ITEMS) {
                 const id = String(row.asset_id ?? '').trim();
                 const cls = row.asset_class || 'laptop';
+                if (cls !== 'laptop' && cls !== 'av') continue;
                 if (!ctypeDigit(id)) continue;
                 const data = await lookupAsset(id, cls, true);
                 if (!data) continue;

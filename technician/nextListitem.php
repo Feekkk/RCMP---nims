@@ -12,7 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pipeline_revert'])) {
     header('Content-Type: application/json; charset=utf-8');
     $class = strtolower(trim((string)($_POST['asset_class'] ?? '')));
     $idRaw = trim((string)($_POST['asset_id'] ?? ''));
-    if (!in_array($class, ['laptop', 'network', 'av'], true) || $idRaw === '' || !ctype_digit($idRaw)) {
+    if (!in_array($class, ['laptop', 'av'], true) || $idRaw === '' || !ctype_digit($idRaw)) {
         echo json_encode(['ok' => false, 'error' => 'Invalid request']);
         exit;
     }
@@ -32,14 +32,6 @@ try {
     $pipeline_assets = nextcheck_fetch_pipeline_assets(db());
 } catch (Throwable $e) {
     $pipeline_assets = [];
-}
-
-$pipeline_by_class = ['laptop' => 0, 'av' => 0, 'network' => 0];
-foreach ($pipeline_assets as $pa) {
-    $c = (string)($pa['asset_class'] ?? '');
-    if (isset($pipeline_by_class[$c])) {
-        $pipeline_by_class[$c]++;
-    }
 }
 
 ?>
@@ -157,27 +149,30 @@ foreach ($pipeline_assets as $pa) {
         .btn-danger:hover{background:rgba(239,68,68,0.14)}
         .stat-cards{
             display:grid;
-            grid-template-columns:repeat(3,minmax(0,1fr));
-            gap:1rem;
+            grid-template-columns:repeat(2,minmax(0,1fr));
+            gap:0.85rem;
         }
         .stat-card{
             background:var(--card-bg);
             border:1px solid var(--card-border);
             border-radius:16px;
-            padding:1.1rem 1.15rem;
+            padding:1.15rem 1rem 1.2rem;
             display:flex;
+            flex-direction:column;
             align-items:center;
-            gap:1rem;
+            justify-content:center;
+            text-align:center;
+            gap:0.55rem;
             box-shadow:0 8px 22px rgba(15,23,42,0.06);
         }
         .stat-card-icon{
-            width:48px;height:48px;
-            border-radius:14px;
+            width:44px;height:44px;
+            border-radius:12px;
             display:flex;
             align-items:center;
             justify-content:center;
             flex-shrink:0;
-            font-size:1.35rem;
+            font-size:1.25rem;
         }
         .stat-card--laptop .stat-card-icon{
             background:rgba(37,99,235,0.10);
@@ -189,12 +184,7 @@ foreach ($pipeline_assets as $pa) {
             border:1px solid rgba(245,158,11,0.28);
             color:var(--warning);
         }
-        .stat-card--network .stat-card-icon{
-            background:rgba(16,185,129,0.12);
-            border:1px solid rgba(16,185,129,0.28);
-            color:var(--success);
-        }
-        .stat-card-text{display:flex;flex-direction:column;gap:0.2rem;min-width:0}
+        .stat-card-text{display:flex;flex-direction:column;align-items:center;gap:0.15rem;min-width:0}
         .stat-card-value{
             font-family:'Outfit',sans-serif;
             font-size:1.65rem;
@@ -318,7 +308,6 @@ foreach ($pipeline_assets as $pa) {
         .pill.nextcheck{background:rgba(14,165,233,0.12);color:#0369a1;border-color:rgba(14,165,233,0.28)}
         .pill.type-laptop{background:rgba(37,99,235,0.10);color:var(--primary);border-color:rgba(37,99,235,0.22)}
         .pill.type-av{background:rgba(139,92,246,0.12);color:#6d28d9;border-color:rgba(139,92,246,0.28)}
-        .pill.type-network{background:rgba(5,150,105,0.12);color:#047857;border-color:rgba(5,150,105,0.25)}
         .muted{color:var(--text-muted)}
         @media (max-width: 1100px){ .main-content{padding:1.25rem} }
         @media (max-width: 720px){ .stat-cards{grid-template-columns:1fr} }
@@ -331,7 +320,7 @@ foreach ($pipeline_assets as $pa) {
 <main class="main-content">
     <header class="page-header">
         <div class="title">
-            <h1><i class="ri-list-check-2"></i> NextCheck pipeline</h1>
+            <h1><i class="ri-list-check-2"></i> NexCheck Items List</h1>
             <p>Assets in status <strong>(Active / Pending / Checkout)</strong>. Counts update when you filter the table.</p>
         </div>
         <a class="btn btn-ghost" href="nextAdd.php"><i class="ri-add-line"></i> Add items</a>
@@ -341,7 +330,7 @@ foreach ($pipeline_assets as $pa) {
         <p class="muted" style="font-size:0.78rem;margin:0 0 0.35rem;line-height:1.35">
             Totals by type reflect <strong>visible rows</strong> after search and filters.
         </p>
-        <div class="stat-cards" aria-label="NextCheck pipeline counts by asset type">
+        <div class="stat-cards" aria-label="NexCheck pipeline counts by asset type">
             <div class="stat-card stat-card--laptop">
                 <div class="stat-card-icon" aria-hidden="true"><i class="ri-macbook-line"></i></div>
                 <div class="stat-card-text">
@@ -354,13 +343,6 @@ foreach ($pipeline_assets as $pa) {
                 <div class="stat-card-text">
                     <span class="stat-card-value" id="countAv"><?= (int)$pipeline_by_class['av'] ?></span>
                     <span class="stat-card-label">AV</span>
-                </div>
-            </div>
-            <div class="stat-card stat-card--network">
-                <div class="stat-card-icon" aria-hidden="true"><i class="ri-router-line"></i></div>
-                <div class="stat-card-text">
-                    <span class="stat-card-value" id="countNetwork"><?= (int)$pipeline_by_class['network'] ?></span>
-                    <span class="stat-card-label">Network</span>
                 </div>
             </div>
         </div>
@@ -398,7 +380,6 @@ foreach ($pipeline_assets as $pa) {
                                     <option value="all">All</option>
                                     <option value="laptop">Laptop</option>
                                     <option value="av">AV</option>
-                                    <option value="network">Network</option>
                                 </select>
                             </div>
                         </div>
@@ -425,9 +406,10 @@ foreach ($pipeline_assets as $pa) {
                         <tbody id="pipelineTableBody">
                             <?php foreach ($pipeline_assets as $pa):
                                 $pcls = $pa['asset_class'];
-                                $ptl = $pcls === 'network' ? 'Network' : ($pcls === 'av' ? 'AV' : 'Laptop');
-                                $ptp = $pcls === 'network' ? 'type-network' : ($pcls === 'av' ? 'type-av' : 'type-laptop');
-                                $ptitle = trim(($pa['brand'] ?? '') . ' ' . ($pa['model'] ?? '')) ?: $ptl;
+                                $ptl = $pcls === 'av' ? 'AV' : 'Laptop';
+                                $ptp = $pcls === 'av' ? 'type-av' : 'type-laptop';
+                                $pdesc = trim((string)($pa['brand'] ?? '') . ' ' . (string)($pa['model'] ?? ''));
+                                $ptitle = $pdesc !== '' ? $pdesc : $ptl;
                                 $sid = (int)$pa['status_id'];
                             ?>
                             <tr data-pl-row="1" data-status-id="<?= $sid ?>" data-asset-type="<?= htmlspecialchars($pcls) ?>" data-asset-id="<?= (int)$pa['asset_id'] ?>">
@@ -464,7 +446,6 @@ function toggleDropdown(element, event) {
 
 const countLaptop = document.getElementById('countLaptop');
 const countAv = document.getElementById('countAv');
-const countNetwork = document.getElementById('countNetwork');
 const pipelineSearchInput = document.getElementById('pipelineSearchInput');
 const pipelineStatusSelect = document.getElementById('pipelineStatusSelect');
 const pipelineTypeSelect = document.getElementById('pipelineTypeSelect');
@@ -474,17 +455,15 @@ const pipelineFilterDropdown = document.querySelector('.pipeline-filter-dropdown
 
 function updatePipelineStatCards() {
     const rows = document.querySelectorAll('#pipelineTableBody tr[data-pl-row]');
-    let nL = 0, nA = 0, nN = 0;
+    let nL = 0, nA = 0;
     rows.forEach((tr) => {
         if (tr.style.display === 'none') return;
         const t = tr.getAttribute('data-asset-type') || 'laptop';
-        if (t === 'network') nN++;
-        else if (t === 'av') nA++;
+        if (t === 'av') nA++;
         else nL++;
     });
     if (countLaptop) countLaptop.textContent = String(nL);
     if (countAv) countAv.textContent = String(nA);
-    if (countNetwork) countNetwork.textContent = String(nN);
 }
 
 function applyPipelineFilters() {
@@ -553,9 +532,7 @@ document.getElementById('pipelineTableBody')?.addEventListener('click', async (e
     if (!btn) return;
     const ac = btn.getAttribute('data-asset-class') || '';
     const aid = btn.getAttribute('data-asset-id') || '';
-    const msg = ac === 'network'
-        ? 'Remove this asset from the NextCheck pipeline and set network status back to 9?'
-        : 'Remove this asset from the NextCheck pipeline and set status back to 1 (laptop / AV)?';
+    const msg = 'Remove this asset from the NexCheck pipeline and set status back to 1 (laptop / AV)?';
     if (!window.confirm(msg)) return;
     btn.disabled = true;
     try {
