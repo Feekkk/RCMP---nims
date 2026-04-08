@@ -2,7 +2,13 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/../tcpdf/tcpdf.php';
+$__nimsAutoload = __DIR__ . '/../vendor/autoload.php';
+if (is_readable($__nimsAutoload)) {
+    require_once $__nimsAutoload;
+} else {
+    require_once __DIR__ . '/../tcpdf/tcpdf.php';
+}
+unset($__nimsAutoload);
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/mailer.php';
 
