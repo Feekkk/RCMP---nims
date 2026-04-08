@@ -245,7 +245,6 @@ $isProfile   = $currentPage === 'profile.php';
                 <i class="ri-arrow-down-s-line chevron" style="transition: transform 0.3s ease; font-size: 1.2rem;"></i>
             </a>
             <div class="nav-dropdown <?= $isRequest ? 'show' : '' ?>">
-                <a href="../technician/nextAdd.php" class="nav-dropdown-item <?= $currentPage === 'nextAdd.php' ? 'active' : '' ?>">Add items</a>
                 <a href="../technician/nextListitem.php" class="nav-dropdown-item <?= $currentPage === 'nextListitem.php' ? 'active' : '' ?>">List items</a>
                 <a href="../technician/nextCheckout.php" class="nav-dropdown-item <?= ($currentPage === 'nextCheckout.php' || $currentPage === 'nextItems.php') ? 'active' : '' ?>">User requests</a>
             </div>
