@@ -2,6 +2,7 @@
 $currentPage = basename($_SERVER['PHP_SELF']);
 $isDashboard = $currentPage === 'dashboard.php';
 $isUsers = $currentPage === 'users.php';
+$isInventory = $currentPage === 'inventory.php';
 ?>
 
 <aside class="sidebar">
@@ -13,7 +14,7 @@ $isUsers = $currentPage === 'users.php';
         <a href="dashboard.php" class="nav-item <?= $isDashboard ? 'active' : '' ?>">
             <i class="ri-dashboard-2-line"></i> Dashboard
         </a>
-        <a href="../technician/laptop.php" class="nav-item">
+        <a href="inventory.php" class="nav-item <?= $isInventory ? 'active' : '' ?>">
             <i class="ri-archive-line"></i> Inventory
         </a>
         <a href="users.php" class="nav-item <?= $isUsers ? 'active' : '' ?>">
