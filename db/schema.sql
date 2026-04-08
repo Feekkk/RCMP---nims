@@ -218,7 +218,7 @@ CREATE TABLE IF NOT EXISTS handover_staff(
 CREATE TABLE IF NOT EXISTS warranty(
   `warranty_id` INT(11) NOT NULL AUTO_INCREMENT,
   `asset_id` INT(11) NOT NULL,
-  `asset_type` ENUM('laptop','network') NOT NULL DEFAULT 'laptop',
+  `asset_type` ENUM('laptop','network','av') NOT NULL DEFAULT 'laptop',
   `warranty_start_date` DATE NOT NULL,
   `warranty_end_date` DATE NOT NULL,
   `warranty_remarks` TEXT DEFAULT NULL,
@@ -234,6 +234,7 @@ CREATE TABLE IF NOT EXISTS warranty(
 CREATE TABLE IF NOT EXISTS repair (
   `repair_id` INT(11) NOT NULL AUTO_INCREMENT,
   `asset_id` INT(11) NOT NULL,
+  `asset_type` ENUM('laptop','network','av') NOT NULL DEFAULT 'laptop',
   `staff_id` VARCHAR(32) NOT NULL,
   `repair_date` DATE NOT NULL,
   `completed_date` DATE DEFAULT NULL,
@@ -242,9 +243,9 @@ CREATE TABLE IF NOT EXISTS repair (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`repair_id`),
-  FOREIGN KEY (`asset_id`) REFERENCES `laptop`(`asset_id`),
   FOREIGN KEY (`staff_id`) REFERENCES `users`(`staff_id`),
   INDEX `idx_repair_asset_id` (`asset_id`),
+  INDEX `idx_repair_asset_type_asset` (`asset_type`, `asset_id`),
   INDEX `idx_repair_staff_id` (`staff_id`),
   INDEX `idx_repair_date` (`repair_date`)
 );
@@ -253,6 +254,7 @@ CREATE TABLE IF NOT EXISTS repair (
 CREATE TABLE IF NOT EXISTS warranty_claim (
   `claim_id` INT(11) NOT NULL AUTO_INCREMENT,
   `asset_id` INT(11) NOT NULL,
+  `asset_type` ENUM('laptop','network','av') NOT NULL DEFAULT 'laptop',
   `warranty_id` INT(11) DEFAULT NULL,
   `claim_date` DATE NOT NULL,
   `claim_time` TIME DEFAULT NULL,
@@ -262,10 +264,10 @@ CREATE TABLE IF NOT EXISTS warranty_claim (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`claim_id`),
-  FOREIGN KEY (`asset_id`) REFERENCES `laptop`(`asset_id`),
   FOREIGN KEY (`warranty_id`) REFERENCES `warranty`(`warranty_id`),
   FOREIGN KEY (`claimed_by`) REFERENCES `users`(`staff_id`),
   INDEX `idx_claim_asset_id` (`asset_id`),
+  INDEX `idx_claim_asset_type_asset` (`asset_type`, `asset_id`),
   INDEX `idx_claim_warranty_id` (`warranty_id`),
   INDEX `idx_claim_date` (`claim_date`),
   INDEX `idx_claimed_by` (`claimed_by`)
