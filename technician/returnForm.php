@@ -189,6 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
+            $newReturnId = 0;
             if ($handoverReturnHasPlaceColumn) {
                 $stmtInsertReturn = $pdo->prepare('
                     INSERT INTO handover_return
@@ -207,6 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':return_remarks' => $returnRemarks !== '' ? $returnRemarks : null,
                     ':return_status_id' => $returnStatusId,
                 ]);
+                $newReturnId = (int) $pdo->lastInsertId();
             } else {
                 $stmtInsertReturn = $pdo->prepare('
                     INSERT INTO handover_return
@@ -224,6 +226,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':return_remarks' => $returnRemarks !== '' ? $returnRemarks : null,
                     ':return_status_id' => $returnStatusId,
                 ]);
+                $newReturnId = (int) $pdo->lastInsertId();
             }
 
             $stmtUpdateAsset = $pdo->prepare('
@@ -237,7 +240,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
 
             $pdo->commit();
-            header('Location: laptop.php?status_id=' . (int)$returnStatusId);
+
+            $flashType = 'ok';
+            $flashMsg = 'Return recorded.';
+            $stmtTech = $pdo->prepare('SELECT full_name, email FROM users WHERE staff_id = ? LIMIT 1');
+            $stmtTech->execute([$sessionStaffId]);
+            $techRow = $stmtTech->fetch(PDO::FETCH_ASSOC);
+            $techEmail = trim((string) ($techRow['email'] ?? ''));
+            $techName = trim((string) ($techRow['full_name'] ?? ''));
+            if ($techEmail !== '' && filter_var($techEmail, FILTER_VALIDATE_EMAIL) && $newReturnId > 0) {
+                try {
+                    require_once __DIR__ . '/../services/returnPDF.php';
+                    return_mail_pdf_to_technician(
+                        $newReturnId,
+                        $techEmail,
+                        $techName !== '' ? $techName : $sessionStaffId
+                    );
+                    $flashMsg .= ' The return form PDF was emailed to you.';
+                } catch (Throwable $mailEx) {
+                    error_log('NIMS return PDF email failed: ' . $mailEx->getMessage());
+                    $flashType = 'warning';
+                    $detail = $mailEx->getMessage();
+                    if (strlen($detail) > 220) {
+                        $detail = substr($detail, 0, 217) . '...';
+                    }
+                    $flashMsg .= ' Could not email the PDF: ' . $detail;
+                }
+            } elseif ($techEmail !== '' && filter_var($techEmail, FILTER_VALIDATE_EMAIL) && $newReturnId <= 0) {
+                $flashType = 'warning';
+                $flashMsg .= ' Could not email the PDF (return record id missing — check database).';
+            } else {
+                $flashType = 'warning';
+                $flashMsg .= ' No valid email on your profile — PDF was not sent.';
+            }
+            $_SESSION['laptop_flash'] = ['type' => $flashType, 'msg' => $flashMsg];
+
+            header('Location: laptop.php?status_id=' . (int) $returnStatusId);
             exit;
         } catch (PDOException $e) {
             if ($pdo->inTransaction()) {

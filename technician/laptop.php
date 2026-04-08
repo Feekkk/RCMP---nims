@@ -75,8 +75,19 @@ $sql = "
            w.warranty_end_date
     FROM laptop l
     JOIN status s ON s.status_id = l.status_id
-    LEFT JOIN handover h ON h.asset_id = l.asset_id
-    LEFT JOIN handover_staff hs ON hs.handover_id = h.handover_id
+    LEFT JOIN (
+        SELECT asset_id, MAX(handover_id) AS handover_id
+        FROM handover
+        GROUP BY asset_id
+    ) lh ON lh.asset_id = l.asset_id
+    LEFT JOIN handover h ON h.handover_id = lh.handover_id
+    LEFT JOIN handover_staff hs
+        ON hs.handover_id = h.handover_id
+        AND hs.handover_staff_id = (
+            SELECT MAX(hs2.handover_staff_id)
+            FROM handover_staff hs2
+            WHERE hs2.handover_id = h.handover_id
+        )
     LEFT JOIN staff st ON st.employee_no = hs.employee_no
     LEFT JOIN warranty w ON w.asset_id = l.asset_id
         AND w.warranty_id = (
@@ -814,6 +825,7 @@ $status_meta = [
             font-weight: 500;
         }
         .laptop-flash.ok { background: rgba(16,185,129,0.12); color: #047857; border: 1px solid rgba(16,185,129,0.35); }
+        .laptop-flash.warn { background: rgba(245,158,11,0.12); color: #b45309; border: 1px solid rgba(245,158,11,0.35); }
         .laptop-flash.err { background: rgba(239,68,68,0.1); color: #b91c1c; border: 1px solid rgba(239,68,68,0.3); }
 
         form.inline-action { display: inline; }
@@ -956,7 +968,11 @@ $status_meta = [
         </header>
 
         <?php if ($laptop_flash): ?>
-            <div class="laptop-flash <?= $laptop_flash['type'] === 'ok' ? 'ok' : 'err' ?>">
+            <div class="laptop-flash <?= match ($laptop_flash['type'] ?? '') {
+                'ok' => 'ok',
+                'warning' => 'warn',
+                default => 'err',
+            } ?>">
                 <?= htmlspecialchars($laptop_flash['msg'] ?? '', ENT_QUOTES) ?>
             </div>
         <?php endif; ?>
