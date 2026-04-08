@@ -1,7 +1,8 @@
 {
     "name": "620820/nims",
     "require": {
-        "tecnickcom/tcpdf": "^6.11"
+        "tecnickcom/tcpdf": "^6.11",
+        "nnnick/chartjs": "^4.5"
     },
     "autoload": {
         "psr-4": {
