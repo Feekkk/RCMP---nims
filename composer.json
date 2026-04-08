@@ -1,0 +1,17 @@
+{
+    "name": "620820/nims",
+    "require": {
+        "tecnickcom/tcpdf": "^6.11"
+    },
+    "autoload": {
+        "psr-4": {
+            "620820\\Nims\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Feekkk",
+            "email": "zxduke350@gmail.com"
+        }
+    ]
+}
