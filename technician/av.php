@@ -757,6 +757,10 @@ $nextHref = 'av.php?' . http_build_query($nextParams);
                                     </td>
                                     <td class="row-actions">
                                         <div class="actions-wrap">
+                                            <a class="icon-btn" href="avView.php?asset_id=<?= (int)$row['asset_id'] ?>" title="View details">
+                                                <i class="ri-eye-line"></i>
+                                            </a>
+
                                             <?php if ($sid === 1): ?>
                                                 <a class="icon-btn icon-btn-deploy" href="avDeploy.php?asset_id=<?= (int)$row['asset_id'] ?>" title="Deploy">
                                                     <i class="ri-truck-line"></i>
