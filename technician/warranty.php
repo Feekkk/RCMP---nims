@@ -19,8 +19,8 @@ $recentClaims = [];
 
 if ($assetId > 0) {
     $stmtAsset = $pdo->prepare("
-        SELECT asset_id, brand, model, serial_num
-        FROM laptop
+        SELECT asset_id, brand, model, serial_num, category
+        FROM av
         WHERE asset_id = ?
         LIMIT 1
     ");
@@ -30,7 +30,7 @@ if ($assetId > 0) {
     $stmtWarranty = $pdo->prepare("
         SELECT warranty_id, warranty_start_date, warranty_end_date, warranty_remarks
         FROM warranty
-        WHERE asset_id = ? AND asset_type = 'laptop'
+        WHERE asset_id = ? AND asset_type = 'av'
         ORDER BY warranty_end_date DESC, warranty_id DESC
         LIMIT 1
     ");
@@ -40,7 +40,7 @@ if ($assetId > 0) {
     $stmtClaims = $pdo->prepare("
         SELECT claim_id, claim_date, claim_time, issue_summary, claim_remarks, claimed_by, created_at
         FROM warranty_claim
-        WHERE asset_id = ?
+        WHERE asset_type = 'av' AND asset_id = ?
         ORDER BY created_at DESC
         LIMIT 8
     ");
@@ -75,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmtWarranty2 = $pdo->prepare("
             SELECT warranty_id, warranty_start_date, warranty_end_date
             FROM warranty
-            WHERE asset_id = ? AND asset_type = 'laptop'
+            WHERE asset_id = ? AND asset_type = 'av'
             ORDER BY warranty_end_date DESC, warranty_id DESC
             LIMIT 1
         ");
@@ -102,12 +102,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $stmtInsert = $pdo->prepare("
                         INSERT INTO warranty_claim
-                            (asset_id, warranty_id, claim_date, claim_time, issue_summary, claim_remarks, claimed_by)
+                            (asset_id, asset_type, warranty_id, claim_date, claim_time, issue_summary, claim_remarks, claimed_by)
                         VALUES
-                            (:asset_id, :warranty_id, :claim_date, :claim_time, :issue_summary, :claim_remarks, :claimed_by)
+                            (:asset_id, :asset_type, :warranty_id, :claim_date, :claim_time, :issue_summary, :claim_remarks, :claimed_by)
                     ");
                     $stmtInsert->execute([
                         ':asset_id' => $assetId,
+                        ':asset_type' => 'av',
                         ':warranty_id' => (int)$w2['warranty_id'],
                         ':claim_date' => $claimDate,
                         ':claim_time' => ($claimTime !== '' ? $claimTime : null),
@@ -118,7 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     // After submitting a claim, set asset back to Active.
                     $stmtUpdate = $pdo->prepare("
-                        UPDATE laptop
+                        UPDATE av
                         SET status_id = 1
                         WHERE asset_id = :asset_id
                     ");
@@ -248,7 +249,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <main class="main-content">
         <div class="wrapper">
-            <a href="laptop.php" class="back-link"><i class="ri-arrow-left-line"></i> Back to Laptop Inventory</a>
+            <a href="av.php?status_id=6" class="back-link"><i class="ri-arrow-left-line"></i> Back to Faulty AV assets</a>
 
             <div class="card">
                 <div class="card-header">
@@ -260,7 +261,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="device-summary">
                             <strong>Asset ID:</strong> <?= htmlspecialchars((string)$asset['asset_id']) ?>
                             &nbsp;·&nbsp;
-                            <strong>Device:</strong> <?= htmlspecialchars(trim(($asset['brand'] ?? '') . ' ' . ($asset['model'] ?? '')) ?: 'Unknown Device') ?>
+                            <strong>Device:</strong> <?= htmlspecialchars(trim(($asset['category'] ?? '') . ' ' . ($asset['brand'] ?? '') . ' ' . ($asset['model'] ?? '')) ?: 'Unknown Device') ?>
                         </div>
                     <?php endif; ?>
                 </div>

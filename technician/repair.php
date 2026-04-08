@@ -28,8 +28,8 @@ function repair_warranty_is_active(array $w): bool
 
 if ($assetId > 0) {
     $stmtAsset = $pdo->prepare('                                                                                                             
-        SELECT asset_id, brand, model, serial_num, status_id
-        FROM laptop
+        SELECT asset_id, brand, model, serial_num, category, status_id
+        FROM av
         WHERE asset_id = ?
         LIMIT 1
     ');
@@ -39,7 +39,7 @@ if ($assetId > 0) {
     $stmtW = $pdo->prepare('
         SELECT warranty_id, warranty_start_date, warranty_end_date, warranty_remarks
         FROM warranty
-        WHERE asset_id = ? AND asset_type = \'laptop\'
+        WHERE asset_id = ? AND asset_type = \'av\'
         ORDER BY warranty_end_date DESC, warranty_id DESC
         LIMIT 1
     ');
@@ -49,7 +49,7 @@ if ($assetId > 0) {
     $stmtR = $pdo->prepare('
         SELECT repair_id, repair_date, completed_date, issue_summary, repair_remarks, staff_id, created_at
         FROM repair
-        WHERE asset_id = ?
+        WHERE asset_type = \'av\' AND asset_id = ?
         ORDER BY created_at DESC
         LIMIT 8
     ');
@@ -59,7 +59,7 @@ if ($assetId > 0) {
     if (!$asset) {
         $error_message = 'Asset not found.';
     } elseif (!$savedOk && (int)$asset['status_id'] !== 6) {
-        $error_message = 'Repair log is only for assets in Faulty status. Open the asset from Laptop Inventory (Faulty filter).';
+        $error_message = 'Repair log is only for assets in Faulty status. Open the asset from AV Inventory (Faulty filter).';
     } elseif (!$savedOk && $latestWarranty && repair_warranty_is_active($latestWarranty)) {
         $error_message = 'This asset still has an active vendor warranty. Use Warranty Claim instead.';
     }
@@ -85,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($issueSummary === '') {
         $error_message = 'Missing issue summary.';
     } else {
-        $stmtAsset2 = $pdo->prepare('SELECT status_id FROM laptop WHERE asset_id = ? LIMIT 1');
+        $stmtAsset2 = $pdo->prepare('SELECT status_id FROM av WHERE asset_id = ? LIMIT 1');
         $stmtAsset2->execute([$assetId]);
         $a2 = $stmtAsset2->fetch(PDO::FETCH_ASSOC);
         if (!$a2) {
@@ -96,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmtW2 = $pdo->prepare('
                 SELECT warranty_start_date, warranty_end_date
                 FROM warranty
-                WHERE asset_id = ? AND asset_type = \'laptop\'
+                WHERE asset_id = ? AND asset_type = \'av\'
                 ORDER BY warranty_end_date DESC, warranty_id DESC
                 LIMIT 1
             ');
@@ -109,12 +109,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->beginTransaction();
                     $stmtIns = $pdo->prepare('
                         INSERT INTO repair
-                            (asset_id, staff_id, repair_date, completed_date, issue_summary, repair_remarks)
+                            (asset_id, asset_type, staff_id, repair_date, completed_date, issue_summary, repair_remarks)
                         VALUES
-                            (:asset_id, :staff_id, :repair_date, :completed_date, :issue_summary, :repair_remarks)
+                            (:asset_id, :asset_type, :staff_id, :repair_date, :completed_date, :issue_summary, :repair_remarks)
                     ');
                     $stmtIns->execute([
                         ':asset_id' => $assetId,
+                        ':asset_type' => 'av',
                         ':staff_id' => $staffId,
                         ':repair_date' => $repairDate,
                         ':completed_date' => $completedDate !== '' ? $completedDate : null,
@@ -122,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ':repair_remarks' => $repairRemarks !== '' ? $repairRemarks : null,
                     ]);
                     $newStatus = $completedDate !== '' ? 1 : 5;
-                    $stmtUp = $pdo->prepare('UPDATE laptop SET status_id = :sid WHERE asset_id = :aid AND status_id = 6');
+                    $stmtUp = $pdo->prepare('UPDATE av SET status_id = :sid WHERE asset_id = :aid AND status_id = 6');
                     $stmtUp->execute([':sid' => $newStatus, ':aid' => $assetId]);
                     $pdo->commit();
                     header('Location: repair.php?asset_id=' . (int)$assetId . '&saved=1');
@@ -248,7 +249,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <main class="main-content">
         <div class="wrapper">
-            <a href="laptop.php?status_id=6" class="back-link"><i class="ri-arrow-left-line"></i> Back to Faulty laptops</a>
+            <a href="av.php?status_id=6" class="back-link"><i class="ri-arrow-left-line"></i> Back to Faulty AV assets</a>
 
             <div class="card">
                 <div class="card-header">
@@ -260,7 +261,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="device-summary">
                             <strong>Asset ID:</strong> <?= htmlspecialchars((string)$asset['asset_id']) ?>
                             &nbsp;·&nbsp;
-                            <strong>Device:</strong> <?= htmlspecialchars(trim(($asset['brand'] ?? '') . ' ' . ($asset['model'] ?? '')) ?: 'Unknown Device') ?>
+                            <strong>Device:</strong> <?= htmlspecialchars(trim(($asset['category'] ?? '') . ' ' . ($asset['brand'] ?? '') . ' ' . ($asset['model'] ?? '')) ?: 'Unknown Device') ?>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -369,7 +370,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             Logged in as: <strong><?= htmlspecialchars((string)($_SESSION['user_name'] ?? $_SESSION['staff_id'] ?? 'Technician')) ?></strong>
                         </div>
                         <div>
-                            <button type="button" class="btn btn-ghost" onclick="window.location.href='laptop.php?status_id=6'">Cancel</button>
+                            <button type="button" class="btn btn-ghost" onclick="window.location.href='av.php?status_id=6'">Cancel</button>
                             <?php if ($formOk): ?>
                                 <button type="submit" class="btn btn-primary"><i class="ri-check-line"></i> Save repair</button>
                             <?php endif; ?>

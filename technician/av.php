@@ -7,6 +7,31 @@ if (!isset($_SESSION['staff_id']) || (int)($_SESSION['role_id'] ?? 0) !== 1) {
 
 require_once __DIR__ . '/../config/database.php';
 
+$actionError = '';
+$actionSuccess = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = (string)($_POST['action'] ?? '');
+    $assetId = isset($_POST['asset_id']) && is_numeric($_POST['asset_id']) ? (int)$_POST['asset_id'] : 0;
+    if ($action === 'mark_faulty') {
+        if ($assetId <= 0) {
+            $actionError = 'Invalid asset.';
+        } else {
+            try {
+                $pdo = db();
+                $stmt = $pdo->prepare('UPDATE av SET status_id = 6 WHERE asset_id = :aid AND status_id = 1');
+                $stmt->execute([':aid' => $assetId]);
+                if ($stmt->rowCount() > 0) {
+                    $actionSuccess = 'Asset marked as Faulty.';
+                } else {
+                    $actionError = 'Asset status not updated (only Active assets can be marked Faulty).';
+                }
+            } catch (Throwable $e) {
+                $actionError = 'Database error while updating asset.';
+            }
+        }
+    }
+}
+
 $filter_status = isset($_GET['status_id']) && is_numeric($_GET['status_id'])
     ? (int)$_GET['status_id']
     : null;
@@ -53,6 +78,7 @@ try {
 }
 
 $assets = [];
+$warrantyByAssetId = [];
 $filteredTotal = 0;
 $totalPages = 1;
 $offset = 0;
@@ -114,6 +140,31 @@ try {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $assets = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!empty($assets)) {
+        $assetIds = array_values(array_filter(array_map(
+            static fn($r) => isset($r['asset_id']) ? (int)$r['asset_id'] : 0,
+            $assets
+        )));
+        $assetIds = array_values(array_unique(array_filter($assetIds, static fn($v) => $v > 0)));
+        if (!empty($assetIds)) {
+            $in = implode(',', array_fill(0, count($assetIds), '?'));
+            $stmtW = $pdo->prepare("
+                SELECT asset_id, warranty_start_date, warranty_end_date
+                FROM warranty
+                WHERE asset_id IN ($in)
+                ORDER BY asset_id ASC, warranty_end_date DESC, warranty_id DESC
+            ");
+            $stmtW->execute($assetIds);
+            $rowsW = $stmtW->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rowsW as $w) {
+                $aid = (int)$w['asset_id'];
+                if (!isset($warrantyByAssetId[$aid])) {
+                    $warrantyByAssetId[$aid] = $w;
+                }
+            }
+        }
+    }
 } catch (Throwable $e) {
     $dbError = true;
     $assets = [];
@@ -456,17 +507,38 @@ $nextHref = 'av.php?' . http_build_query($nextParams);
         .badge-unknown { background: rgba(148,163,184,0.18); color: #64748b; border-color: rgba(148,163,184,0.35); }
 
         .row-actions { text-align: right; }
+        .row-actions .actions-wrap { display: inline-flex; gap: 0.5rem; }
         .icon-btn {
             width: 38px; height: 38px;
             border-radius: 10px;
             border: 1px solid var(--card-border);
             background: var(--glass-panel);
             color: var(--text-muted);
-            cursor: not-allowed;
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.18s ease;
+        }
+        .icon-btn:hover {
+            border-color: rgba(37,99,235,0.2);
+            color: var(--primary);
+            background: rgba(37,99,235,0.06);
+        }
+        .icon-btn.disabled {
+            cursor: not-allowed;
             opacity: 0.6;
+            pointer-events: none;
+        }
+        .icon-btn-deploy {
+            color: var(--primary);
+            border-color: rgba(37,99,235,0.2);
+            background: rgba(37,99,235,0.06);
+        }
+        .icon-btn-deploy:hover {
+            filter: brightness(1.05);
+            transform: translateY(-1px);
         }
 
         .pagination {
@@ -508,6 +580,16 @@ $nextHref = 'av.php?' . http_build_query($nextParams);
     <?php include __DIR__ . '/../components/sidebarUser.php'; ?>
 
     <main class="main-content">
+        <?php if ($actionError !== ''): ?>
+            <div style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #b91c1c; padding: 0.9rem 1.1rem; border-radius: 12px; margin-bottom: 1.25rem; font-weight: 600;">
+                <i class="ri-error-warning-line"></i> <?= htmlspecialchars($actionError) ?>
+            </div>
+        <?php elseif ($actionSuccess !== ''): ?>
+            <div style="background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.25); color: #047857; padding: 0.9rem 1.1rem; border-radius: 12px; margin-bottom: 1.25rem; font-weight: 600;">
+                <i class="ri-checkbox-circle-line"></i> <?= htmlspecialchars($actionSuccess) ?>
+            </div>
+        <?php endif; ?>
+
         <?php if ($dbError): ?>
             <div style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #b91c1c; padding: 0.9rem 1.1rem; border-radius: 12px; margin-bottom: 1.25rem; font-weight: 600;">
                 <i class="ri-error-warning-line"></i> Could not load AV data. Ensure <code>db/schema.sql</code> is applied.
@@ -674,7 +756,55 @@ $nextHref = 'av.php?' . http_build_query($nextParams);
                                         <span class="badge <?= htmlspecialchars($meta['cls']) ?>"><i class="<?= htmlspecialchars($meta['icon']) ?>"></i> <?= htmlspecialchars((string)($row['status_name'] ?? '—')) ?></span>
                                     </td>
                                     <td class="row-actions">
-                                        <button class="icon-btn" type="button" title="View (soon)" disabled><i class="ri-eye-line"></i></button>
+                                        <div class="actions-wrap">
+                                            <?php if ($sid === 1): ?>
+                                                <a class="icon-btn icon-btn-deploy" href="avDeploy.php?asset_id=<?= (int)$row['asset_id'] ?>" title="Deploy">
+                                                    <i class="ri-truck-line"></i>
+                                                </a>
+                                            <?php endif; ?>
+
+                                            <?php if ($sid === 3): ?>
+                                                <a class="icon-btn" href="avReturn.php?asset_id=<?= (int)$row['asset_id'] ?>" title="Return">
+                                                    <i class="ri-inbox-unarchive-line"></i>
+                                                </a>
+                                            <?php endif; ?>
+
+                                            <?php if ($sid === 1): ?>
+                                                <form method="post" action="" style="display:inline">
+                                                    <input type="hidden" name="action" value="mark_faulty">
+                                                    <input type="hidden" name="asset_id" value="<?= (int)$row['asset_id'] ?>">
+                                                    <button class="icon-btn" type="submit" title="Mark as Faulty" style="color: var(--danger); border-color: rgba(239,68,68,0.22); background: rgba(239,68,68,0.06);">
+                                                        <i class="ri-alert-line"></i>
+                                                    </button>
+                                                </form>
+                                            <?php endif; ?>
+
+                                            <?php if ($sid === 6):
+                                                $aid = (int)$row['asset_id'];
+                                                $w = $warrantyByAssetId[$aid] ?? null;
+                                                $hasActiveWarranty = false;
+                                                if ($w && !empty($w['warranty_start_date']) && !empty($w['warranty_end_date'])) {
+                                                    try {
+                                                        $today = new DateTimeImmutable('today');
+                                                        $start = new DateTimeImmutable((string)$w['warranty_start_date']);
+                                                        $end = new DateTimeImmutable((string)$w['warranty_end_date']);
+                                                        $hasActiveWarranty = ($today >= $start && $today <= $end);
+                                                    } catch (Throwable $e) {
+                                                        $hasActiveWarranty = false;
+                                                    }
+                                                }
+                                            ?>
+                                                <?php if ($hasActiveWarranty): ?>
+                                                    <a class="icon-btn" href="warranty.php?asset_id=<?= (int)$row['asset_id'] ?>" title="Warranty claim">
+                                                        <i class="ri-shield-check-line"></i>
+                                                    </a>
+                                                <?php else: ?>
+                                                    <a class="icon-btn" href="repair.php?asset_id=<?= (int)$row['asset_id'] ?>" title="Repair log">
+                                                        <i class="ri-tools-line"></i>
+                                                    </a>
+                                                <?php endif; ?>
+                                            <?php endif; ?>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
