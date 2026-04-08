@@ -85,7 +85,7 @@ if (isset($_GET['download_template'])) {
     $out = fopen('php://output', 'w');
     fputcsv($out, $headers);
     fputcsv($out, [
-        'LEGACY-001', 'Projector', 'Epson', 'EB-L200X', 'SN-AV-EX01',
+        '', 'Projector', 'Epson', 'EB-L200X', 'SN-AV-EX01',
         '2024-01-15', 'PO-2024-001', '2024-01-20', 'DO-2024-001',
         '2024-01-25', 'INV-2024-001', '3200.00', '1', 'Non-deploy — leave deployment columns empty',
         '', '', '', '', '', '',
@@ -148,8 +148,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     $total_err++;
                 } else {
                     $keys = array_map(static fn ($h) => norm_csv_header((string) $h), $header);
-                    if ((!in_array('asset_id', $keys, true) && !in_array('asset_id_old', $keys, true)) || !in_array('status_id', $keys, true)) {
-                        $results[] = ['row' => 0, 'status' => 'error', 'legacy' => '—', 'new_id' => '—', 'serial' => '—', 'device' => '—', 'msg' => 'CSV must include asset_id (legacy id) or asset_id_old, status_id, and serial columns.'];
+                    if (!in_array('status_id', $keys, true)) {
+                        $results[] = ['row' => 0, 'status' => 'error', 'legacy' => '—', 'new_id' => '—', 'serial' => '—', 'device' => '—', 'msg' => 'CSV must include status_id column.'];
                         $total_err++;
                     } elseif (!in_array('serial_number', $keys, true) && !in_array('serial_num', $keys, true)) {
                         $results[] = ['row' => 0, 'status' => 'error', 'legacy' => '—', 'new_id' => '—', 'serial' => '—', 'device' => '—', 'msg' => 'CSV must include serial_number (or serial_num).'];
@@ -224,16 +224,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                             $serial_raw = $get($row, 'serial_number') ?? $get($row, 'serial_num');
                             $device = av_csv_device_label($category, $brand, $model);
 
-                            if ($legacyRaw === null || $legacyRaw === '') {
-                                $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => '—', 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Missing legacy asset_id (or asset_id_old).'];
-                                $total_err++;
-                                continue;
+                            $asset_id_old = null;
+                            if ($legacyRaw !== null && $legacyRaw !== '') {
+                                $asset_id_old = substr($legacyRaw, 0, 64);
                             }
-                            $asset_id_old = substr($legacyRaw, 0, 64);
 
                             $asset_id = next_av_asset_id($pdo);
                             if ($asset_id === null) {
-                                $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old, 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'No AV asset IDs left for this calendar year (max 999).'];
+                                $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old ?? '—', 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'No AV asset IDs left for this calendar year (max 999).'];
                                 $total_err++;
                                 continue;
                             }
@@ -244,7 +242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                             }
 
                             if ($serial_raw === null || $serial_raw === '' || $status_id < 1 || !isset($statusById[$status_id])) {
-                                $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old, 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Missing serial_number or invalid status_id for AV.'];
+                                $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old ?? '—', 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Missing serial_number or invalid status_id for AV.'];
                                 $total_err++;
                                 continue;
                             }
@@ -276,7 +274,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                             $deployDate = null;
                             if ($status_id === 3) {
                                 if ($deployBuilding === null || trim((string) $deployBuilding) === '') {
-                                    $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old, 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Deploy (3) requires deployment_building.'];
+                                    $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old ?? '—', 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Deploy (3) requires deployment_building.'];
                                     $total_err++;
                                     continue;
                                 }
@@ -287,7 +285,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                 if ($deployDateRaw !== null && trim((string) $deployDateRaw) !== '') {
                                     $deployDate = av_csv_date_ymd($deployDateRaw);
                                     if ($deployDate === null) {
-                                        $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old, 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Deploy (3): deployment_date must be YYYY-MM-DD or DD-MM-YY.'];
+                                        $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old ?? '—', 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Deploy (3): deployment_date must be YYYY-MM-DD or DD-MM-YY.'];
                                         $total_err++;
                                         continue;
                                     }
@@ -297,18 +295,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
 
                                 $depStaff = $deployStaffCsv !== null ? trim((string) $deployStaffCsv) : $staffId;
                                 if ($depStaff === '') {
-                                    $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old, 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Deploy needs deployment_staff_id or importer session staff_id.'];
+                                    $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old ?? '—', 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Deploy needs deployment_staff_id or importer session staff_id.'];
                                     $total_err++;
                                     continue;
                                 }
                                 $stmtUserExists->execute([$depStaff]);
                                 if (!$stmtUserExists->fetchColumn()) {
-                                    $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old, 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'deployment_staff_id not found in users.'];
+                                    $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old ?? '—', 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'deployment_staff_id not found in users.'];
                                     $total_err++;
                                     continue;
                                 }
                             } elseif ($anyDepField) {
-                                $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old, 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Deployment columns only for status_id 3 (Deploy); remove them or set status to 3.'];
+                                $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old ?? '—', 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Deployment columns only for status_id 3 (Deploy); remove them or set status to 3.'];
                                 $total_err++;
                                 continue;
                             }
@@ -348,7 +346,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                     $okMsg .= ' (+ deployment)';
                                 }
                                 $pdo->commit();
-                                $results[] = ['row' => $row_num, 'status' => 'ok', 'legacy' => $asset_id_old, 'new_id' => (string) $asset_id, 'serial' => $serial_raw, 'device' => $device, 'msg' => $okMsg];
+                                $results[] = ['row' => $row_num, 'status' => 'ok', 'legacy' => $asset_id_old ?? '—', 'new_id' => (string) $asset_id, 'serial' => $serial_raw, 'device' => $device, 'msg' => $okMsg];
                                 $total_ok++;
                             } catch (PDOException $e) {
                                 if ($pdo->inTransaction()) {
@@ -356,10 +354,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                 }
                                 $msg = $e->getMessage();
                                 if ((string) $e->getCode() === '23000' && stripos($msg, 'Duplicate') !== false) {
-                                    $results[] = ['row' => $row_num, 'status' => 'dup', 'legacy' => $asset_id_old, 'new_id' => (string) $asset_id, 'serial' => $serial_raw, 'device' => $device, 'msg' => 'Duplicate — skipped (asset_id or unique conflict).'];
+                                    $results[] = ['row' => $row_num, 'status' => 'dup', 'legacy' => $asset_id_old ?? '—', 'new_id' => (string) $asset_id, 'serial' => $serial_raw, 'device' => $device, 'msg' => 'Duplicate — skipped (asset_id or unique conflict).'];
                                     $total_dup++;
                                 } else {
-                                    $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old, 'new_id' => (string) $asset_id, 'serial' => $serial_raw, 'device' => $device, 'msg' => 'DB error: ' . $msg];
+                                    $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old ?? '—', 'new_id' => (string) $asset_id, 'serial' => $serial_raw, 'device' => $device, 'msg' => 'DB error: ' . $msg];
                                     $total_err++;
                                 }
                             }
@@ -571,7 +569,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
     <header class="page-header">
         <div class="page-title">
             <h1><i class="ri-file-upload-line"></i> Bulk Import AV</h1>
-            <p>Upload a CSV to register multiple audio/visual assets. The <strong>asset_id</strong> column is the <strong>legacy</strong> id (stored as asset_id_old); the system assigns a new <strong>asset_id</strong> (88+YY+###) per row.</p>
+            <p>Upload a CSV to register multiple audio/visual assets. If <strong>asset_id</strong> is provided, it is stored as <strong>asset_id_old</strong>. If blank/NULL, <strong>asset_id_old</strong> stays NULL. The system always assigns a new <strong>asset_id</strong> (88+YY+###) per row.</p>
         </div>
         <a href="av.php" class="btn-back"><i class="ri-arrow-left-line"></i> Back to AV inventory</a>
     </header>
@@ -654,7 +652,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
     <div class="card">
         <div class="card-title"><i class="ri-table-line"></i> Columns</div>
         <div class="column-chips">
-            <span class="chip required">asset_id *</span>
+            <span class="chip">asset_id</span>
             <span class="chip required">serial_number *</span>
             <span class="chip required">status_id *</span>
             <span class="chip">category</span>
@@ -677,7 +675,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         </div>
         <p style="font-size:0.83rem;color:var(--text-muted);margin-top:0.5rem;">
             <i class="ri-information-line"></i>
-            <code>asset_id</code> = previous/legacy id (saved as <code>asset_id_old</code>). You may use <code>asset_id_old</code> as the column name instead. Dates: <strong>YYYY-MM-DD</strong>.
+            <code>asset_id</code> (optional) = previous/legacy id (saved as <code>asset_id_old</code>). If blank/NULL, the importer will store <code>asset_id_old</code> as NULL and still generate a new AV <code>asset_id</code>. You may use <code>asset_id_old</code> as the column name instead. Dates: <strong>YYYY-MM-DD</strong>.
             AV <code>status_id</code>: 1 Active, 2 Non-active, 3 Deploy, 5 Maintenance, 6 Faulty, 7 Disposed, 8 Lost. Optional <code>status</code> column resolves by name if present.
             <strong>Deploy (3)</strong> requires <code>deployment_building</code> only. If <code>deployment_level</code>, <code>deployment_zone</code>, or <code>deployment_date</code> are blank, the importer saves <code>-</code>, <code>-</code>, and today’s date. Optional <code>deployment_remarks</code> and <code>deployment_staff_id</code> (must exist in <code>users</code>, else the logged-in technician is used). Do not fill deployment columns unless status is 3.
         </p>
