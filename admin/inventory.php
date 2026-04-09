@@ -469,6 +469,10 @@ function admin_inventory_type_pill(string $t): string
         }
         .pager .info{color:var(--text-muted);font-size:0.85rem;font-weight:700}
         .pager .btn{padding:0.6rem 0.8rem;border-radius:12px}
+
+        .kpi-link{display:block;color:inherit;text-decoration:none}
+        .kpi-link .kpi{cursor:pointer}
+        .kpi-link .kpi:hover{transform:translateY(-1px);box-shadow:0 10px 22px rgba(15,23,42,0.08)}
     </style>
 </head>
 <body>
@@ -487,6 +491,7 @@ function admin_inventory_type_pill(string $t): string
     <?php endif; ?>
 
     <section class="cards" aria-label="Inventory totals">
+        <a class="kpi-link" href="<?= htmlspecialchars(admin_inventory_url(['type' => 'all', 'page' => 1])) ?>" aria-label="Show all assets">
         <div class="kpi kpi--all">
             <div class="kpi-ic"><i class="ri-stack-line"></i></div>
             <div class="kpi-txt">
@@ -494,13 +499,17 @@ function admin_inventory_type_pill(string $t): string
                 <div class="kpi-lbl">All assets</div>
             </div>
         </div>
+        </a>
+        <a class="kpi-link" href="<?= htmlspecialchars(admin_inventory_url(['type' => 'laptop', 'page' => 1])) ?>" aria-label="Filter laptops">
         <div class="kpi kpi--laptop">
-            <div class="kpi-ic"><i class="ri-laptop-line"></i></div>
+            <div class="kpi-ic"><i class="ri-macbook-line"></i></div>
             <div class="kpi-txt">
                 <div class="kpi-num"><?= (int)$counts['laptop'] ?></div>
                 <div class="kpi-lbl">Laptops</div>
             </div>
         </div>
+        </a>
+        <a class="kpi-link" href="<?= htmlspecialchars(admin_inventory_url(['type' => 'network', 'page' => 1])) ?>" aria-label="Filter network assets">
         <div class="kpi kpi--network">
             <div class="kpi-ic"><i class="ri-router-line"></i></div>
             <div class="kpi-txt">
@@ -508,6 +517,8 @@ function admin_inventory_type_pill(string $t): string
                 <div class="kpi-lbl">Network</div>
             </div>
         </div>
+        </a>
+        <a class="kpi-link" href="<?= htmlspecialchars(admin_inventory_url(['type' => 'av', 'page' => 1])) ?>" aria-label="Filter AV assets" <?= !$hasAv ? 'aria-disabled="true" style="pointer-events:none;opacity:0.55"' : '' ?>>
         <div class="kpi kpi--av">
             <div class="kpi-ic"><i class="ri-film-line"></i></div>
             <div class="kpi-txt">
@@ -515,6 +526,7 @@ function admin_inventory_type_pill(string $t): string
                 <div class="kpi-lbl">AV</div>
             </div>
         </div>
+        </a>
     </section>
 
     <section class="card" aria-labelledby="inv-title">
@@ -555,7 +567,7 @@ function admin_inventory_type_pill(string $t): string
                         <th style="width:200px">Serial</th>
                         <th style="width:210px">Category</th>
                         <th style="width:220px">Status</th>
-                        <th style="width:170px">Created</th>
+                        <th style="width:140px">Action</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -588,7 +600,11 @@ function admin_inventory_type_pill(string $t): string
                                     <div class="cell-main"><?= htmlspecialchars($stName !== '' ? $stName : '—') ?></div>
                                     <div class="muted" style="font-size:0.82rem;margin-top:0.15rem">Status ID: <?= (int)($r['status_id'] ?? 0) ?></div>
                                 </td>
-                                <td class="muted"><?= htmlspecialchars($created !== '' ? $created : '—') ?></td>
+                                <td>
+                                    <a class="btn btn-ghost" style="padding:0.55rem 0.85rem" href="editAsset.php?asset_class=<?= urlencode($cls) ?>&asset_id=<?= (int)$r['asset_id'] ?>">
+                                        <i class="ri-edit-2-line"></i> Edit
+                                    </a>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>
