@@ -9,6 +9,7 @@ require_once __DIR__ . '/../config/database.php';
 
 $pdo = db();
 $dbError = '';
+$chartJsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_UNICODE;
 
 try {
     $counts = [
@@ -17,9 +18,47 @@ try {
         'admins' => (int)$pdo->query('SELECT COUNT(*) FROM users WHERE role_id = 2')->fetchColumn(),
         'laptops' => (int)$pdo->query('SELECT COUNT(*) FROM laptop')->fetchColumn(),
         'networks' => (int)$pdo->query('SELECT COUNT(*) FROM network')->fetchColumn(),
+        'av' => (int)$pdo->query('SELECT COUNT(*) FROM av')->fetchColumn(),
         'handovers' => (int)$pdo->query('SELECT COUNT(*) FROM handover')->fetchColumn(),
         'warranties' => (int)$pdo->query('SELECT COUNT(*) FROM warranty')->fetchColumn(),
     ];
+    $counts['assets_total'] = $counts['laptops'] + $counts['networks'] + $counts['av'];
+
+    $chartAssetMix = ['labels' => ['Laptops', 'Network', 'AV'], 'data' => [$counts['laptops'], $counts['networks'], $counts['av']]];
+    $chartLaptopStatus = ['labels' => [], 'data' => []];
+    $chartNetworkStatus = ['labels' => [], 'data' => []];
+    $chartAvStatus = ['labels' => [], 'data' => []];
+
+    foreach ($pdo->query(
+        'SELECT s.name, COUNT(l.asset_id) AS c
+         FROM laptop l
+         JOIN status s ON s.status_id = l.status_id
+         GROUP BY s.status_id, s.name
+         ORDER BY c DESC, s.name ASC'
+    )->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $chartLaptopStatus['labels'][] = (string)$row['name'];
+        $chartLaptopStatus['data'][] = (int)$row['c'];
+    }
+    foreach ($pdo->query(
+        'SELECT s.name, COUNT(n.asset_id) AS c
+         FROM network n
+         JOIN status s ON s.status_id = n.status_id
+         GROUP BY s.status_id, s.name
+         ORDER BY c DESC, s.name ASC'
+    )->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $chartNetworkStatus['labels'][] = (string)$row['name'];
+        $chartNetworkStatus['data'][] = (int)$row['c'];
+    }
+    foreach ($pdo->query(
+        'SELECT s.name, COUNT(a.asset_id) AS c
+         FROM av a
+         JOIN status s ON s.status_id = a.status_id
+         GROUP BY s.status_id, s.name
+         ORDER BY c DESC, s.name ASC'
+    )->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $chartAvStatus['labels'][] = (string)$row['name'];
+        $chartAvStatus['data'][] = (int)$row['c'];
+    }
 
     $recent = [];
 
@@ -42,6 +81,15 @@ try {
     ")->fetchAll() as $r) { $recent[] = $r; }
 
     foreach ($pdo->query("
+        SELECT a.asset_id, a.serial_num, CONCAT(COALESCE(a.brand,''),' ',COALESCE(a.model,'')) AS device,
+               s.name AS status_name, a.created_at, 'AV registration' AS event_type
+        FROM av a
+        JOIN status s ON s.status_id = a.status_id
+        ORDER BY a.created_at DESC
+        LIMIT 5
+    ")->fetchAll() as $r) { $recent[] = $r; }
+
+    foreach ($pdo->query("
         SELECT h.asset_id, l.serial_num, CONCAT(COALESCE(l.brand,''),' ',COALESCE(l.model,'')) AS device,
                h.staff_id AS status_name, h.created_at, 'Handover' AS event_type
         FROM handover h
@@ -54,8 +102,12 @@ try {
     $recent = array_slice($recent, 0, 8);
 } catch (PDOException $e) {
     $dbError = $e->getMessage();
-    $counts = ['users'=>0,'techs'=>0,'admins'=>0,'laptops'=>0,'networks'=>0,'handovers'=>0,'warranties'=>0];
+    $counts = ['users'=>0,'techs'=>0,'admins'=>0,'laptops'=>0,'networks'=>0,'av'=>0,'assets_total'=>0,'handovers'=>0,'warranties'=>0];
     $recent = [];
+    $chartAssetMix = ['labels' => ['Laptops', 'Network', 'AV'], 'data' => [0, 0, 0]];
+    $chartLaptopStatus = ['labels' => ['No data'], 'data' => [0]];
+    $chartNetworkStatus = ['labels' => ['No data'], 'data' => [0]];
+    $chartAvStatus = ['labels' => ['No data'], 'data' => [0]];
 }
 ?>
 <!DOCTYPE html>
@@ -69,6 +121,7 @@ try {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
     <style>
         :root {
             --primary: #2563eb;
@@ -215,6 +268,15 @@ try {
             box-shadow: 0 2px 12px rgba(15,23,42,0.06);
             overflow: hidden;
         }
+        .charts-grid{
+            display:grid;
+            grid-template-columns: 1.1fr 1fr;
+            gap:1.25rem;
+            margin-bottom:1.75rem;
+        }
+        @media (max-width: 1100px){ .charts-grid{ grid-template-columns: 1fr; } }
+        .chart-wrap{ height: 310px; }
+        canvas{ max-width:100%; }
         .card-title {
             font-family: 'Outfit', sans-serif;
             font-weight: 900;
@@ -323,6 +385,25 @@ try {
             </div>
         </section>
 
+        <section class="charts-grid" aria-label="Asset analytics charts">
+            <div class="glass-card">
+                <div class="card-title"><i class="ri-pie-chart-2-line"></i> Asset mix</div>
+                <div class="chart-wrap"><canvas id="chartAssetMix"></canvas></div>
+            </div>
+            <div class="glass-card">
+                <div class="card-title"><i class="ri-bar-chart-horizontal-line"></i> Laptop by status</div>
+                <div class="chart-wrap"><canvas id="chartLaptopStatus"></canvas></div>
+            </div>
+            <div class="glass-card">
+                <div class="card-title"><i class="ri-router-line"></i> Network by status</div>
+                <div class="chart-wrap"><canvas id="chartNetworkStatus"></canvas></div>
+            </div>
+            <div class="glass-card">
+                <div class="card-title"><i class="ri-film-line"></i> AV by status</div>
+                <div class="chart-wrap"><canvas id="chartAvStatus"></canvas></div>
+            </div>
+        </section>
+
         <section class="glass-card" aria-label="Recent activity">
             <div class="card-title"><i class="ri-time-line"></i> Recent activity</div>
             <div class="table-responsive">
@@ -363,5 +444,63 @@ try {
             </div>
         </section>
     </main>
+    <script>
+        (function () {
+            Chart.defaults.font.family = "'Inter', sans-serif";
+            Chart.defaults.color = '#64748b';
+
+            const blue  = 'rgba(37, 99, 235, 0.85)';
+            const teal  = 'rgba(14, 165, 233, 0.85)';
+            const amber = 'rgba(245, 158, 11, 0.9)';
+            const green = 'rgba(16, 185, 129, 0.88)';
+            const red   = 'rgba(239, 68, 68, 0.85)';
+            const violet= 'rgba(124, 58, 237, 0.82)';
+
+            const assetMix = <?= json_encode($chartAssetMix, $chartJsonFlags) ?>;
+            const laptopSt = <?= json_encode($chartLaptopStatus, $chartJsonFlags) ?>;
+            const networkSt= <?= json_encode($chartNetworkStatus, $chartJsonFlags) ?>;
+            const avSt     = <?= json_encode($chartAvStatus, $chartJsonFlags) ?>;
+
+            new Chart(document.getElementById('chartAssetMix'), {
+                type: 'doughnut',
+                data: {
+                    labels: assetMix.labels,
+                    datasets: [{
+                        data: assetMix.data,
+                        backgroundColor: [blue, teal, amber],
+                        borderWidth: 2,
+                        borderColor: '#fff',
+                        hoverOffset: 6
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+            });
+
+            function barChart(elId, ds, color) {
+                const el = document.getElementById(elId);
+                if (!el) return;
+                new Chart(el, {
+                    type: 'bar',
+                    data: {
+                        labels: ds.labels,
+                        datasets: [{ label: 'Count', data: ds.data, backgroundColor: color, borderRadius: 10 }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { display: false } },
+                            y: { beginAtZero: true, ticks: { precision: 0 } }
+                        }
+                    }
+                });
+            }
+
+            barChart('chartLaptopStatus', laptopSt, blue);
+            barChart('chartNetworkStatus', networkSt, violet);
+            barChart('chartAvStatus', avSt, amber);
+        })();
+    </script>
 </body>
 </html>
