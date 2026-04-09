@@ -9,9 +9,10 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/nextcheck_shared.php';
 
 const NEXCHECK_POOL_STATUS = 11;
+const NEXCHECK_BUFFER_STATUS = 14;
 const NEXCHECK_ASSIGN_TARGET_STATUS = 13;
 const NEXCHECK_RETURN_FROM_STATUS = 13;
-const NEXCHECK_RETURN_TO_STATUS = 11;
+const NEXCHECK_RETURN_TO_STATUS = 14;
 
 $staffId = (string)($_SESSION['staff_id'] ?? '');
 
@@ -41,26 +42,41 @@ $return_ok    = isset($_GET['returned']) && (string)$_GET['returned'] === '1';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_returns'])) {
     $postNex = isset($_POST['nexcheck_id']) ? (int)$_POST['nexcheck_id'] : 0;
     $conds   = $_POST['return_cond'] ?? [];
-    if (!is_array($conds)) {
-        $conds = [];
-    }
+    $remarks = $_POST['return_remark'] ?? [];
+    if (!is_array($conds)) $conds = [];
+    if (!is_array($remarks)) $remarks = [];
     if ($postNex < 1 || $postNex !== $nexcheckId) {
         $return_error = 'Invalid request.';
     } else {
         $toProcess = [];
-        foreach ($conds as $aidKey => $text) {
+        foreach ($conds as $aidKey => $choice) {
             $aid = (int)$aidKey;
-            $c   = trim((string)$text);
-            if ($aid < 1 || $c === '' || mb_strlen($c) < 2) {
+            $ch  = strtolower(trim((string)$choice));
+            if ($aid < 1 || $ch === '') {
                 continue;
             }
-            if (mb_strlen($c) > 500) {
-                $c = mb_substr($c, 0, 500);
+            if ($ch === 'good') {
+                $toProcess[$aid] = 'Good condition';
+                continue;
             }
-            $toProcess[$aid] = $c;
+            if ($ch === 'bad') {
+                $toProcess[$aid] = 'Bad condition';
+                continue;
+            }
+            if ($ch === 'other' || $ch === 'others') {
+                $rm = trim((string)($remarks[$aidKey] ?? ''));
+                if (mb_strlen($rm) < 2) {
+                    continue;
+                }
+                if (mb_strlen($rm) > 500) {
+                    $rm = mb_substr($rm, 0, 500);
+                }
+                $toProcess[$aid] = 'Other: ' . $rm;
+                continue;
+            }
         }
         if ($toProcess === []) {
-            $return_error = 'Enter a condition (at least 2 characters) for at least one checkout item to return.';
+            $return_error = 'Select a return condition for at least one checkout item (Others requires a remark).';
         } else {
             try {
                 $pdo = db();
@@ -79,8 +95,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_returns'])) {
                     SET returned_at = NOW(), return_condition = ?, returned_by = ?
                     WHERE assignment_id = ? AND nexcheck_id = ? AND returned_at IS NULL
                 ');
-                $stmtUpL = $pdo->prepare('UPDATE laptop SET status_id = ? WHERE asset_id = ?');
-                $stmtUpV = $pdo->prepare('UPDATE av SET status_id = ? WHERE asset_id = ?');
+                $stmtUpL = $pdo->prepare('UPDATE laptop SET status_id = ?, nextcheck_buffer_since = NOW() WHERE asset_id = ?');
+                $stmtUpV = $pdo->prepare('UPDATE av SET status_id = ?, nextcheck_buffer_since = NOW() WHERE asset_id = ?');
                 foreach ($toProcess as $assignId => $condText) {
                     $stmtLock->execute([$assignId]);
                     $row = $stmtLock->fetch(PDO::FETCH_ASSOC);
@@ -156,8 +172,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_assignments'])) 
                 $stmtLaptop    = $pdo->prepare('SELECT asset_id, status_id FROM laptop WHERE asset_id = ? FOR UPDATE');
                 $stmtAv        = $pdo->prepare('SELECT asset_id, status_id FROM av WHERE asset_id = ? FOR UPDATE');
                 $stmtIns       = $pdo->prepare('INSERT INTO nexcheck_assignment (nexcheck_id, request_item_id, asset_id, assigned_by, assigned_at, checkout_at) VALUES (?, ?, ?, ?, NOW(), NOW())');
-                $stmtUpL       = $pdo->prepare('UPDATE laptop SET status_id = ? WHERE asset_id = ?');
-                $stmtUpV       = $pdo->prepare('UPDATE av SET status_id = ? WHERE asset_id = ?');
+                $stmtUpL       = $pdo->prepare('UPDATE laptop SET status_id = ?, nextcheck_buffer_since = NULL WHERE asset_id = ?');
+                $stmtUpV       = $pdo->prepare('UPDATE av SET status_id = ?, nextcheck_buffer_since = NULL WHERE asset_id = ?');
                 foreach ($pairs as $requestItemId => $assetId) {
                     $stmtItem->execute([$requestItemId]);
                     $itemRow = $stmtItem->fetch(PDO::FETCH_ASSOC);
@@ -187,9 +203,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_assignments'])) 
                 exit;
             } catch (Throwable $e) {
                 if (isset($pdo) && $pdo->inTransaction()) { $pdo->rollBack(); }
-                $form_error = ($e instanceof PDOException && $e->getCode() === '23000')
-                    ? 'Duplicate assignment or constraint conflict.'
-                    : $e->getMessage();
+                if ($e instanceof PDOException && $e->getCode() === '23000') {
+                    $em = $e->getMessage();
+                    $form_error = (stripos($em, '1452') !== false || stripos($em, 'foreign key') !== false)
+                        ? 'Assignment blocked by database rules (AV vs laptop). Run db/migrate_nexcheck_assignment_allow_av.sql on the server, then try again.'
+                        : 'Duplicate assignment or constraint conflict.';
+                } else {
+                    $form_error = $e->getMessage();
+                }
             }
         }
     }
@@ -294,42 +315,48 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
     <link rel="icon" type="image/png" href="../public/rcmp.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <style>
         :root {
-            --primary: #2563eb;
-            --primary-light: #3b82f6;
-            --primary-dark: #1d4ed8;
-            --secondary: #0ea5e9;
-            --bg: #f1f5f9;
-            --card-bg: #fff;
-            --card-border: #e2e8f0;
-            --text-main: #0f172a;
-            --text-muted: #64748b;
-            --glass: #f8fafc;
-            --success: #10b981;
-            --danger: #dc2626;
-            --warning: #f59e0b;
+            --primary: #1a1a2e;
+            --accent: #2f5bea;
+            --accent-light: rgba(47,91,234,0.08);
+            --bg: #f5f5f7;
+            --card-bg: #ffffff;
+            --card-border: #e8e8ed;
+            --text-main: #1a1a1a;
+            --text-muted: #8a8a9a;
+            --text-sub: #5a5a6e;
+            --success: #1c9e6e;
+            --success-bg: rgba(28,158,110,0.07);
+            --success-border: rgba(28,158,110,0.18);
+            --danger: #c0392b;
+            --danger-bg: rgba(192,57,43,0.06);
+            --danger-border: rgba(192,57,43,0.18);
+            --warning: #c07a00;
+            --warning-bg: rgba(192,122,0,0.07);
+            --purple: #5b4fcf;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'DM Sans', sans-serif;
             background: var(--bg);
             color: var(--text-main);
             min-height: 100vh;
             display: flex;
             overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
         }
 
         .main-content {
             margin-left: 280px;
             flex: 1;
-            padding: 2rem 2.5rem 3rem;
+            padding: 2.5rem 3rem 4rem;
             max-width: calc(100vw - 280px);
         }
         @media (max-width: 900px) {
-            .main-content { margin-left: 0; max-width: 100vw; padding: 1.25rem 1rem 2.5rem; }
+            .main-content { margin-left: 0; max-width: 100vw; padding: 1.5rem 1.25rem 3rem; }
         }
 
         /* ── Page header ── */
@@ -339,109 +366,110 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
             justify-content: space-between;
             gap: 1rem;
             flex-wrap: wrap;
-            margin-bottom: 1.75rem;
+            margin-bottom: 2rem;
         }
         .page-header h1 {
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.65rem;
-            font-weight: 800;
-            letter-spacing: -0.03em;
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: var(--text-main);
             display: flex;
             align-items: center;
             gap: 0.6rem;
             flex-wrap: wrap;
         }
+        .page-header h1 i { color: var(--accent); font-size: 1.3rem; }
         .request-badge {
-            font-size: 0.95rem;
-            font-weight: 700;
-            padding: 0.2rem 0.65rem;
-            background: rgba(37,99,235,0.1);
-            border: 1px solid rgba(37,99,235,0.2);
-            border-radius: 8px;
-            color: var(--primary);
-            letter-spacing: 0;
+            font-size: 0.78rem;
+            font-weight: 600;
+            padding: 0.18rem 0.6rem;
+            background: var(--accent-light);
+            border: 1px solid rgba(47,91,234,0.18);
+            border-radius: 6px;
+            color: var(--accent);
+            font-family: 'DM Mono', monospace;
+            letter-spacing: 0.01em;
         }
-        .page-header p { color: var(--text-muted); margin-top: 0.4rem; font-size: 0.88rem; line-height: 1.5; max-width: 560px; }
+        .page-header p { color: var(--text-muted); margin-top: 0.5rem; font-size: 0.875rem; line-height: 1.6; max-width: 520px; }
         .btn-ghost {
             display: inline-flex;
             align-items: center;
-            gap: 0.45rem;
-            padding: 0.65rem 1.1rem;
-            border-radius: 12px;
-            border: 1.5px solid var(--card-border);
+            gap: 0.4rem;
+            padding: 0.55rem 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
             background: var(--card-bg);
-            color: var(--text-muted);
-            font-weight: 700;
-            font-size: 0.88rem;
+            color: var(--text-sub);
+            font-weight: 500;
+            font-size: 0.85rem;
             cursor: pointer;
             text-decoration: none;
-            font-family: 'Outfit', sans-serif;
-            transition: all 0.2s;
+            transition: all 0.15s ease;
             white-space: nowrap;
         }
-        .btn-ghost:hover { color: var(--primary); border-color: rgba(37,99,235,0.3); }
+        .btn-ghost:hover { color: var(--accent); border-color: rgba(47,91,234,0.25); background: var(--accent-light); }
 
         /* ── Banners ── */
         .banner {
             display: flex;
             align-items: flex-start;
             gap: 0.65rem;
-            padding: 0.9rem 1.1rem;
-            border-radius: 14px;
-            margin-bottom: 1.25rem;
-            font-size: 0.9rem;
-            line-height: 1.45;
-            font-weight: 500;
+            padding: 0.85rem 1rem;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            font-weight: 400;
         }
-        .banner i { font-size: 1.15rem; flex-shrink: 0; margin-top: 0.05rem; }
-        .banner-error   { background: rgba(239,68,68,0.08);  border: 1px solid rgba(239,68,68,0.22);  color: #b91c1c; }
-        .banner-success { background: rgba(16,185,129,0.1);  border: 1px solid rgba(16,185,129,0.28); color: #047857; }
+        .banner i { font-size: 1rem; flex-shrink: 0; margin-top: 0.1rem; }
+        .banner strong { font-weight: 600; }
+        .banner-error   { background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger); }
+        .banner-success { background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success); }
 
         /* ── Progress bar ── */
         .progress-wrap {
             background: var(--card-bg);
             border: 1px solid var(--card-border);
-            border-radius: 18px;
+            border-radius: 12px;
             padding: 1.1rem 1.5rem;
             margin-bottom: 1.5rem;
             display: flex;
             align-items: center;
-            gap: 1.25rem;
+            gap: 1.5rem;
             flex-wrap: wrap;
-            box-shadow: 0 2px 10px rgba(15,23,42,0.05);
         }
-        .progress-stat { display: flex; flex-direction: column; align-items: center; min-width: 56px; }
+        .progress-stat { display: flex; flex-direction: column; align-items: center; min-width: 48px; }
         .ps-num {
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.55rem;
-            font-weight: 800;
+            font-size: 1.6rem;
+            font-weight: 600;
             line-height: 1;
+            letter-spacing: -0.03em;
         }
         .ps-label {
-            font-size: 0.67rem;
-            font-weight: 700;
+            font-size: 0.65rem;
+            font-weight: 500;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.08em;
             color: var(--text-muted);
-            margin-top: 0.2rem;
+            margin-top: 0.25rem;
         }
-        .ps-num.c-total { color: var(--primary); }
+        .ps-num.c-total { color: var(--text-main); }
         .ps-num.c-done  { color: var(--success); }
         .ps-num.c-need  { color: var(--warning); }
-        .ps-num.c-return { color: #7c3aed; }
-        .divider-v { width: 1px; height: 38px; background: var(--card-border); flex-shrink: 0; }
-        .progress-bar-wrap { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 0.4rem; }
-        .progress-bar-track { height: 8px; border-radius: 99px; background: var(--card-border); overflow: hidden; }
-        .progress-bar-fill  { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--success), #34d399); transition: width 0.6s cubic-bezier(.4,0,.2,1); }
-        .progress-bar-label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); }
+        .ps-num.c-return { color: var(--purple); }
+        .divider-v { width: 1px; height: 32px; background: var(--card-border); flex-shrink: 0; }
+        .progress-bar-wrap { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 0.45rem; }
+        .progress-bar-track { height: 4px; border-radius: 99px; background: var(--card-border); overflow: hidden; }
+        .progress-bar-fill { height: 100%; border-radius: 99px; background: var(--success); transition: width 0.5s ease; }
+        .progress-bar-label { font-size: 0.75rem; font-weight: 500; color: var(--text-muted); }
 
         /* ── Info grid ── */
         .grid-2 {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 1.25rem;
+            gap: 1rem;
             align-items: start;
-            margin-bottom: 1.25rem;
+            margin-bottom: 1rem;
         }
         @media (max-width: 960px) { .grid-2 { grid-template-columns: 1fr; } }
 
@@ -449,161 +477,160 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
         .card {
             background: var(--card-bg);
             border: 1px solid var(--card-border);
-            border-radius: 20px;
-            box-shadow: 0 2px 12px rgba(15,23,42,0.06);
+            border-radius: 12px;
             overflow: hidden;
         }
         .card-hd {
-            padding: 1rem 1.4rem;
+            padding: 0.85rem 1.25rem;
             border-bottom: 1px solid var(--card-border);
-            font-weight: 800;
-            font-family: 'Outfit', sans-serif;
-            font-size: 0.95rem;
+            font-weight: 600;
+            font-size: 0.875rem;
             display: flex;
             align-items: center;
-            gap: 0.55rem;
-            background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+            gap: 0.5rem;
+            color: var(--text-main);
         }
-        .card-hd i { color: var(--primary); font-size: 1.05rem; }
-        .card-hd .hd-extra { margin-left: auto; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); font-family: 'Inter', sans-serif; }
-        .card-bd { padding: 1.25rem 1.4rem; }
+        .card-hd i { color: var(--accent); font-size: 1rem; }
+        .card-hd .hd-extra { margin-left: auto; font-size: 0.75rem; font-weight: 500; color: var(--text-muted); }
+        .card-bd { padding: 1.1rem 1.25rem; }
 
         /* ── Meta grid ── */
-        .meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 0.65rem; }
+        .meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.5rem; }
         .meta-cell {
-            background: var(--glass);
+            background: var(--bg);
             border: 1px solid var(--card-border);
-            border-radius: 12px;
-            padding: 0.65rem 0.9rem;
+            border-radius: 8px;
+            padding: 0.6rem 0.85rem;
         }
         .meta-cell.full { grid-column: 1 / -1; }
-        .meta-cell dt { font-size: 0.66rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 0.2rem; }
-        .meta-cell dd { font-weight: 600; font-size: 0.88rem; color: var(--text-main); word-break: break-word; }
+        .meta-cell dt { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 0.25rem; }
+        .meta-cell dd { font-weight: 500; font-size: 0.875rem; color: var(--text-main); word-break: break-word; }
         .reason-box {
-            margin-top: 0.75rem;
-            padding: 0.8rem 1rem;
-            background: var(--glass);
-            border-radius: 12px;
+            margin-top: 0.65rem;
+            padding: 0.75rem 0.9rem;
+            background: var(--bg);
+            border-radius: 8px;
             border: 1px solid var(--card-border);
             font-size: 0.85rem;
             line-height: 1.6;
+            color: var(--text-sub);
         }
-        .reason-label { font-size: 0.66rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); display: block; margin-bottom: 0.4rem; }
+        .reason-label { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); display: block; margin-bottom: 0.35rem; }
 
         /* ── Pool card ── */
         .pool-pill {
             display: inline-flex;
             align-items: center;
-            gap: 0.4rem;
-            padding: 0.35rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 700;
+            gap: 0.35rem;
+            padding: 0.25rem 0.65rem;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 500;
         }
-        .pool-pill.ok   { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); color: #047857; }
-        .pool-pill.warn { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3);  color: #92400e; }
+        .pool-pill.ok   { background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success); }
+        .pool-pill.warn { background: var(--warning-bg); border: 1px solid rgba(192,122,0,0.2); color: var(--warning); }
         .pool-preview-item {
             display: flex;
             align-items: center;
             gap: 0.5rem;
             font-size: 0.8rem;
-            padding: 0.35rem 0.65rem;
-            background: var(--glass);
+            padding: 0.3rem 0.6rem;
+            background: var(--bg);
             border: 1px solid var(--card-border);
-            border-radius: 8px;
+            border-radius: 6px;
+            color: var(--text-sub);
         }
 
         /* ── Line items table ── */
         .tbl-header {
             display: grid;
-            grid-template-columns: 2.25rem 1.1fr 1.8fr 6rem;
+            grid-template-columns: 2rem 1.1fr 1.8fr 6rem;
             gap: 1rem;
-            padding: 0.6rem 1.4rem;
-            background: var(--glass);
+            padding: 0.55rem 1.25rem;
+            background: var(--bg);
             border-bottom: 1px solid var(--card-border);
         }
-        .tbl-header span { font-size: 0.66rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+        .tbl-header span { font-size: 0.63rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
         @media (max-width: 700px) { .tbl-header { display: none; } }
 
         .line-row {
             display: grid;
-            grid-template-columns: 2.25rem 1.1fr 1.8fr 6rem;
+            grid-template-columns: 2rem 1.1fr 1.8fr 6rem;
             align-items: center;
             gap: 1rem;
-            padding: 1rem 1.4rem;
+            padding: 1rem 1.25rem;
             border-bottom: 1px solid var(--card-border);
-            transition: background 0.15s;
+            transition: background 0.1s;
         }
         .line-row:last-child { border-bottom: none; }
-        .line-row:hover { background: #fafbff; }
-        @media (max-width: 700px) { .line-row { grid-template-columns: 1fr; gap: 0.65rem; } }
+        .line-row:hover { background: #fafafa; }
+        @media (max-width: 700px) { .line-row { grid-template-columns: 1fr; gap: 0.6rem; } }
 
         .row-num {
-            width: 2rem; height: 2rem;
-            border-radius: 50%;
-            background: rgba(37,99,235,0.08);
-            border: 1.5px solid rgba(37,99,235,0.18);
-            color: var(--primary);
+            width: 1.75rem; height: 1.75rem;
+            border-radius: 6px;
+            background: var(--accent-light);
+            color: var(--accent);
             display: flex; align-items: center; justify-content: center;
-            font-family: 'Outfit', sans-serif;
-            font-weight: 800;
-            font-size: 0.8rem;
+            font-weight: 600;
+            font-size: 0.78rem;
             flex-shrink: 0;
+            font-family: 'DM Mono', monospace;
         }
-        .item-cat-name { font-weight: 700; font-size: 0.9rem; }
-        .item-cat-sub  { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.1rem; }
+        .item-cat-name { font-weight: 500; font-size: 0.875rem; }
+        .item-cat-sub  { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.1rem; font-family: 'DM Mono', monospace; }
 
         .assigned-pill {
             display: inline-flex;
             align-items: center;
-            gap: 0.45rem;
-            padding: 0.45rem 0.85rem;
-            border-radius: 10px;
-            background: rgba(16,185,129,0.09);
-            border: 1px solid rgba(16,185,129,0.28);
-            color: #047857;
-            font-weight: 700;
-            font-size: 0.82rem;
+            gap: 0.4rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 7px;
+            background: var(--success-bg);
+            border: 1px solid var(--success-border);
+            color: var(--success);
+            font-weight: 500;
+            font-size: 0.8rem;
             flex-wrap: wrap;
         }
-        .ap-serial { font-weight: 500; opacity: 0.8; font-size: 0.76rem; }
+        .ap-serial { font-weight: 400; opacity: 0.75; font-size: 0.75rem; font-family: 'DM Mono', monospace; }
 
         .asset-select-wrap { width: 100%; max-width: 22rem; }
         .asset-select {
             width: 100%;
-            padding: 0.6rem 2rem 0.6rem 0.9rem;
-            border-radius: 12px;
-            border: 1.5px solid var(--card-border);
-            font-family: inherit;
-            font-size: 0.86rem;
-            font-weight: 500;
-            background: #fff;
+            padding: 0.55rem 2rem 0.55rem 0.85rem;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 400;
+            background: var(--card-bg);
             color: var(--text-main);
             cursor: pointer;
             appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238a8a9a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
             background-repeat: no-repeat;
             background-position: right 0.65rem center;
-            transition: border-color 0.2s, box-shadow 0.2s;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
         .asset-select:focus {
             outline: none;
-            border-color: rgba(37,99,235,0.5);
-            box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(47,91,234,0.1);
         }
         .asset-select option:disabled { color: var(--text-muted); }
-        .asset-select-hint { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.35rem; display: flex; align-items: center; gap: 0.3rem; }
+        .asset-select-hint { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.3rem; display: flex; align-items: center; gap: 0.3rem; }
 
         /* Status badge */
         .status-badge {
             display: inline-flex;
             align-items: center;
-            gap: 0.35rem;
+            gap: 0.3rem;
             font-size: 0.75rem;
-            font-weight: 700;
+            font-weight: 500;
             white-space: nowrap;
         }
-        .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+        .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
         .dot.green { background: var(--success); }
         .dot.amber { background: var(--warning); }
 
@@ -612,29 +639,30 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
             display: flex;
             align-items: center;
             gap: 1rem;
-            padding: 1rem 1.4rem;
+            padding: 0.9rem 1.25rem;
             border-top: 1px solid var(--card-border);
-            background: var(--glass);
+            background: var(--bg);
             flex-wrap: wrap;
         }
         .btn-primary {
             display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0.75rem 1.4rem;
+            gap: 0.45rem;
+            padding: 0.6rem 1.25rem;
             border: none;
-            border-radius: 12px;
-            background: linear-gradient(135deg, #021A54, #1e40af);
+            border-radius: 8px;
+            background: var(--accent);
             color: #fff;
-            font-weight: 800;
-            font-family: 'Outfit', sans-serif;
-            font-size: 0.92rem;
+            font-weight: 600;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.875rem;
             cursor: pointer;
-            box-shadow: 0 4px 14px rgba(2,26,84,0.25);
-            transition: all 0.2s;
+            transition: all 0.15s ease;
+            letter-spacing: -0.01em;
         }
-        .btn-primary:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
-        .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; transform: none; }
+        .btn-primary:hover:not(:disabled) { background: #2448d4; }
+        .btn-primary:active:not(:disabled) { transform: scale(0.99); }
+        .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
         .footer-note { font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; }
 
         #nexcheck-return { scroll-margin-top: 1rem; }
@@ -643,30 +671,33 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
             grid-template-columns: 1fr minmax(180px, 1.2fr);
             gap: 1rem;
             align-items: start;
-            padding: 1rem 1.4rem;
+            padding: 1rem 1.25rem;
             border-bottom: 1px solid var(--card-border);
         }
         .return-row:last-of-type { border-bottom: none; }
         @media (max-width: 700px) { .return-row { grid-template-columns: 1fr; } }
-        .return-asset-label { font-weight: 700; font-size: 0.88rem; }
-        .return-asset-sub { font-size: 0.76rem; color: var(--text-muted); margin-top: 0.25rem; }
+        .return-asset-label { font-weight: 500; font-size: 0.875rem; }
+        .return-asset-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; font-family: 'DM Mono', monospace; }
         .cond-input {
             width: 100%;
             min-height: 4rem;
-            padding: 0.65rem 0.85rem;
-            border-radius: 10px;
-            border: 1.5px solid var(--card-border);
-            font-family: inherit;
-            font-size: 0.84rem;
+            padding: 0.6rem 0.8rem;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.85rem;
             resize: vertical;
+            color: var(--text-main);
+            background: var(--card-bg);
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
         .cond-input:focus {
             outline: none;
-            border-color: rgba(37,99,235,0.45);
-            box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(47,91,234,0.1);
         }
         .status-badge.returned { color: #0369a1; }
-        .status-badge.checkout { color: #7c3aed; }
+        .status-badge.checkout { color: var(--purple); }
     </style>
 </head>
 <body>
@@ -707,7 +738,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
     <?php if ($return_ok): ?>
         <div class="banner banner-success">
             <i class="ri-checkbox-circle-line"></i>
-            <div><strong>Return recorded.</strong> Asset(s) are back in pool (status <?= NEXCHECK_RETURN_TO_STATUS ?>).</div>
+            <div><strong>Return recorded.</strong> Asset(s) are in buffer (status <?= NEXCHECK_BUFFER_STATUS ?>); after 24 hours they return to pool (<?= NEXCHECK_POOL_STATUS ?>) automatically if the cron job is scheduled.</div>
         </div>
     <?php endif; ?>
     <?php if ($return_error !== ''): ?>
@@ -804,16 +835,16 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                 <p style="font-size:0.82rem;color:var(--text-muted);line-height:1.55;margin-bottom:0.85rem">
                     Only <strong>pool (<?= NEXCHECK_POOL_STATUS ?>)</strong> laptop and AV assets appear in each line’s dropdown (matched to the line type).
                     <?php if (count($pool) === 0): ?>
-                        <a href="nextAdd.php" style="color:var(--primary);font-weight:700">Add stock →</a>
+                        <a href="nextAdd.php" style="color:var(--primary);font-weight:600">Add stock →</a>
                     <?php endif; ?>
                 </p>
                 <?php if (count($pool) > 0): ?>
-                    <div style="font-size:0.67rem;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:0.5rem">Pool preview</div>
+                    <div style="font-size:0.67rem;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:0.5rem">Pool preview</div>
                     <div style="display:flex;flex-direction:column;gap:0.35rem;max-height:155px;overflow-y:auto">
                         <?php foreach (array_slice($pool, 0, 7) as $p): ?>
                         <div class="pool-preview-item">
                             <i class="<?= ($p['asset_class'] ?? '') === 'av' ? 'ri-film-line' : 'ri-laptop-line' ?>" style="color:<?= ($p['asset_class'] ?? '') === 'av' ? 'var(--warning)' : 'var(--primary)' ?>;font-size:0.9rem;flex-shrink:0"></i>
-                            <span style="font-weight:700">#<?= (int)$p['asset_id'] ?></span>
+                            <span style="font-weight:600">#<?= (int)$p['asset_id'] ?></span>
                             <span style="color:var(--text-muted);font-size:0.78rem"><?= htmlspecialchars(trim((string)$p['brand'] . ' ' . (string)$p['model'])) ?></span>
                         </div>
                         <?php endforeach; ?>
@@ -917,9 +948,9 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                     <?php elseif ($hasA && $assetSid === NEXCHECK_RETURN_FROM_STATUS): ?>
                         <span class="status-badge checkout"><span class="dot" style="background:#8b5cf6"></span>Checkout (<?= NEXCHECK_RETURN_FROM_STATUS ?>)</span>
                     <?php elseif ($hasA): ?>
-                        <span class="status-badge" style="color:#047857"><span class="dot green"></span>Assigned</span>
+                        <span class="status-badge" style="color:var(--success)"><span class="dot green"></span>Assigned</span>
                     <?php else: ?>
-                        <span class="status-badge" style="color:#92400e"><span class="dot amber"></span>Pending</span>
+                        <span class="status-badge" style="color:var(--warning)"><span class="dot amber"></span>Pending</span>
                     <?php endif; ?>
                 </div>
             </div>
@@ -928,7 +959,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
             <!-- Footer action -->
             <?php if ($allDone): ?>
                 <div class="form-footer">
-                    <span style="display:inline-flex;align-items:center;gap:0.5rem;font-size:0.88rem;font-weight:700;color:#047857">
+                    <span style="display:inline-flex;align-items:center;gap:0.5rem;font-size:0.88rem;font-weight:600;color:var(--success)">
                         <i class="ri-check-double-line" style="font-size:1.1rem"></i>
                         All lines are assigned — nothing left to save.
                     </span>
@@ -940,8 +971,8 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                     </button>
                     <p class="footer-note">
                         <?php if (count($pool) === 0): ?>
-                            <strong style="color:#b45309"><i class="ri-alert-line"></i> No assets in pool.</strong>
-                            <a href="nextAdd.php" style="color:var(--primary);font-weight:700">Add items first →</a>
+                            <strong style="color:var(--warning)"><i class="ri-alert-line"></i> No assets in pool.</strong>
+                            <a href="nextAdd.php" style="color:var(--primary);font-weight:600">Add items first →</a>
                         <?php else: ?>
                             Choose an asset for each pending row (type must match the line). Only rows with a selection are processed.
                         <?php endif; ?>
@@ -958,7 +989,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
             <span class="hd-extra"><?= $returnableCount ?> in checkout</span>
         </div>
         <p style="padding:0.85rem 1.4rem 0;font-size:0.84rem;color:var(--text-muted);line-height:1.5">
-            Items still in status <strong><?= NEXCHECK_RETURN_FROM_STATUS ?></strong> (checkout). Describe condition, then save — assets go back to pool (<strong><?= NEXCHECK_RETURN_TO_STATUS ?></strong>) in laptop or AV inventory as applicable.
+            Items still in status <strong><?= NEXCHECK_RETURN_FROM_STATUS ?></strong> (checkout). Describe condition, then save — assets go to buffer (<strong><?= NEXCHECK_RETURN_TO_STATUS ?></strong>), then pool (<strong><?= NEXCHECK_POOL_STATUS ?></strong>) after 24h via cron.
         </p>
         <form method="post" action="">
             <input type="hidden" name="save_returns" value="1">
@@ -980,7 +1011,13 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                 </div>
                 <div>
                     <label class="item-cat-sub" for="rc-<?= $aid ?>" style="display:block;margin-bottom:0.35rem">Condition at return</label>
-                    <textarea class="cond-input" id="rc-<?= $aid ?>" name="return_cond[<?= $aid ?>]" placeholder="e.g. Good, all accessories present; or note any damage…" maxlength="500"></textarea>
+                    <select class="asset-select" id="rc-<?= $aid ?>" name="return_cond[<?= $aid ?>]" data-return-cond="1" data-remark-id="rr-<?= $aid ?>">
+                        <option value="">— Select —</option>
+                        <option value="good">Good condition</option>
+                        <option value="bad">Bad condition</option>
+                        <option value="other">Others</option>
+                    </select>
+                    <textarea class="cond-input" id="rr-<?= $aid ?>" name="return_remark[<?= $aid ?>]" placeholder="Remark (Others only)..." maxlength="500" style="display:none;margin-top:0.5rem"></textarea>
                 </div>
             </div>
             <?php endforeach; ?>
@@ -1021,6 +1058,23 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
         s.addEventListener('change', syncAssignDropdowns);
     });
     syncAssignDropdowns();
+
+    function syncReturnRemarks() {
+        document.querySelectorAll('select[data-return-cond]').forEach(function (sel) {
+            var rid = sel.getAttribute('data-remark-id');
+            if (!rid) return;
+            var ta = document.getElementById(rid);
+            if (!ta) return;
+            var v = String(sel.value || '').toLowerCase();
+            var show = v === 'other' || v === 'others';
+            ta.style.display = show ? 'block' : 'none';
+            if (!show) ta.value = '';
+        });
+    }
+    document.querySelectorAll('select[data-return-cond]').forEach(function (s) {
+        s.addEventListener('change', syncReturnRemarks);
+    });
+    syncReturnRemarks();
 })();
 </script>
 </body>
