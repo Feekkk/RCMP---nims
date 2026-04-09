@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS status (
 );
 
 INSERT IGNORE INTO status (status_id, name) VALUES (1, 'Active'), (2, 'Non-active'), (3, 'Deploy'), (4, 'Reserved'), (5, 'Maintenance'), (6, 'Faulty'), 
-(7, 'Disposed'), (8, 'Lost'), (9, 'Online'), (10, 'Offline'), (11, 'Active (nextcheck)'), (12, 'Pending (nextcheck)'), (13, 'Checkout (nextcheck)');
+(7, 'Disposed'), (8, 'Lost'), (9, 'Online'), (10, 'Offline'), (11, 'Active (nextcheck)'), (12, 'Pending (nextcheck)'), (13, 'Checkout (nextcheck)'), (14, 'Buffer (nextcheck)');
 
 CREATE TABLE IF NOT EXISTS laptop (
     `asset_id` INT(11) NOT NULL,
