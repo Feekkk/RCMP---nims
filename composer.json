@@ -2,7 +2,8 @@
     "name": "620820/nims",
     "require": {
         "tecnickcom/tcpdf": "^6.11",
-        "nnnick/chartjs": "^4.5"
+        "nnnick/chartjs": "^4.5",
+        "fullcalendar/fullcalendar": "*"
     },
     "autoload": {
         "psr-4": {
@@ -14,5 +15,12 @@
             "name": "Feekkk",
             "email": "zxduke350@gmail.com"
         }
-    ]
+    ],
+    "config": {
+        "allow-plugins": {
+            "composer/installers": true,
+            "robloach/component-installer": true,
+            "oomphinc/composer-installers-extender": true
+        }
+    }
 }
