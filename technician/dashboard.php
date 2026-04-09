@@ -37,6 +37,7 @@ $chartRepairsTrend = ['labels' => [], 'data' => []];
 $recentRows = [];
 $alertOffline = [];
 $alertWarranties = [];
+$nexcheckEvents = [];
 
 try {
     $pdo = db();
@@ -174,11 +175,41 @@ try {
          ORDER BY warranty_end_date ASC
          LIMIT 8'
     )->fetchAll(PDO::FETCH_ASSOC);
+
+    // NextCheck calendar events (borrow/return window)
+    $stmtNc = $pdo->prepare(
+        'SELECT r.nexcheck_id, r.borrow_date, r.return_date, r.usage_location, u.full_name AS requester_name
+         FROM nexcheck_request r
+         JOIN users u ON u.staff_id = r.requested_by
+         WHERE r.return_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+           AND r.borrow_date <= DATE_ADD(CURDATE(), INTERVAL 120 DAY)
+         ORDER BY r.borrow_date ASC, r.nexcheck_id DESC
+         LIMIT 300'
+    );
+    $stmtNc->execute();
+    foreach ($stmtNc->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $nid = (int)($r['nexcheck_id'] ?? 0);
+        $bd  = (string)($r['borrow_date'] ?? '');
+        $rd  = (string)($r['return_date'] ?? '');
+        if ($nid < 1 || $bd === '' || $rd === '') continue;
+        $title = '#' . $nid . ' ' . trim((string)($r['requester_name'] ?? ''));
+        $loc = trim((string)($r['usage_location'] ?? ''));
+        if ($loc !== '') $title .= ' — ' . $loc;
+        $nexcheckEvents[] = [
+            'title' => $title,
+            'start' => $bd,
+            // FullCalendar v3: end is exclusive for all-day ranges.
+            'end'   => (new DateTimeImmutable($rd))->modify('+1 day')->format('Y-m-d'),
+            'allDay' => true,
+            'url'   => 'nextItems.php?nexcheck_id=' . $nid,
+        ];
+    }
 } catch (Throwable $e) {
     $dbError = true;
     $recentRows = [];
     $alertOffline = [];
     $alertWarranties = [];
+    $nexcheckEvents = [];
 }
 
 $firstName = isset($_SESSION['user_name']) ? explode(' ', (string) $_SESSION['user_name'])[0] : 'Technician';
@@ -194,339 +225,463 @@ $chartJsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_U
     <link rel="icon" type="image/png" href="../public/rcmp.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="../vendor/fullcalendar/fullcalendar/dist/fullcalendar.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.30.1/min/moment.min.js"></script>
+    <script src="../vendor/fullcalendar/fullcalendar/dist/fullcalendar.min.js"></script>
     <style>
         :root {
-            --primary: #2563eb;
-            --primary-hover: #1d4ed8;
-            --secondary: #0ea5e9;
-            --success: #10b981;
-            --danger: #ef4444;
-            --warning: #f59e0b;
-            --bg: #f1f5f9;
+            --primary: #1a1a2e;
+            --accent: #3b5bdb;
+            --accent-soft: rgba(59, 91, 219, 0.08);
+            --accent-border: rgba(59, 91, 219, 0.18);
+            --success: #2f9e44;
+            --danger: #c92a2a;
+            --warning: #e67700;
+            --bg: #f7f7f8;
             --card-bg: #ffffff;
-            --card-border: #e2e8f0;
-            --text-main: #0f172a;
-            --text-muted: #64748b;
-            --glass: #f8fafc;
+            --card-border: #e8e8ec;
+            --text-main: #111118;
+            --text-muted: #6b6b7b;
+            --text-faint: #a0a0b0;
+            --divider: #ebebef;
+            --radius: 10px;
+            --radius-sm: 6px;
         }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'DM Sans', sans-serif;
             background: var(--bg);
             color: var(--text-main);
             display: flex;
             min-height: 100vh;
             overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
         }
+
         .main-content {
             margin-left: 280px;
             flex: 1;
-            padding: 2.5rem 3rem 4rem;
+            padding: 2.75rem 3rem 5rem;
             max-width: calc(100vw - 280px);
         }
+
+        /* ── Topbar ── */
         .topbar {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
             gap: 1.5rem;
-            margin-bottom: 2rem;
+            margin-bottom: 2.5rem;
             flex-wrap: wrap;
         }
+
         .greeting h1 {
-            font-family: 'Outfit', sans-serif;
-            font-size: 2rem;
-            font-weight: 800;
-            letter-spacing: -0.03em;
+            font-size: 1.6rem;
+            font-weight: 600;
+            letter-spacing: -0.025em;
             color: var(--text-main);
+            line-height: 1.2;
         }
+
         .greeting p {
             color: var(--text-muted);
-            margin-top: 0.35rem;
-            font-size: 0.98rem;
-            max-width: 36rem;
-            line-height: 1.5;
+            margin-top: 0.4rem;
+            font-size: 0.9rem;
+            max-width: 38rem;
+            line-height: 1.55;
+            font-weight: 400;
         }
+
         .actions {
             display: flex;
-            gap: 0.65rem;
+            gap: 0.5rem;
             align-items: center;
             flex-wrap: wrap;
         }
+
         .header-icon-btn {
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius-sm);
             background: var(--card-bg);
             border: 1px solid var(--card-border);
             color: var(--text-muted);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all 0.15s ease;
             position: relative;
         }
+
         .header-icon-btn:hover {
-            color: var(--primary);
-            border-color: rgba(37, 99, 235, 0.3);
-            background: rgba(37, 99, 235, 0.06);
+            color: var(--accent);
+            border-color: var(--accent-border);
+            background: var(--accent-soft);
         }
+
         .notification-dot {
             position: absolute;
-            top: 10px;
-            right: 11px;
-            width: 8px;
-            height: 8px;
+            top: 9px;
+            right: 9px;
+            width: 6px;
+            height: 6px;
             background: var(--danger);
             border-radius: 50%;
+            border: 1.5px solid var(--card-bg);
         }
+
         .btn {
-            padding: 0.72rem 1.25rem;
-            border-radius: 12px;
-            font-family: 'Outfit', sans-serif;
-            font-weight: 700;
-            font-size: 0.92rem;
+            padding: 0.6rem 1.15rem;
+            border-radius: var(--radius-sm);
+            font-family: 'DM Sans', sans-serif;
+            font-weight: 500;
+            font-size: 0.875rem;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all 0.15s ease;
             text-decoration: none;
             display: inline-flex;
             align-items: center;
-            gap: 0.45rem;
+            gap: 0.4rem;
             border: none;
+            letter-spacing: -0.01em;
         }
+
         .btn-primary {
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            background: var(--accent);
             color: #fff;
-            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.28);
         }
+
         .btn-primary:hover {
-            transform: translateY(-1px);
-            filter: brightness(1.05);
+            background: #2f4cc5;
         }
+
+        /* ── Stats ── */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 1.15rem;
-            margin-bottom: 1.75rem;
+            gap: 1px;
+            margin-bottom: 2rem;
+            background: var(--card-border);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            overflow: hidden;
         }
+
         .stat-card {
             background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 16px;
-            padding: 1.25rem 1.35rem;
+            padding: 1.5rem 1.6rem;
             display: flex;
-            align-items: center;
-            gap: 1rem;
-            box-shadow: 0 2px 12px rgba(15, 23, 42, 0.05);
-            transition: border-color 0.2s, box-shadow 0.2s;
+            flex-direction: column;
+            gap: 0.85rem;
+            transition: background 0.15s;
         }
-        .stat-card:hover {
-            border-color: rgba(37, 99, 235, 0.2);
-            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.08);
-        }
+
+        .stat-card:hover { background: #fafafc; }
+
         .stat-icon {
-            width: 52px;
-            height: 52px;
-            border-radius: 14px;
+            width: 36px;
+            height: 36px;
+            border-radius: var(--radius-sm);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.45rem;
+            font-size: 1.1rem;
             flex-shrink: 0;
         }
-        .icon-blue { background: rgba(37, 99, 235, 0.12); color: var(--primary); border: 1px solid rgba(37, 99, 235, 0.22); }
-        .icon-amber { background: rgba(245, 158, 11, 0.12); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.25); }
-        .icon-green { background: rgba(16, 185, 129, 0.12); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.22); }
-        .icon-red { background: rgba(239, 68, 68, 0.12); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.22); }
-        .stat-body { min-width: 0; flex: 1; }
+
+        .icon-blue  { background: var(--accent-soft);              color: var(--accent);   }
+        .icon-amber { background: rgba(230, 119, 0, 0.08);         color: var(--warning);  }
+        .icon-green { background: rgba(47, 158, 68, 0.09);         color: var(--success);  }
+        .icon-red   { background: rgba(201, 42, 42, 0.08);         color: var(--danger);   }
+
+        .stat-body { min-width: 0; }
+
         .stat-value {
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.75rem;
-            font-weight: 800;
-            letter-spacing: -0.02em;
-            line-height: 1.1;
+            font-family: 'DM Mono', monospace;
+            font-size: 1.9rem;
+            font-weight: 500;
+            letter-spacing: -0.03em;
+            line-height: 1;
+            color: var(--text-main);
         }
+
         .stat-label {
-            font-size: 0.82rem;
+            font-size: 0.78rem;
             color: var(--text-muted);
-            font-weight: 600;
-            margin-top: 0.2rem;
+            font-weight: 400;
+            margin-top: 0.3rem;
+            letter-spacing: 0.01em;
         }
+
+        /* ── Charts ── */
         .charts-section {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 1.15rem;
+            gap: 1rem;
             margin-bottom: 1.75rem;
         }
+
         .chart-card {
             background: var(--card-bg);
             border: 1px solid var(--card-border);
-            border-radius: 16px;
-            padding: 1.35rem 1.4rem 1.5rem;
-            box-shadow: 0 2px 12px rgba(15, 23, 42, 0.05);
+            border-radius: var(--radius);
+            padding: 1.5rem;
         }
+
         .chart-card h3 {
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.05rem;
-            font-weight: 700;
-            color: var(--text-main);
-            margin-bottom: 0.35rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            margin-bottom: 0.25rem;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.4rem;
         }
-        .chart-card h3 i { color: var(--primary); font-size: 1.15rem; }
+
+        .chart-card h3 i { font-size: 0.95rem; color: var(--accent); }
+
         .chart-card .sub {
             font-size: 0.78rem;
-            color: var(--text-muted);
-            margin-bottom: 1rem;
-            font-weight: 500;
+            color: var(--text-faint);
+            margin-bottom: 1.25rem;
+            font-weight: 400;
         }
+
         .chart-wrap {
             position: relative;
-            height: 260px;
+            height: 240px;
         }
+
+        /* ── Bottom panels ── */
         .dashboard-bottom {
             display: grid;
             grid-template-columns: 1.35fr 1fr;
-            gap: 1.15rem;
+            gap: 1rem;
             align-items: start;
         }
+
         .panel {
             background: var(--card-bg);
             border: 1px solid var(--card-border);
-            border-radius: 16px;
-            padding: 1.35rem 1.4rem;
-            box-shadow: 0 2px 12px rgba(15, 23, 42, 0.05);
+            border-radius: var(--radius);
+            padding: 1.5rem;
         }
+
         .panel-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 1.1rem;
+            margin-bottom: 1.15rem;
             padding-bottom: 0.9rem;
-            border-bottom: 1px solid var(--card-border);
+            border-bottom: 1px solid var(--divider);
         }
+
         .panel-header h2 {
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.1rem;
-            font-weight: 700;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.4rem;
         }
-        .panel-header h2 i { color: var(--primary); }
+
+        .panel-header h2 i { color: var(--accent); font-size: 0.95rem; }
+
         .view-all {
-            font-size: 0.85rem;
-            color: var(--primary);
+            font-size: 0.8rem;
+            color: var(--accent);
             text-decoration: none;
-            font-weight: 600;
-        }
-        .view-all:hover { text-decoration: underline; }
-        .db-alert {
-            background: rgba(239, 68, 68, 0.08);
-            border: 1px solid rgba(239, 68, 68, 0.28);
-            color: #b91c1c;
-            padding: 0.85rem 1rem;
-            border-radius: 12px;
-            font-size: 0.9rem;
-            margin-bottom: 1.25rem;
             font-weight: 500;
+            letter-spacing: -0.01em;
+            transition: opacity 0.15s;
         }
+
+        .view-all:hover { opacity: 0.7; }
+
+        .db-alert {
+            background: rgba(201, 42, 42, 0.05);
+            border: 1px solid rgba(201, 42, 42, 0.2);
+            color: var(--danger);
+            padding: 0.8rem 1rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.875rem;
+            margin-bottom: 1.5rem;
+            font-weight: 400;
+        }
+
+        /* ── Table ── */
         .recent-table {
             width: 100%;
             border-collapse: collapse;
         }
+
         .recent-table th {
             text-align: left;
-            padding: 0.75rem 0.65rem;
-            font-size: 0.72rem;
+            padding: 0 0.6rem 0.65rem;
+            font-size: 0.7rem;
             text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: var(--text-muted);
-            font-weight: 700;
-            border-bottom: 1px solid var(--card-border);
+            letter-spacing: 0.07em;
+            color: var(--text-faint);
+            font-weight: 600;
+            border-bottom: 1px solid var(--divider);
         }
+
         .recent-table td {
-            padding: 0.85rem 0.65rem;
-            font-size: 0.88rem;
-            border-bottom: 1px dashed var(--card-border);
+            padding: 0.8rem 0.6rem;
+            font-size: 0.86rem;
+            border-bottom: 1px solid var(--divider);
             vertical-align: middle;
         }
+
         .recent-table tr:last-child td { border-bottom: none; }
-        .recent-table tbody tr:hover { background: rgba(37, 99, 235, 0.03); }
+
+        .recent-table tbody tr:hover td { background: #fafafc; }
+
         .kind-badge {
-            font-size: 0.7rem;
-            font-weight: 700;
+            font-size: 0.68rem;
+            font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.04em;
-            padding: 0.28rem 0.55rem;
-            border-radius: 999px;
+            letter-spacing: 0.05em;
+            padding: 0.22rem 0.5rem;
+            border-radius: 3px;
             display: inline-block;
         }
-        .kind-repair { background: rgba(37, 99, 235, 0.12); color: var(--primary); }
-        .kind-claim { background: rgba(245, 158, 11, 0.15); color: #b45309; }
-        .title-cell { font-weight: 600; color: var(--text-main); max-width: 280px; }
-        .muted-small { font-size: 0.76rem; color: var(--text-muted); margin-top: 0.15rem; }
+
+        .kind-repair { background: var(--accent-soft); color: var(--accent); }
+        .kind-claim  { background: rgba(230, 119, 0, 0.08); color: var(--warning); }
+
+        .title-cell  { font-weight: 500; color: var(--text-main); max-width: 260px; }
+        .muted-small { font-size: 0.73rem; color: var(--text-faint); margin-top: 0.12rem; }
+
         .btn-icon {
-            width: 34px;
-            height: 34px;
-            border-radius: 10px;
+            width: 30px;
+            height: 30px;
+            border-radius: var(--radius-sm);
             border: 1px solid var(--card-border);
-            background: var(--glass);
-            color: var(--text-muted);
+            background: transparent;
+            color: var(--text-faint);
             display: inline-flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.15s;
             text-decoration: none;
+            font-size: 0.9rem;
         }
+
         .btn-icon:hover {
-            background: var(--primary);
-            border-color: var(--primary);
+            background: var(--accent);
+            border-color: var(--accent);
             color: #fff;
         }
-        .alerts-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+        /* ── Alerts ── */
+        .alerts-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
         .alert-item {
             display: flex;
-            gap: 0.85rem;
-            padding: 0.9rem;
-            background: var(--glass);
-            border: 1px solid var(--card-border);
-            border-radius: 12px;
+            gap: 0.8rem;
+            padding: 0.8rem 0.9rem;
+            background: transparent;
+            border: 1px solid var(--divider);
+            border-radius: var(--radius-sm);
             align-items: flex-start;
-            transition: border-color 0.2s;
+            transition: border-color 0.15s;
         }
-        .alert-item:hover { border-color: rgba(37, 99, 235, 0.2); }
-        .alert-item.urgent { border-left: 3px solid var(--danger); }
-        .alert-item.warn { border-left: 3px solid var(--warning); }
+
+        .alert-item:hover { border-color: var(--accent-border); }
+        .alert-item.urgent { border-left: 2px solid var(--danger); }
+        .alert-item.warn   { border-left: 2px solid var(--warning); }
+
         .alert-icon {
-            width: 36px;
-            height: 36px;
-            border-radius: 10px;
+            width: 32px;
+            height: 32px;
+            border-radius: var(--radius-sm);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.1rem;
+            font-size: 1rem;
             flex-shrink: 0;
         }
-        .alert-item.urgent .alert-icon { background: rgba(239, 68, 68, 0.12); color: var(--danger); }
-        .alert-item.warn .alert-icon { background: rgba(245, 158, 11, 0.12); color: var(--warning); }
-        .alert-body { flex: 1; min-width: 0; }
-        .alert-body h4 { font-size: 0.88rem; font-weight: 700; margin-bottom: 0.2rem; }
-        .alert-body p { font-size: 0.78rem; color: var(--text-muted); line-height: 1.45; }
-        .alert-meta { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
 
-        @media (max-width: 1200px) {
-            .stats-grid { grid-template-columns: repeat(2, 1fr); }
-            .charts-section { grid-template-columns: 1fr; }
-            .dashboard-bottom { grid-template-columns: 1fr; }
+        .alert-item.urgent .alert-icon { background: rgba(201, 42, 42, 0.08); color: var(--danger); }
+        .alert-item.warn   .alert-icon { background: rgba(230, 119, 0, 0.08);  color: var(--warning); }
+
+        .alert-body { flex: 1; min-width: 0; }
+        .alert-body h4 { font-size: 0.84rem; font-weight: 500; margin-bottom: 0.15rem; }
+        .alert-body p  { font-size: 0.75rem; color: var(--text-muted); line-height: 1.45; }
+        .alert-meta    { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--text-faint); font-weight: 400; white-space: nowrap; }
+
+        /* ── Calendar ── */
+        .calendar-card { margin-bottom: 1.75rem; }
+
+        .calendar-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.75rem;
         }
+
+        .calendar-head h2 {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .calendar-head h2 i { color: var(--accent); font-size: 0.95rem; }
+        .calendar-sub { color: var(--text-faint); font-size: 0.78rem; line-height: 1.45; margin-top: 0.2rem; }
+
+        #nexcheckCalendar {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            padding: 1rem;
+        }
+
+        .fc { font-size: 0.86rem; }
+        .fc-toolbar { margin-bottom: 0.75rem; }
+        .fc button {
+            border-radius: var(--radius-sm) !important;
+            border: 1px solid var(--card-border) !important;
+            background: var(--card-bg) !important;
+            color: var(--text-muted) !important;
+            font-weight: 500 !important;
+            font-family: 'DM Sans', sans-serif !important;
+            box-shadow: none !important;
+        }
+        .fc button.fc-state-active {
+            background: var(--accent-soft) !important;
+            border-color: var(--accent-border) !important;
+            color: var(--accent) !important;
+        }
+        .fc-event { border-radius: 4px; border: none; padding: 2px 6px; font-size: 0.78rem; }
+
+        /* ── Responsive ── */
+        @media (max-width: 1200px) {
+            .stats-grid        { grid-template-columns: repeat(2, 1fr); }
+            .charts-section    { grid-template-columns: 1fr; }
+            .dashboard-bottom  { grid-template-columns: 1fr; }
+        }
+
         @media (max-width: 900px) {
             .main-content { margin-left: 0; max-width: 100vw; padding: 1.5rem; }
         }
@@ -557,9 +712,6 @@ $chartJsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_U
                         <span class="notification-dot" aria-hidden="true"></span>
                     <?php endif; ?>
                 </button>
-                <a href="nextCheckout.php" class="btn btn-primary">
-                    <i class="ri-hand-coin-line"></i> NextCheck requests
-                </a>
             </div>
         </header>
 
@@ -593,6 +745,19 @@ $chartJsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_U
                 </div>
             </div>
         </div>
+
+        <section class="calendar-card" aria-label="NextCheck calendar">
+            <div class="calendar-head">
+                <div>
+                    <h2><i class="ri-calendar-event-line"></i> NextCheck calendar</h2>
+                    <div class="calendar-sub">Borrow/return windows from <code>nexcheck_request</code>. Click an event to open the request.</div>
+                </div>
+                <a href="nextCheckout.php" class="btn btn-primary" style="text-decoration:none">
+                    <i class="ri-hand-coin-line"></i> NextCheck requests
+                </a>
+            </div>
+            <div id="nexcheckCalendar"></div>
+        </section>
 
         <section class="charts-section" aria-label="Analytics charts">
             <div class="chart-card">
@@ -726,16 +891,35 @@ $chartJsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_U
             dropdown.classList.toggle('show');
         }
 
-        Chart.defaults.font.family = "'Inter', sans-serif";
-        Chart.defaults.color = '#64748b';
+        (function () {
+            var events = <?= json_encode($nexcheckEvents, $chartJsonFlags) ?>;
+            var el = document.getElementById('nexcheckCalendar');
+            if (!el || typeof jQuery === 'undefined' || !jQuery.fn || !jQuery.fn.fullCalendar) return;
+            jQuery(el).fullCalendar({
+                height: 520,
+                fixedWeekCount: false,
+                displayEventTime: false,
+                header: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'month,agendaWeek,agendaDay'
+                },
+                eventLimit: true,
+                events: events
+            });
+        })();
 
-        const teal = 'rgba(14, 165, 233, 0.85)';
-        const blue = 'rgba(37, 99, 235, 0.85)';
-        const amber = 'rgba(245, 158, 11, 0.9)';
-        const green = 'rgba(16, 185, 129, 0.88)';
-        const red = 'rgba(239, 68, 68, 0.85)';
-        const slate = 'rgba(100, 116, 139, 0.75)';
-        const violet = 'rgba(139, 92, 246, 0.85)';
+        Chart.defaults.font.family = "'DM Sans', sans-serif";
+        Chart.defaults.font.size = 12;
+        Chart.defaults.color = '#6b6b7b';
+
+        const teal   = 'rgba(32, 178, 170, 0.82)';
+        const blue   = 'rgba(59, 91, 219, 0.85)';
+        const amber  = 'rgba(230, 119, 0, 0.85)';
+        const green  = 'rgba(47, 158, 68, 0.85)';
+        const red    = 'rgba(201, 42, 42, 0.82)';
+        const slate  = 'rgba(107, 107, 123, 0.6)';
+        const violet = 'rgba(121, 80, 242, 0.82)';
 
         const assetMixData = <?= json_encode($chartAssetMix, $chartJsonFlags) ?>;
         const laptopData = <?= json_encode($chartLaptopStatus, $chartJsonFlags) ?>;
@@ -752,8 +936,8 @@ $chartJsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_U
                     data: assetMixData.data,
                     backgroundColor: [blue, teal, amber],
                     borderWidth: 2,
-                    borderColor: '#fff',
-                    hoverOffset: 6
+                    borderColor: '#f7f7f8',
+                    hoverOffset: 4
                 }]
             },
             options: {
@@ -773,8 +957,8 @@ $chartJsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_U
                     label: 'Devices',
                     data: laptopData.data,
                     backgroundColor: laptopData.data.map((_, i) => palette[i % palette.length]),
-                    borderRadius: 8,
-                    maxBarThickness: 28
+                    borderRadius: 4,
+                    maxBarThickness: 22
                 }]
             },
             options: {
@@ -827,8 +1011,8 @@ $chartJsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_U
                         return palette[(i + 2) % palette.length];
                     }),
                     borderWidth: 2,
-                    borderColor: '#fff',
-                    hoverOffset: 6
+                    borderColor: '#f7f7f8',
+                    hoverOffset: 4
                 }]
             },
             options: {
