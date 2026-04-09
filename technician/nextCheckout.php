@@ -95,6 +95,16 @@ try {
     $db_error = 'Could not load requests. Ensure database tables exist (run db/schema.sql).';
 }
 
+// Hide completed/returned requests from this page (use History for those).
+$requests = array_values(array_filter($requests, static function (array $r): bool {
+    $ic  = (int)($r['item_count'] ?? 0);
+    $ac  = (int)($r['assigned_count'] ?? 0);
+    $ret = (int)($r['returnable_count'] ?? 0);
+    if ($ic <= 0) return false;
+    // Keep if still needs assignment, or has something currently in checkout.
+    return $ac < $ic || $ret > 0;
+}));
+
 $total = count($requests);
 $needs = $fullyAssigned = $returnPending = 0;
 foreach ($requests as $r) {
@@ -329,7 +339,10 @@ foreach ($requests as $r) {
             <h1 class="page-title">User Requests</h1>
             <p class="page-subtitle">Equipment checkout requests from NextCheck users — assign pool laptops and manage returns.</p>
         </div>
-        <a class="btn-ghost" href="nextAdd.php"><i class="ri-add-line"></i> Add items</a>
+        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center">
+            <a class="btn-ghost" href="nextHistory.php"><i class="ri-history-line"></i> History</a>
+            <a class="btn-ghost" href="nextAdd.php"><i class="ri-add-line"></i> Add items</a>
+        </div>
     </header>
 
     <?php if ($db_error !== ''): ?>
