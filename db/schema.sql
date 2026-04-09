@@ -378,7 +378,6 @@ CREATE TABLE IF NOT EXISTS nexcheck_assignment (
   PRIMARY KEY (`assignment_id`),
   FOREIGN KEY (`nexcheck_id`) REFERENCES `nexcheck_request`(`nexcheck_id`) ON DELETE CASCADE,
   FOREIGN KEY (`request_item_id`) REFERENCES `nexcheck_request_item`(`request_item_id`) ON DELETE SET NULL,
-  FOREIGN KEY (`asset_id`) REFERENCES `laptop`(`asset_id`),
   FOREIGN KEY (`assigned_by`) REFERENCES `users`(`staff_id`),
   FOREIGN KEY (`returned_by`) REFERENCES `users`(`staff_id`),
   UNIQUE KEY `uq_nexcheck_asset_per_request` (`nexcheck_id`, `asset_id`),
