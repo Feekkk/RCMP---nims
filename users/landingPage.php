@@ -672,7 +672,8 @@ if ($user_initials === '') $user_initials = mb_strtoupper(mb_substr($userName !=
            TERMS
         ════════════════════════════ */
         .terms-box {
-            max-height: 200px;
+            max-height: min(52vh, 420px);
+            min-height: 280px;
             overflow-y: auto;
             padding: 0.85rem 0.95rem;
             border-radius: 11px;
