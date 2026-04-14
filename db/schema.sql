@@ -340,11 +340,16 @@ CREATE TABLE IF NOT EXISTS nexcheck_request (
   `usage_location` VARCHAR(255) NOT NULL,
   `reason` TEXT DEFAULT NULL,
   `terms_accepted_at` TIMESTAMP NOT NULL,
+  `rejected_at` TIMESTAMP NULL DEFAULT NULL,
+  `rejected_by` VARCHAR(32) NULL DEFAULT NULL,
+  `rejection_reason` VARCHAR(512) NULL DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`nexcheck_id`),
   FOREIGN KEY (`requested_by`) REFERENCES `users`(`staff_id`),
+  FOREIGN KEY (`rejected_by`) REFERENCES `users`(`staff_id`) ON DELETE SET NULL,
   INDEX `idx_nexcheck_requested_by` (`requested_by`),
+  INDEX `idx_nexcheck_rejected_at` (`rejected_at`),
   INDEX `idx_nexcheck_borrow_date` (`borrow_date`),
   INDEX `idx_nexcheck_return_date` (`return_date`)
 );

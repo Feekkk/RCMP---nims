@@ -89,6 +89,7 @@ try {
                   )) AS returnable_count
         FROM nexcheck_request r
         JOIN users u ON u.staff_id = r.requested_by
+        WHERE r.rejected_at IS NULL
         ORDER BY r.created_at DESC
     ")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
@@ -104,6 +105,8 @@ $requests = array_values(array_filter($requests, static function (array $r): boo
     // Keep if still needs assignment, or has something currently in checkout.
     return $ac < $ic || $ret > 0;
 }));
+
+$reject_flash = isset($_GET['rejected']) && (string)$_GET['rejected'] === '1';
 
 $total = count($requests);
 $needs = $fullyAssigned = $returnPending = 0;
@@ -171,6 +174,7 @@ foreach ($requests as $r) {
         /* ── Banner ── */
         .banner { display: flex; align-items: flex-start; gap: 0.65rem; padding: 0.9rem 1.1rem; border-radius: 14px; margin-bottom: 1.25rem; font-size: 0.9rem; font-weight: 600; }
         .banner-error { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.22); color: #b91c1c; }
+        .banner-success { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.22); color: #047857; }
 
         /* ── Card & toolbar ── */
         .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 20px; box-shadow: 0 2px 12px rgba(15,23,42,0.06); overflow: hidden; }
@@ -347,6 +351,9 @@ foreach ($requests as $r) {
 
     <?php if ($db_error !== ''): ?>
         <div class="banner banner-error"><i class="ri-error-warning-line"></i> <?= htmlspecialchars($db_error) ?></div>
+    <?php endif; ?>
+    <?php if ($reject_flash): ?>
+        <div class="banner banner-success"><i class="ri-checkbox-circle-line"></i> Request rejected and removed from the active queue.</div>
     <?php endif; ?>
 
     <div class="stats-row">

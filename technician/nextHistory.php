@@ -68,6 +68,9 @@ try {
             r.program_type,
             r.usage_location,
             r.created_at,
+            r.rejected_at,
+            r.rejection_reason,
+            (SELECT u2.full_name FROM users u2 WHERE u2.staff_id = r.rejected_by LIMIT 1) AS rejected_by_name,
             u.full_name AS requester_name,
             u.email     AS requester_email,
             (SELECT GROUP_CONCAT(DISTINCT tu.full_name ORDER BY tu.full_name SEPARATOR ', ')
@@ -228,7 +231,17 @@ try {
                         $ic  = (int)($r['item_count'] ?? 0);
                     ?>
                     <tr>
-                        <td><div class="id">#<?= $nid ?></div></td>
+                        <td>
+                            <div class="id">#<?= $nid ?></div>
+                            <?php if (!empty($r['rejected_at'])): ?>
+                                <div class="chip bad" style="margin-top:0.4rem">Rejected</div>
+                                <?php if (trim((string)($r['rejection_reason'] ?? '')) !== ''): ?>
+                                    <div class="muted" style="margin-top:0.35rem;max-width:14rem" title="<?= htmlspecialchars((string)$r['rejection_reason']) ?>"><?= htmlspecialchars(mb_substr((string)$r['rejection_reason'], 0, 72)) ?><?= mb_strlen((string)$r['rejection_reason']) > 72 ? '…' : '' ?></div>
+                                <?php elseif (!empty($r['rejected_by_name'])): ?>
+                                    <div class="muted" style="margin-top:0.25rem">by <?= htmlspecialchars((string)$r['rejected_by_name']) ?></div>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                        </td>
                         <td>
                             <div style="font-weight:700"><?= htmlspecialchars((string)$r['requester_name']) ?></div>
                             <div class="muted" title="<?= htmlspecialchars((string)$r['requester_email']) ?>"><?= htmlspecialchars((string)$r['requester_email']) ?></div>

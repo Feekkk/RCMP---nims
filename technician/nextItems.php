@@ -34,8 +34,41 @@ if ($nexcheckId < 1) { header('Location: nextCheckout.php'); exit; }
 
 $form_error   = '';
 $return_error = '';
+$reject_error = '';
 $success      = isset($_GET['saved']) && (string)$_GET['saved'] === '1';
 $return_ok    = isset($_GET['returned']) && (string)$_GET['returned'] === '1';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reject_request'])) {
+    $postNex = (int)($_POST['nexcheck_id'] ?? 0);
+    $rejReason = trim((string)($_POST['rejection_reason'] ?? ''));
+    if (mb_strlen($rejReason) > 500) {
+        $rejReason = mb_substr($rejReason, 0, 500);
+    }
+    if ($postNex !== $nexcheckId || $postNex < 1) {
+        $reject_error = 'Invalid request.';
+    } else {
+        try {
+            $pdo = db();
+            $cSt = $pdo->prepare('SELECT COUNT(*) FROM nexcheck_assignment WHERE nexcheck_id = ?');
+            $cSt->execute([$nexcheckId]);
+            $cnt = (int)$cSt->fetchColumn();
+            if ($cnt > 0) {
+                $reject_error = 'Cannot reject: assignments already exist. Return equipment or resolve assignments first.';
+            } else {
+                $up = $pdo->prepare('UPDATE nexcheck_request SET rejected_at = NOW(), rejected_by = ?, rejection_reason = ? WHERE nexcheck_id = ? AND rejected_at IS NULL');
+                $up->execute([$staffId, $rejReason !== '' ? $rejReason : null, $nexcheckId]);
+                if ($up->rowCount() < 1) {
+                    $reject_error = 'This request cannot be rejected (already rejected or not found).';
+                } else {
+                    header('Location: nextCheckout.php?rejected=1');
+                    exit;
+                }
+            }
+        } catch (Throwable $e) {
+            $reject_error = 'Could not reject this request. If the database is not migrated, run db/migrate_nexcheck_request_reject.sql.';
+        }
+    }
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_returns'])) {
     $postNex = isset($_POST['nexcheck_id']) ? (int)$_POST['nexcheck_id'] : 0;
@@ -78,6 +111,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_returns'])) {
         } else {
             try {
                 $pdo = db();
+                $rj = $pdo->prepare('SELECT 1 FROM nexcheck_request WHERE nexcheck_id = ? AND rejected_at IS NOT NULL LIMIT 1');
+                $rj->execute([$nexcheckId]);
+                if ($rj->fetchColumn()) {
+                    throw new RuntimeException('This request was rejected.');
+                }
                 $pdo->beginTransaction();
                 $stmtLock = $pdo->prepare('
                     SELECT a.assignment_id, a.nexcheck_id, a.asset_id, a.returned_at,
@@ -164,6 +202,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_assignments'])) 
         if ($form_error === '') {
             try {
                 $pdo = db();
+                $rj = $pdo->prepare('SELECT 1 FROM nexcheck_request WHERE nexcheck_id = ? AND rejected_at IS NOT NULL LIMIT 1');
+                $rj->execute([$nexcheckId]);
+                if ($rj->fetchColumn()) {
+                    throw new RuntimeException('This request was rejected and cannot be edited.');
+                }
                 $pdo->beginTransaction();
                 $stmtItem      = $pdo->prepare('SELECT request_item_id, nexcheck_id, category FROM nexcheck_request_item WHERE request_item_id = ? FOR UPDATE');
                 $stmtHasAssign = $pdo->prepare('SELECT assignment_id FROM nexcheck_assignment WHERE request_item_id = ? FOR UPDATE');
@@ -217,7 +260,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_assignments'])) 
 $request = null; $items = []; $pool = [];
 try {
     $pdo  = db();
-    $stmt = $pdo->prepare('SELECT r.*, u.full_name AS requester_name, u.email AS requester_email FROM nexcheck_request r JOIN users u ON u.staff_id = r.requested_by WHERE r.nexcheck_id = ? LIMIT 1');
+    $stmt = $pdo->prepare('SELECT r.*, u.full_name AS requester_name, u.email AS requester_email, ru.full_name AS rejected_by_name FROM nexcheck_request r JOIN users u ON u.staff_id = r.requested_by LEFT JOIN users ru ON ru.staff_id = r.rejected_by WHERE r.nexcheck_id = ? LIMIT 1');
     $stmt->execute([$nexcheckId]);
     $request = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$request) { header('Location: nextCheckout.php'); exit; }
@@ -276,6 +319,8 @@ try {
         }
     }
 } catch (Throwable $e) { $request = null; }
+
+$isRejected = $request && !empty($request['rejected_at'] ?? null);
 
 $poolLaptopCount = 0;
 $poolAvCount     = 0;
@@ -661,7 +706,62 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
         .btn-primary:hover:not(:disabled) { background: #2448d4; }
         .btn-primary:active:not(:disabled) { transform: scale(0.99); }
         .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
-        .footer-note { font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; }
+        .footer-note { font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; margin: 0; }
+        .form-footer-assign-footer {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.75rem;
+        }
+        .reject-reason-input {
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            padding: 0.6rem 0.85rem;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+            font-family: inherit;
+            font-size: 0.85rem;
+            background: var(--card-bg);
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .reject-reason-input:focus {
+            outline: none;
+            border-color: rgba(47, 91, 234, 0.45);
+            box-shadow: 0 0 0 3px rgba(47, 91, 234, 0.08);
+        }
+        .assign-footer-btns {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .btn-reject {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.45rem;
+            padding: 0.6rem 1.15rem;
+            min-height: 2.5rem;
+            border-radius: 8px;
+            border: 1px solid var(--danger-border);
+            background: var(--danger-bg);
+            color: #9f2a2a;
+            font-weight: 600;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .btn-reject:hover { background: rgba(192,57,43,0.12); border-color: rgba(192,57,43,0.35); }
+        .form-footer-assign-footer .btn-primary {
+            min-height: 2.5rem;
+            padding: 0.6rem 1.25rem;
+        }
+        .banner-reject {
+            background: rgba(239,68,68,0.08);
+            border: 1px solid rgba(239,68,68,0.22);
+            color: #991b1b;
+        }
 
         #nexcheck-return { scroll-margin-top: 1rem; }
         .return-row {
@@ -705,6 +805,62 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
     <?php if ($request === null): ?>
         <p style="color:var(--text-muted);margin-bottom:1rem">Request not found.</p>
         <a class="btn-ghost" href="nextCheckout.php"><i class="ri-arrow-left-line"></i> Back to list</a>
+    <?php elseif ($isRejected): ?>
+    <header class="page-header">
+        <div>
+            <h1>
+                <i class="ri-forbid-line" style="font-size:1.4rem;color:var(--danger)"></i>
+                Request rejected
+                <span class="request-badge">#<?= (int)$nexcheckId ?></span>
+            </h1>
+            <p>This request will not be fulfilled. The requester may submit a new request if needed.</p>
+        </div>
+        <a class="btn-ghost" href="nextCheckout.php"><i class="ri-arrow-left-line"></i> All requests</a>
+    </header>
+    <div class="banner banner-reject">
+        <i class="ri-close-circle-line"></i>
+        <div>
+            <strong>Rejected</strong>
+            <?php
+            $ra = (string)($request['rejected_at'] ?? '');
+            try {
+                $rs = $ra !== '' ? (new DateTimeImmutable($ra))->format('d M Y, h:i A') : '—';
+            } catch (Throwable $e) {
+                $rs = $ra;
+            }
+            ?>
+            <div style="margin-top:0.35rem;font-size:0.88rem;font-weight:500"><?= htmlspecialchars($rs) ?><?php if (!empty($request['rejected_by_name'])): ?> · by <?= htmlspecialchars((string)$request['rejected_by_name']) ?><?php endif; ?></div>
+            <?php if (trim((string)($request['rejection_reason'] ?? '')) !== ''): ?>
+                <div style="margin-top:0.5rem;white-space:pre-wrap;font-weight:500"><?= htmlspecialchars((string)$request['rejection_reason']) ?></div>
+            <?php endif; ?>
+        </div>
+    </div>
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-hd"><i class="ri-user-3-line"></i> Requester</div>
+            <div class="card-bd">
+                <dl class="meta-grid">
+                    <div class="meta-cell"><dt>Name</dt><dd><?= htmlspecialchars((string)$request['requester_name']) ?></dd></div>
+                    <div class="meta-cell"><dt>Email</dt><dd><?= htmlspecialchars((string)$request['requester_email']) ?></dd></div>
+                </dl>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-hd"><i class="ri-list-check-3"></i> Requested lines</div>
+            <div class="card-bd">
+                <?php if ($items === []): ?>
+                    <p style="color:var(--text-muted);font-size:0.88rem">No line items.</p>
+                <?php else: ?>
+                    <ul style="margin:0;padding-left:1.1rem;font-size:0.88rem;line-height:1.55">
+                        <?php foreach ($items as $it): ?>
+                            <li><?= htmlspecialchars((string)($it['category'] ?? '')) ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+
     <?php else: ?>
 
     <!-- Page header -->
@@ -743,6 +899,12 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
         <div class="banner banner-error">
             <i class="ri-error-warning-line"></i>
             <div><?= htmlspecialchars($return_error) ?></div>
+        </div>
+    <?php endif; ?>
+    <?php if ($reject_error !== ''): ?>
+        <div class="banner banner-error">
+            <i class="ri-error-warning-line"></i>
+            <div><?= htmlspecialchars($reject_error) ?></div>
         </div>
     <?php endif; ?>
 
@@ -869,7 +1031,11 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
             <i class="ri-list-check-3"></i> Line Items &amp; Assignments
             <span class="hd-extra"><?= $doneCount ?> / <?= $totalItems ?> assigned</span>
         </div>
-        <form method="post" action="">
+        <form id="nexcheck-reject-form" method="post" action="" style="position:absolute;width:0;height:0;overflow:hidden;pointer-events:none;opacity:0" aria-hidden="true">
+            <input type="hidden" name="reject_request" value="1">
+            <input type="hidden" name="nexcheck_id" value="<?= (int)$nexcheckId ?>">
+        </form>
+        <form method="post" action="" id="nexcheck-assign-form">
             <input type="hidden" name="save_assignments" value="1">
             <input type="hidden" name="nexcheck_id" value="<?= (int)$nexcheckId ?>">
 
@@ -963,10 +1129,18 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                     </span>
                 </div>
             <?php elseif ($needCount > 0): ?>
-                <div class="form-footer">
-                    <button class="btn-primary" type="submit">
-                        <i class="ri-save-3-line"></i> Save assignments
-                    </button>
+                <div class="form-footer form-footer-assign-footer">
+                    <?php if ($doneCount === 0): ?>
+                    <input class="reject-reason-input" form="nexcheck-reject-form" type="text" name="rejection_reason" maxlength="500" placeholder="Reason (optional)" autocomplete="off" aria-label="Rejection reason">
+                    <?php endif; ?>
+                    <div class="assign-footer-btns">
+                        <?php if ($doneCount === 0): ?>
+                        <button class="btn-reject" type="submit" form="nexcheck-reject-form" onclick="return confirm('Reject this entire request? Nothing has been assigned yet.');"><i class="ri-close-circle-line"></i> Reject request</button>
+                        <?php endif; ?>
+                        <button class="btn-primary" type="submit" form="nexcheck-assign-form">
+                            <i class="ri-save-3-line"></i> Save assignments
+                        </button>
+                    </div>
                     <p class="footer-note">
                         <?php if (count($pool) === 0): ?>
                             <strong style="color:var(--warning)"><i class="ri-alert-line"></i> No assets in pool.</strong>
@@ -1030,6 +1204,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
     <?php endif; ?>
 
     <?php endif; ?>
+
 </main>
 
 <script>
