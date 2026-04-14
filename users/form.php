@@ -105,6 +105,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             $pdo->commit();
+            require_once __DIR__ . '/../config/mailer.php';
+            try {
+                nexcheck_request_notify_it(
+                    $nexcheckId,
+                    $userName,
+                    $staffId,
+                    $values,
+                    $lineItems,
+                    $equipment_category_label
+                );
+            } catch (Throwable $e) {
+                error_log('NIMS: item request notification email failed: ' . $e->getMessage());
+            }
             header('Location: form.php?submitted=1');
             exit;
         } catch (PDOException $e) {

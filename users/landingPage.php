@@ -74,6 +74,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 for ($u = 0; $u < $row['qty']; $u++) $itemStmt->execute([$nexcheckId, $label, 1]);
             }
             $pdo->commit();
+            require_once __DIR__ . '/../config/mailer.php';
+            try {
+                nexcheck_request_notify_it(
+                    $nexcheckId,
+                    $userName,
+                    $staffId,
+                    $values,
+                    $lineItems,
+                    $equipment_category_label
+                );
+            } catch (Throwable $e) {
+                error_log('NIMS: item request notification email failed: ' . $e->getMessage());
+            }
             header('Location: landingPage.php?submitted=1');
             exit;
         } catch (PDOException $e) {
