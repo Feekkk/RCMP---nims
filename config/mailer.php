@@ -144,6 +144,65 @@ function smtp_send_with_attachment(
 /**
  * Email the laptop/desktop return form PDF to the technician who completed the return (NIMS user).
  */
+/**
+ * Email IT when a staff member submits a NextCheck equipment request (nexcheck_request).
+ * Failures are non-fatal; callers should catch and log.
+ */
+function nexcheck_request_notify_it(
+    int $nexcheckId,
+    string $requesterName,
+    string $requesterStaffId,
+    array $values,
+    array $lineItems,
+    array $equipmentCategoryLabel
+): void {
+    $cfg = require __DIR__ . '/mail.php';
+    $to = trim((string) ($cfg['notify_item_requests_to'] ?? ''));
+    if ($to === '') {
+        return;
+    }
+
+    $programLabels = [
+        'academic' => 'Academic',
+        'official_event' => 'Official event',
+        'club_society' => 'Club / society',
+    ];
+    $pt = $programLabels[$values['program_type'] ?? ''] ?? (string) ($values['program_type'] ?? '');
+
+    $byCat = [];
+    foreach ($lineItems as $row) {
+        $id = $row['id'] ?? '';
+        $qty = (int) ($row['qty'] ?? 0);
+        if ($qty < 1) {
+            continue;
+        }
+        $label = $equipmentCategoryLabel[$id] ?? (string) $id;
+        $byCat[$label] = ($byCat[$label] ?? 0) + $qty;
+    }
+    $lines = [];
+    foreach ($byCat as $lab => $q) {
+        $lines[] = '  • ' . $lab . ' × ' . $q;
+    }
+    $itemsBlock = $lines !== [] ? implode("\n", $lines) : '  (none)';
+
+    $reason = trim((string) ($values['reason'] ?? ''));
+    $loc = trim((string) ($values['usage_location'] ?? ''));
+
+    $subject = 'NIMS - New equipment request #' . $nexcheckId;
+    $body = "A new equipment request was submitted in NIMS.\n\n"
+        . "Request ID: {$nexcheckId}\n"
+        . 'Requester: ' . $requesterName . ' (staff_id: ' . $requesterStaffId . ")\n"
+        . 'Borrow date: ' . ($values['borrow_date'] ?? '') . "\n"
+        . 'Return date: ' . ($values['return_date'] ?? '') . "\n"
+        . 'Program type: ' . $pt . "\n"
+        . 'Usage location: ' . $loc . "\n"
+        . "Reason:\n" . ($reason !== '' ? wordwrap($reason, 72, "\n", true) : '—') . "\n\n"
+        . "Items:\n"
+        . $itemsBlock . "\n";
+
+    smtp_send($to, $subject, $body);
+}
+
 function smtp_send_return_completion_pdf(
     string $toEmail,
     string $technicianName,

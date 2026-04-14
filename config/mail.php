@@ -17,5 +17,7 @@ return [
         'address' => getenv('MAIL_FROM_ADDRESS') ?: 'noreply@nims.local',
         'name' => getenv('MAIL_FROM_NAME') ?: 'NIMS',
     ],
+    /** Notified when a user submits an equipment (NextCheck) request. Override with MAIL_REQUEST_ITEMS_TO. */
+    'notify_item_requests_to' => getenv('MAIL_REQUEST_ITEMS_TO') ?: 'it.rcmp@unikl.edu.my',
 ];
 
