@@ -87,26 +87,7 @@ try {
                   AND a.return_condition IS NOT NULL
                   AND a.return_condition <> ''
             ) AS return_remarks,
-            (SELECT COUNT(*) FROM nexcheck_request_item i WHERE i.nexcheck_id = r.nexcheck_id) AS item_count,
-            (SELECT COUNT(*) FROM nexcheck_assignment a WHERE a.nexcheck_id = r.nexcheck_id) AS assigned_count,
-            (SELECT COUNT(*) FROM nexcheck_assignment a WHERE a.nexcheck_id = r.nexcheck_id AND a.checkout_at IS NOT NULL) AS checkout_count,
-            (SELECT COUNT(*) FROM nexcheck_assignment a WHERE a.nexcheck_id = r.nexcheck_id AND a.returned_at IS NOT NULL) AS returned_count,
-            (SELECT COUNT(*) FROM nexcheck_assignment a
-                WHERE a.nexcheck_id = r.nexcheck_id
-                  AND a.returned_at IS NULL
-                  AND (
-                    EXISTS (SELECT 1 FROM laptop l WHERE l.asset_id = a.asset_id AND l.status_id = 13)
-                    " . ($hasAv ? " OR EXISTS (SELECT 1 FROM av v WHERE v.asset_id = a.asset_id AND v.status_id = 13)" : "") . "
-                  )
-            ) AS in_checkout_now,
-            (SELECT COUNT(*) FROM nexcheck_assignment a
-                WHERE a.nexcheck_id = r.nexcheck_id
-                  AND a.returned_at IS NOT NULL
-                  AND (
-                    EXISTS (SELECT 1 FROM laptop l WHERE l.asset_id = a.asset_id AND l.status_id = 14)
-                    " . ($hasAv ? " OR EXISTS (SELECT 1 FROM av v WHERE v.asset_id = a.asset_id AND v.status_id = 14)" : "") . "
-                  )
-            ) AS in_buffer_now
+            (SELECT COUNT(*) FROM nexcheck_request_item i WHERE i.nexcheck_id = r.nexcheck_id) AS item_count
         FROM nexcheck_request r
         JOIN users u ON u.staff_id = r.requested_by
         $whereSql
@@ -193,7 +174,7 @@ try {
     <header class="page-header">
         <div>
             <h1 class="page-title">History</h1>
-            <p class="page-subtitle">All NextCheck requests and their current progress (assignments, checkout, returns, buffer).</p>
+            <p class="page-subtitle">All NextCheck requests and their current progress (assignments, checkout, returns).</p>
         </div>
         <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center">
             <a class="btn-ghost" href="nextCheckout.php"><i class="ri-arrow-left-line"></i> Back</a>
@@ -245,11 +226,6 @@ try {
                     <?php foreach ($rows as $r):
                         $nid = (int)$r['nexcheck_id'];
                         $ic  = (int)($r['item_count'] ?? 0);
-                        $ac  = (int)($r['assigned_count'] ?? 0);
-                        $cc  = (int)($r['checkout_count'] ?? 0);
-                        $rc  = (int)($r['returned_count'] ?? 0);
-                        $chk = (int)($r['in_checkout_now'] ?? 0);
-                        $buf = (int)($r['in_buffer_now'] ?? 0);
                     ?>
                     <tr>
                         <td><div class="id">#<?= $nid ?></div></td>

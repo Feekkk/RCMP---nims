@@ -49,8 +49,8 @@ CREATE TABLE IF NOT EXISTS status (
   name VARCHAR(128) NOT NULL UNIQUE
 );
 
-INSERT IGNORE INTO status (status_id, name) VALUES (1, 'Active'), (2, 'Non-active'), (3, 'Deploy'), (4, 'Reserved'), (5, 'Maintenance'), (6, 'Faulty'), 
-(7, 'Disposed'), (8, 'Lost'), (9, 'Online'), (10, 'Offline'), (11, 'Active (nextcheck)'), (12, 'Pending (nextcheck)'), (13, 'Checkout (nextcheck)'), (14, 'Buffer (nextcheck)');
+INSERT IGNORE INTO status (status_id, name) VALUES (1, 'Active'), (2, 'Non-active'), (3, 'Deploy'), (4, 'Reserved'), (5, 'Maintenance'), (6, 'Faulty'),
+(7, 'Disposed'), (8, 'Lost'), (9, 'Online'), (10, 'Offline'), (11, 'Active (nextcheck)'), (12, 'Pending (nextcheck)'), (13, 'Checkout (nextcheck)');
 
 CREATE TABLE IF NOT EXISTS laptop (
     `asset_id` INT(11) NOT NULL,
@@ -72,15 +72,13 @@ CREATE TABLE IF NOT EXISTS laptop (
     `INVOICE_NUM` VARCHAR(50) DEFAULT NULL,
     `PURCHASE_COST` DECIMAL(10,2) DEFAULT NULL,
     `status_id` INT UNSIGNED NOT NULL COMMENT '1=Active, 2=Non-active, 3=Deploy, 4=Reserved, 5=Maintenance, 6=Faulty, 7=Disposed, 8=Lost',
-    `nextcheck_buffer_since` DATETIME DEFAULT NULL COMMENT 'NextCheck buffer (14): timestamp when placed in buffer; cleared at pool (11)',
     `remarks` TEXT DEFAULT NULL,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (asset_id),
     FOREIGN KEY (status_id) REFERENCES status(status_id),
     INDEX idx_asset_id (asset_id),
-    INDEX idx_status_id (status_id),
-    INDEX `idx_laptop_nextcheck_buffer` (`status_id`, `nextcheck_buffer_since`)
+    INDEX idx_status_id (status_id)
 );
 
 CREATE TABLE IF NOT EXISTS network (
@@ -116,7 +114,6 @@ CREATE TABLE IF NOT EXISTS av (
     `model` VARCHAR(100) DEFAULT NULL,
     `serial_num` VARCHAR(100) DEFAULT NULL,
     `status_id` INT UNSIGNED NOT NULL COMMENT '1=Active, 2=Non-active, 3=Deploy, 5=Maintenance, 6=Faulty, 7=Disposed, 8=Lost',
-    `nextcheck_buffer_since` DATETIME DEFAULT NULL COMMENT 'NextCheck buffer (14): timestamp when placed in buffer; cleared at pool (11)',
     `PO_DATE` DATE DEFAULT NULL,
     `PO_NUM` VARCHAR(50) DEFAULT NULL,
     `DO_DATE` DATE DEFAULT NULL,
@@ -130,8 +127,7 @@ CREATE TABLE IF NOT EXISTS av (
     PRIMARY KEY (asset_id),
     FOREIGN KEY (status_id) REFERENCES status(status_id),
     INDEX idx_asset_id (asset_id),
-    INDEX idx_status_id (status_id),
-    INDEX `idx_av_nextcheck_buffer` (`status_id`, `nextcheck_buffer_since`)
+    INDEX idx_status_id (status_id)
 );
 
 CREATE TABLE IF NOT EXISTS av_deployment (

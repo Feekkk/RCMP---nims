@@ -9,10 +9,8 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/nextcheck_shared.php';
 
 const NEXCHECK_POOL_STATUS = 11;
-const NEXCHECK_BUFFER_STATUS = 14;
 const NEXCHECK_ASSIGN_TARGET_STATUS = 13;
 const NEXCHECK_RETURN_FROM_STATUS = 13;
-const NEXCHECK_RETURN_TO_STATUS = 14;
 
 $staffId = (string)($_SESSION['staff_id'] ?? '');
 
@@ -95,8 +93,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_returns'])) {
                     SET returned_at = NOW(), return_condition = ?, returned_by = ?
                     WHERE assignment_id = ? AND nexcheck_id = ? AND returned_at IS NULL
                 ');
-                $stmtUpL = $pdo->prepare('UPDATE laptop SET status_id = ?, nextcheck_buffer_since = NOW() WHERE asset_id = ?');
-                $stmtUpV = $pdo->prepare('UPDATE av SET status_id = ?, nextcheck_buffer_since = NOW() WHERE asset_id = ?');
+                $stmtUpL = $pdo->prepare('UPDATE laptop SET status_id = ? WHERE asset_id = ?');
+                $stmtUpV = $pdo->prepare('UPDATE av SET status_id = ? WHERE asset_id = ?');
                 foreach ($toProcess as $assignId => $condText) {
                     $stmtLock->execute([$assignId]);
                     $row = $stmtLock->fetch(PDO::FETCH_ASSOC);
@@ -120,9 +118,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_returns'])) {
                         throw new RuntimeException('Could not update assignment #' . $assignId . '.');
                     }
                     if ($lSid !== null && $lSid !== '') {
-                        $stmtUpL->execute([NEXCHECK_RETURN_TO_STATUS, (int)$row['asset_id']]);
+                        $stmtUpL->execute([NEXCHECK_POOL_STATUS, (int)$row['asset_id']]);
                     } elseif ($vSid !== null && $vSid !== '') {
-                        $stmtUpV->execute([NEXCHECK_RETURN_TO_STATUS, (int)$row['asset_id']]);
+                        $stmtUpV->execute([NEXCHECK_POOL_STATUS, (int)$row['asset_id']]);
                     } else {
                         throw new RuntimeException('Could not resolve inventory table for asset #' . (int)$row['asset_id'] . '.');
                     }
@@ -172,8 +170,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_assignments'])) 
                 $stmtLaptop    = $pdo->prepare('SELECT asset_id, status_id FROM laptop WHERE asset_id = ? FOR UPDATE');
                 $stmtAv        = $pdo->prepare('SELECT asset_id, status_id FROM av WHERE asset_id = ? FOR UPDATE');
                 $stmtIns       = $pdo->prepare('INSERT INTO nexcheck_assignment (nexcheck_id, request_item_id, asset_id, assigned_by, assigned_at, checkout_at) VALUES (?, ?, ?, ?, NOW(), NOW())');
-                $stmtUpL       = $pdo->prepare('UPDATE laptop SET status_id = ?, nextcheck_buffer_since = NULL WHERE asset_id = ?');
-                $stmtUpV       = $pdo->prepare('UPDATE av SET status_id = ?, nextcheck_buffer_since = NULL WHERE asset_id = ?');
+                $stmtUpL       = $pdo->prepare('UPDATE laptop SET status_id = ? WHERE asset_id = ?');
+                $stmtUpV       = $pdo->prepare('UPDATE av SET status_id = ? WHERE asset_id = ?');
                 foreach ($pairs as $requestItemId => $assetId) {
                     $stmtItem->execute([$requestItemId]);
                     $itemRow = $stmtItem->fetch(PDO::FETCH_ASSOC);
@@ -738,7 +736,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
     <?php if ($return_ok): ?>
         <div class="banner banner-success">
             <i class="ri-checkbox-circle-line"></i>
-            <div><strong>Return recorded.</strong> Asset(s) are in buffer (status <?= NEXCHECK_BUFFER_STATUS ?>); after 24 hours they return to pool (<?= NEXCHECK_POOL_STATUS ?>) automatically if the cron job is scheduled.</div>
+            <div><strong>Return recorded.</strong> Asset(s) are back in the pool (status <?= NEXCHECK_POOL_STATUS ?>).</div>
         </div>
     <?php endif; ?>
     <?php if ($return_error !== ''): ?>
@@ -989,7 +987,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
             <span class="hd-extra"><?= $returnableCount ?> in checkout</span>
         </div>
         <p style="padding:0.85rem 1.4rem 0;font-size:0.84rem;color:var(--text-muted);line-height:1.5">
-            Items still in status <strong><?= NEXCHECK_RETURN_FROM_STATUS ?></strong> (checkout). Describe condition, then save — assets go to buffer (<strong><?= NEXCHECK_RETURN_TO_STATUS ?></strong>), then pool (<strong><?= NEXCHECK_POOL_STATUS ?></strong>) after 24h via cron.
+            Items still in status <strong><?= NEXCHECK_RETURN_FROM_STATUS ?></strong> (checkout). Describe condition, then save — assets return to the pool (<strong><?= NEXCHECK_POOL_STATUS ?></strong>).
         </p>
         <form method="post" action="">
             <input type="hidden" name="save_returns" value="1">
