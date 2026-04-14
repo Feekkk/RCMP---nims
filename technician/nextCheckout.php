@@ -10,22 +10,30 @@ require_once __DIR__ . '/nextcheck_shared.php';
 
 function nexcheck_format_program(string $p): string
 {
-    return match ($p) {
-        'academic'       => 'Academic project / class',
-        'official_event' => 'Official event',
-        'club_society'   => 'Club / society activities',
-        default          => $p,
-    };
+    switch ($p) {
+        case 'academic':
+            return 'Academic project / class';
+        case 'official_event':
+            return 'Official event';
+        case 'club_society':
+            return 'Club / society activities';
+        default:
+            return $p;
+    }
 }
 
 function nexcheck_program_icon(string $p): string
 {
-    return match ($p) {
-        'academic'       => 'ri-book-open-line',
-        'official_event' => 'ri-calendar-event-line',
-        'club_society'   => 'ri-team-line',
-        default          => 'ri-flag-line',
-    };
+    switch ($p) {
+        case 'academic':
+            return 'ri-book-open-line';
+        case 'official_event':
+            return 'ri-calendar-event-line';
+        case 'club_society':
+            return 'ri-team-line';
+        default:
+            return 'ri-flag-line';
+    }
 }
 
 function nexcheck_borrow_return_countdown(?string $borrowDateStr, ?string $returnDateStr): array
@@ -440,24 +448,26 @@ foreach ($requests as $r) {
                         $createdTime  = isset($createdParts[1]) ? date('h:i A', strtotime($createdParts[1])) : '';
 
                         // Program badge class
-                        $progClass = match($prog) {
-                            'academic'       => 'prog-academic',
-                            'official_event' => 'prog-official_event',
-                            'club_society'   => 'prog-club_society',
-                            default          => 'prog-default',
-                        };
+                        switch ($prog) {
+                            case 'academic':       $progClass = 'prog-academic'; break;
+                            case 'official_event': $progClass = 'prog-official_event'; break;
+                            case 'club_society':   $progClass = 'prog-club_society'; break;
+                            default:               $progClass = 'prog-default'; break;
+                        }
 
                         // Time chip styles
-                        $useChip = match(true) {
-                            str_contains($cd['use'], 'In use')   => 'active',
-                            str_contains($cd['use'], 'Starts')   => 'future',
-                            default                              => '',
-                        };
-                        $retChip = match($cd['ret_class']) {
-                            'warn'   => 'warn',
-                            'danger' => 'danger',
-                            default  => ($cd['days_left'] !== null && $cd['days_left'] > 0 ? '' : ''),
-                        };
+                        $useChip = '';
+                        if (strpos((string)$cd['use'], 'In use') !== false) {
+                            $useChip = 'active';
+                        } elseif (strpos((string)$cd['use'], 'Starts') !== false) {
+                            $useChip = 'future';
+                        }
+
+                        switch ((string)$cd['ret_class']) {
+                            case 'warn':   $retChip = 'warn'; break;
+                            case 'danger': $retChip = 'danger'; break;
+                            default:       $retChip = ($cd['days_left'] !== null && $cd['days_left'] > 0 ? '' : ''); break;
+                        }
                     ?>
                     <tr data-status="<?= $pillClass ?>"
                         data-search="<?= htmlspecialchars(strtolower((string)$row['requester_name'].' '.(string)$row['usage_location'].' '.(string)$row['requester_email'])) ?>">

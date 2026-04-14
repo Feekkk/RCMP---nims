@@ -432,12 +432,20 @@ $total_events = count($events);
                     </tr>
                 <?php else: foreach ($events as $e):
                     // Type meta
-                    $type_meta = match($e['type']) {
-                        'register' => ['label'=>'Registration', 'icon'=>'ri-add-circle-fill',      'dot'=>'dot-register', 'badge'=>'event-register'],
-                        'handover' => ['label'=>'Handover',     'icon'=>'ri-user-received-2-fill', 'dot'=>'dot-handover', 'badge'=>'event-handover'],
-                        'warranty' => ['label'=>'Warranty',     'icon'=>'ri-shield-check-fill',    'dot'=>'dot-warranty', 'badge'=>'event-warranty'],
-                        default    => ['label'=>$e['type'],     'icon'=>'ri-file-line',            'dot'=>'dot-register', 'badge'=>'event-register'],
-                    };
+                    switch ((string)$e['type']) {
+                        case 'register':
+                            $type_meta = ['label'=>'Registration', 'icon'=>'ri-add-circle-fill', 'dot'=>'dot-register', 'badge'=>'event-register'];
+                            break;
+                        case 'handover':
+                            $type_meta = ['label'=>'Handover', 'icon'=>'ri-user-received-2-fill', 'dot'=>'dot-handover', 'badge'=>'event-handover'];
+                            break;
+                        case 'warranty':
+                            $type_meta = ['label'=>'Warranty', 'icon'=>'ri-shield-check-fill', 'dot'=>'dot-warranty', 'badge'=>'event-warranty'];
+                            break;
+                        default:
+                            $type_meta = ['label'=>$e['type'], 'icon'=>'ri-file-line', 'dot'=>'dot-register', 'badge'=>'event-register'];
+                            break;
+                    }
                     $dt = new DateTime($e['date']);
                 ?>
                     <tr>

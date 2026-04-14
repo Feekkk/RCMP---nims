@@ -175,16 +175,24 @@ try {
 
 function av_badge_meta(int $statusId): array
 {
-    return match ($statusId) {
-        1 => ['icon' => 'ri-checkbox-circle-fill', 'cls' => 'badge-active',   'color' => '#10b981', 'bg' => 'rgba(16,185,129,0.12)', 'border' => 'rgba(16,185,129,0.25)'],
-        2 => ['icon' => 'ri-remove-circle-fill',  'cls' => 'badge-nonactive','color' => '#64748b', 'bg' => 'rgba(100,116,139,0.12)', 'border' => 'rgba(100,116,139,0.25)'],
-        3 => ['icon' => 'ri-user-received-2-fill','cls' => 'badge-deploy',  'color' => '#2563eb', 'bg' => 'rgba(37,99,235,0.12)', 'border' => 'rgba(37,99,235,0.25)'],
-        5 => ['icon' => 'ri-tools-fill',          'cls' => 'badge-maint',   'color' => '#f59e0b', 'bg' => 'rgba(245,158,11,0.14)', 'border' => 'rgba(245,158,11,0.3)'],
-        6 => ['icon' => 'ri-alert-fill',          'cls' => 'badge-faulty',  'color' => '#ef4444', 'bg' => 'rgba(239,68,68,0.14)', 'border' => 'rgba(239,68,68,0.3)'],
-        7 => ['icon' => 'ri-delete-bin-fill',    'cls' => 'badge-disposed','color' => '#94a3b8', 'bg' => 'rgba(148,163,184,0.18)', 'border' => 'rgba(148,163,184,0.35)'],
-        8 => ['icon' => 'ri-map-pin-line',       'cls' => 'badge-lost',    'color' => '#f97316', 'bg' => 'rgba(249,115,22,0.12)', 'border' => 'rgba(249,115,22,0.28)'],
-        default => ['icon' => 'ri-question-line', 'cls' => 'badge-unknown', 'color' => '#64748b', 'bg' => 'rgba(148,163,184,0.18)', 'border' => 'rgba(148,163,184,0.35)'],
-    };
+    switch ($statusId) {
+        case 1:
+            return ['icon' => 'ri-checkbox-circle-fill', 'cls' => 'badge-active', 'color' => '#10b981', 'bg' => 'rgba(16,185,129,0.12)', 'border' => 'rgba(16,185,129,0.25)'];
+        case 2:
+            return ['icon' => 'ri-remove-circle-fill', 'cls' => 'badge-nonactive', 'color' => '#64748b', 'bg' => 'rgba(100,116,139,0.12)', 'border' => 'rgba(100,116,139,0.25)'];
+        case 3:
+            return ['icon' => 'ri-user-received-2-fill', 'cls' => 'badge-deploy', 'color' => '#2563eb', 'bg' => 'rgba(37,99,235,0.12)', 'border' => 'rgba(37,99,235,0.25)'];
+        case 5:
+            return ['icon' => 'ri-tools-fill', 'cls' => 'badge-maint', 'color' => '#f59e0b', 'bg' => 'rgba(245,158,11,0.14)', 'border' => 'rgba(245,158,11,0.3)'];
+        case 6:
+            return ['icon' => 'ri-alert-fill', 'cls' => 'badge-faulty', 'color' => '#ef4444', 'bg' => 'rgba(239,68,68,0.14)', 'border' => 'rgba(239,68,68,0.3)'];
+        case 7:
+            return ['icon' => 'ri-delete-bin-fill', 'cls' => 'badge-disposed', 'color' => '#94a3b8', 'bg' => 'rgba(148,163,184,0.18)', 'border' => 'rgba(148,163,184,0.35)'];
+        case 8:
+            return ['icon' => 'ri-map-pin-line', 'cls' => 'badge-lost', 'color' => '#f97316', 'bg' => 'rgba(249,115,22,0.12)', 'border' => 'rgba(249,115,22,0.28)'];
+        default:
+            return ['icon' => 'ri-question-line', 'cls' => 'badge-unknown', 'color' => '#64748b', 'bg' => 'rgba(148,163,184,0.18)', 'border' => 'rgba(148,163,184,0.35)'];
+    }
 }
 
 $searchPlaceholder = 'Search brand, model, serial, category, remarks...';

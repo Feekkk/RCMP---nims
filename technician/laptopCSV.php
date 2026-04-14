@@ -126,7 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     $total_err++;
                     continue;
                 }
-                if (!str_starts_with((string) $aid, $catPrefix)) {
+                if (substr((string) $aid, 0, strlen($catPrefix)) !== $catPrefix) {
                     $results[] = ['row'=>$row_num, 'status'=>'error',
                         'asset_id'=>$assetIdRaw, 'serial'=>$d['serial_num']??'—',
                         'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),

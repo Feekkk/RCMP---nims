@@ -6,7 +6,7 @@ $isLaptop    = $currentPage === 'laptop.php';
 $isAV        = $currentPage === 'av.php';
 $isNetwork   = $currentPage === 'network.php';
 $isInventoryGroup = $isLaptop || $isAV || $isNetwork;
-$isRequest   = str_starts_with($currentPage, 'request')
+$isRequest   = substr($currentPage, 0, 7) === 'request'
     || $currentPage === 'nextAdd.php'
     || $currentPage === 'nextListitem.php'
     || $currentPage === 'nextCheckout.php'

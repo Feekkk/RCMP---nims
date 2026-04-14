@@ -10,12 +10,16 @@ require_once __DIR__ . '/nextcheck_shared.php';
 
 function nexcheck_format_program(string $p): string
 {
-    return match ($p) {
-        'academic'       => 'Academic project / class',
-        'official_event' => 'Official event',
-        'club_society'   => 'Club / society activities',
-        default          => $p,
-    };
+    switch ($p) {
+        case 'academic':
+            return 'Academic project / class';
+        case 'official_event':
+            return 'Official event';
+        case 'club_society':
+            return 'Club / society activities';
+        default:
+            return $p;
+    }
 }
 
 function fmt_dt(?string $d): string

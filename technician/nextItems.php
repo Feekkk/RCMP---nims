@@ -15,12 +15,16 @@ const NEXCHECK_RETURN_FROM_STATUS = 13;
 $staffId = (string)($_SESSION['staff_id'] ?? '');
 
 function nexcheck_format_program(string $p): string {
-    return match ($p) {
-        'academic'       => 'Academic project / class',
-        'official_event' => 'Official event',
-        'club_society'   => 'Club / society activities',
-        default          => $p,
-    };
+    switch ($p) {
+        case 'academic':
+            return 'Academic project / class';
+        case 'official_event':
+            return 'Official event';
+        case 'club_society':
+            return 'Club / society activities';
+        default:
+            return $p;
+    }
 }
 
 /** Request line labels use "Name — Group" from users/form.php; only Laptop lines use the laptop table. */

@@ -96,16 +96,24 @@ function network_filter_status(int $statusId): string
 
 function network_badge_class(int $statusId): string
 {
-    return match ($statusId) {
-        9 => 'badge-online',
-        10 => 'badge-offline',
-        3 => 'badge-deploy',
-        5 => 'badge-maint',
-        6 => 'badge-faulty',
-        7 => 'badge-disposed',
-        8 => 'badge-lost',
-        default => 'badge-unknown',
-    };
+    switch ($statusId) {
+        case 9:
+            return 'badge-online';
+        case 10:
+            return 'badge-offline';
+        case 3:
+            return 'badge-deploy';
+        case 5:
+            return 'badge-maint';
+        case 6:
+            return 'badge-faulty';
+        case 7:
+            return 'badge-disposed';
+        case 8:
+            return 'badge-lost';
+        default:
+            return 'badge-unknown';
+    }
 }
 
 $rowStart = $filteredTotal > 0 ? ($offset + 1) : 0;
@@ -798,20 +806,20 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
                             <?php foreach ($stock_ids as $sid):
                                 $active = ($filter_status === $sid);
                                 $label = $nameById[$sid] ?? ('Status ' . $sid);
-                                $icon = match ($sid) {
-                                    9 => 'ri-wifi-line',
-                                    10 => 'ri-wifi-off-line',
-                                    5 => 'ri-tools-line',
-                                    6 => 'ri-alert-line',
-                                    default => 'ri-question-line',
-                                };
-                                $iconColor = match ($sid) {
-                                    9 => 'var(--success)',
-                                    10 => 'var(--danger)',
-                                    5 => 'var(--warning)',
-                                    6 => 'var(--danger)',
-                                    default => 'var(--text-muted)',
-                                };
+                                switch ($sid) {
+                                    case 9:  $icon = 'ri-wifi-line';      break;
+                                    case 10: $icon = 'ri-wifi-off-line';  break;
+                                    case 5:  $icon = 'ri-tools-line';     break;
+                                    case 6:  $icon = 'ri-alert-line';     break;
+                                    default: $icon = 'ri-question-line';  break;
+                                }
+                                switch ($sid) {
+                                    case 9:  $iconColor = 'var(--success)';     break;
+                                    case 10: $iconColor = 'var(--danger)';      break;
+                                    case 5:  $iconColor = 'var(--warning)';     break;
+                                    case 6:  $iconColor = 'var(--danger)';      break;
+                                    default: $iconColor = 'var(--text-muted)';  break;
+                                }
                             ?>
                                 <a class="filter-item <?= $active ? 'active' : '' ?>" href="network.php?status_id=<?= (int)$sid ?>">
                                     <span class="filter-left">
@@ -828,12 +836,12 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
                             <?php foreach ($out_stock_ids as $sid):
                                 $active = ($filter_status === $sid);
                                 $label = $nameById[$sid] ?? ('Status ' . $sid);
-                                $icon = match ($sid) {
-                                    3 => 'ri-user-received-2-line',
-                                    7 => 'ri-delete-bin-line',
-                                    8 => 'ri-map-pin-line',
-                                    default => 'ri-question-line',
-                                };
+                                switch ($sid) {
+                                    case 3:  $icon = 'ri-user-received-2-line'; break;
+                                    case 7:  $icon = 'ri-delete-bin-line';      break;
+                                    case 8:  $icon = 'ri-map-pin-line';         break;
+                                    default: $icon = 'ri-question-line';        break;
+                                }
                             ?>
                                 <a class="filter-item <?= $active ? 'active' : '' ?>" href="network.php?status_id=<?= (int)$sid ?>">
                                     <span class="filter-left">

@@ -968,11 +968,17 @@ $status_meta = [
         </header>
 
         <?php if ($laptop_flash): ?>
-            <div class="laptop-flash <?= match ($laptop_flash['type'] ?? '') {
-                'ok' => 'ok',
-                'warning' => 'warn',
-                default => 'err',
-            } ?>">
+            <?php
+                $flashType = (string)($laptop_flash['type'] ?? '');
+                if ($flashType === 'ok') {
+                    $flashCls = 'ok';
+                } elseif ($flashType === 'warning') {
+                    $flashCls = 'warn';
+                } else {
+                    $flashCls = 'err';
+                }
+            ?>
+            <div class="laptop-flash <?= $flashCls ?>">
                 <?= htmlspecialchars($laptop_flash['msg'] ?? '', ENT_QUOTES) ?>
             </div>
         <?php endif; ?>
