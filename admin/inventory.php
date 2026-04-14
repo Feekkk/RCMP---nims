@@ -161,22 +161,30 @@ $totalPages = max(1, (int)ceil($totalRows / $perPage));
 
 function admin_inventory_type_label(string $t): string
 {
-    return match ($t) {
-        'laptop' => 'Laptop',
-        'network' => 'Network',
-        'av' => 'AV',
-        default => 'All',
-    };
+    switch ($t) {
+        case 'laptop':
+            return 'Laptop';
+        case 'network':
+            return 'Network';
+        case 'av':
+            return 'AV';
+        default:
+            return 'All';
+    }
 }
 
 function admin_inventory_type_pill(string $t): string
 {
-    return match ($t) {
-        'laptop' => 'type-laptop',
-        'network' => 'type-network',
-        'av' => 'type-av',
-        default => 'type-all',
-    };
+    switch ($t) {
+        case 'laptop':
+            return 'type-laptop';
+        case 'network':
+            return 'type-network';
+        case 'av':
+            return 'type-av';
+        default:
+            return 'type-all';
+    }
 }
 
 ?>

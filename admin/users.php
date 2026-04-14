@@ -103,7 +103,9 @@ if ($staffTableOk) {
         ];
     }
 }
-usort($peopleRows, fn($a, $b) => strcasecmp($a['full_name'], $b['full_name']));
+usort($peopleRows, static function ($a, $b): int {
+    return strcasecmp($a['full_name'], $b['full_name']);
+});
 
 $countAll = count($peopleRows);
 $countAdmin = count($admins);
@@ -132,7 +134,7 @@ $filteredPeople = array_values(array_filter(
             (string)($p['department'] ?? '') . ' ' .
             (string)($p['phone'] ?? '')
         );
-        return str_contains($hay, strtolower($searchQ));
+        return strpos($hay, strtolower($searchQ)) !== false;
     }
 ));
 $perPage = 10;

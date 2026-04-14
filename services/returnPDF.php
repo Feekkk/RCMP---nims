@@ -149,10 +149,10 @@ function return_draw_footer(TCPDF $pdf): void
 function return_item_name_from_asset(int $assetId, ?string $category): string
 {
     $s = (string) $assetId;
-    if (str_starts_with($s, '12')) {
+    if (substr($s, 0, 2) === '12') {
         return 'Laptop';
     }
-    if (str_starts_with($s, '14')) {
+    if (substr($s, 0, 2) === '14') {
         return 'Desktop';
     }
     $pfx = laptop_category_to_asset_prefix($category);
@@ -165,10 +165,10 @@ function return_item_name_from_asset(int $assetId, ?string $category): string
     $c = $category !== null ? trim($category) : '';
     if ($c !== '') {
         $lower = strtolower($c);
-        if (str_contains($lower, 'desktop')) {
+        if (strpos($lower, 'desktop') !== false) {
             return 'Desktop';
         }
-        if (str_contains($lower, 'laptop') || str_contains($lower, 'notebook')) {
+        if (strpos($lower, 'laptop') !== false || strpos($lower, 'notebook') !== false) {
             return 'Laptop';
         }
     }

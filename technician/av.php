@@ -143,10 +143,10 @@ try {
 
     if (!empty($assets)) {
         $assetIds = array_values(array_filter(array_map(
-            static fn($r) => isset($r['asset_id']) ? (int)$r['asset_id'] : 0,
+            static function ($r): int { return isset($r['asset_id']) ? (int)$r['asset_id'] : 0; },
             $assets
         )));
-        $assetIds = array_values(array_unique(array_filter($assetIds, static fn($v) => $v > 0)));
+        $assetIds = array_values(array_unique(array_filter($assetIds, static function ($v): bool { return $v > 0; })));
         if (!empty($assetIds)) {
             $in = implode(',', array_fill(0, count($assetIds), '?'));
             $stmtW = $pdo->prepare("

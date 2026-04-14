@@ -101,11 +101,15 @@ if ($filter_type === 'all' || $filter_type === 'warranty') {
 
 // Apply month filter
 if ($filter_date) {
-    $events = array_filter($events, fn($e) => substr($e['date'], 0, 7) === $filter_date);
+    $events = array_filter($events, static function ($e) use ($filter_date): bool {
+        return substr($e['date'], 0, 7) === $filter_date;
+    });
 }
 
 // Sort all events newest first
-usort($events, fn($a, $b) => strcmp($b['date'], $a['date']));
+usort($events, static function ($a, $b): int {
+    return strcmp($b['date'], $a['date']);
+});
 
 $total_events = count($events);
 ?>

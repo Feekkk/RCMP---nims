@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $full_name_val = $user['full_name'];
             $email_val = $user['email'];
         } catch (PDOException $e) {
-            if (str_contains($e->getMessage(), 'Duplicate')) {
+            if (strpos($e->getMessage(), 'Duplicate') !== false) {
                 $error = 'That email is already in use.';
             } else {
                 $error = 'Could not save changes. Try again.';

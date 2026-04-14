@@ -1142,7 +1142,9 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
                 $assetSid   = $hasA ? (int)($it['asset_status_id'] ?? 0) : 0;
                 $isReturned = $hasA && !empty($it['returned_at']);
                 $lineClass  = nexcheck_request_item_asset_class((string)($it['category'] ?? ''));
-                $linePool   = array_values(array_filter($pool, static fn ($row) => ($row['asset_class'] ?? 'laptop') === $lineClass));
+                $linePool   = array_values(array_filter($pool, static function ($row) use ($lineClass): bool {
+                    return ($row['asset_class'] ?? 'laptop') === $lineClass;
+                }));
                 $selLabel   = $lineClass === 'laptop' ? 'laptop' : 'AV';
             ?>
             <div class="line-row">

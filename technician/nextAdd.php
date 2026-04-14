@@ -159,7 +159,9 @@ if ($suggest_q !== '') {
                     }
                 }
             }
-            usort($items, static fn ($a, $b) => $b['asset_id'] <=> $a['asset_id']);
+            usort($items, static function ($a, $b): int {
+                return $b['asset_id'] <=> $a['asset_id'];
+            });
             $items = array_slice($items, 0, 8);
         } elseif ($class === 'av') {
             $stmt = $pdo->prepare("

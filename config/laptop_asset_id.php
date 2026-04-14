@@ -12,11 +12,16 @@ function laptop_category_to_asset_prefix(?string $category): ?string
         return null;
     }
     $k = strtolower(trim(preg_replace('/\s+/u', ' ', $category)));
-    return match ($k) {
-        'desktop aio', 'desktop io' => '14',
-        'notebook', 'notebook standby' => '12',
-        default => null,
-    };
+    switch ($k) {
+        case 'desktop aio':
+        case 'desktop io':
+            return '14';
+        case 'notebook':
+        case 'notebook standby':
+            return '12';
+        default:
+            return null;
+    }
 }
 
 function laptop_compute_next_asset_id(PDO $pdo, string $twoCharCategoryPrefix): int

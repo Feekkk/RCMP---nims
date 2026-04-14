@@ -96,10 +96,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $assetIds = json_decode($assetIdsJson, true);
     if (!is_array($assetIds)) $assetIds = [];
 
-    $assetIds = array_values(array_unique(array_filter(array_map(
-        fn($v) => is_string($v) || is_int($v) ? trim((string)$v) : '',
-        $assetIds
-    ), fn($v) => $v !== '' && ctype_digit($v))));
+    $assetIds = array_values(array_unique(array_filter(
+        array_map(static function ($v): string {
+            return (is_string($v) || is_int($v)) ? trim((string)$v) : '';
+        }, $assetIds),
+        static function ($v): bool {
+            return $v !== '' && ctype_digit($v);
+        }
+    )));
 
     if ($requestedBy === '') {
         $error_message = 'Technician not found in session. Please log in again.';
@@ -123,7 +127,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmtLock->execute(array_map('intval', $assetIds));
             $found = $stmtLock->fetchAll(PDO::FETCH_COLUMN, 0);
             $foundSet = array_flip(array_map('strval', $found));
-            $missing = array_values(array_filter($assetIds, fn($id) => !isset($foundSet[$id])));
+            $missing = array_values(array_filter($assetIds, static function ($id) use ($foundSet): bool {
+                return !isset($foundSet[$id]);
+            }));
             if ($missing) {
                 throw new RuntimeException('Asset not found: ' . implode(', ', $missing));
             }

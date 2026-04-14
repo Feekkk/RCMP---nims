@@ -210,7 +210,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
 
             while (($row = fgetcsv($handle)) !== false) {
                 $row_num++;
-                if (count(array_filter($row, fn($c) => trim((string)$c) !== '')) === 0) {
+                if (count(array_filter($row, static function ($c): bool { return trim((string)$c) !== ''; })) === 0) {
                     continue;
                 }
 
@@ -475,7 +475,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     if ($pdo->inTransaction()) {
                         $pdo->rollBack();
                     }
-                    $msg = str_contains($e->getMessage(), 'Duplicate')
+                    $msg = strpos($e->getMessage(), 'Duplicate') !== false
                         ? 'Duplicate asset ID — skipped'
                         : 'DB error: ' . $e->getMessage();
                     $results[] = [

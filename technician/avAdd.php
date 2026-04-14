@@ -72,10 +72,10 @@ try {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
         $pdo = db();
-        $str = fn(string $k): ?string => isset($_POST[$k]) ? trim((string)$_POST[$k]) : null;
-        $int = fn(string $k): int => isset($_POST[$k]) && $_POST[$k] !== '' ? (int)$_POST[$k] : 0;
-        $date = fn(string $k): ?string => isset($_POST[$k]) && $_POST[$k] !== '' ? trim((string)$_POST[$k]) : null;
-        $dec = fn(string $k): ?float => isset($_POST[$k]) && $_POST[$k] !== '' ? (float)$_POST[$k] : null;
+        $str = static function (string $k): ?string { return isset($_POST[$k]) ? trim((string)$_POST[$k]) : null; };
+        $int = static function (string $k): int { return isset($_POST[$k]) && $_POST[$k] !== '' ? (int)$_POST[$k] : 0; };
+        $date = static function (string $k): ?string { return isset($_POST[$k]) && $_POST[$k] !== '' ? trim((string)$_POST[$k]) : null; };
+        $dec = static function (string $k): ?float { return isset($_POST[$k]) && $_POST[$k] !== '' ? (float)$_POST[$k] : null; };
 
         $asset_id_old = $str('asset_id_old');
         if ($asset_id_old !== null && $asset_id_old === '') $asset_id_old = null;

@@ -50,10 +50,10 @@ if ($error_message === '' && isset($pdo)) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error_message === '') {
-    $str = fn(string $k) => isset($_POST[$k]) && $_POST[$k] !== '' ? trim((string)$_POST[$k]) : null;
-    $date = fn(string $k) => isset($_POST[$k]) && $_POST[$k] !== '' ? trim((string)$_POST[$k]) : null;
-    $dec = fn(string $k) => isset($_POST[$k]) && $_POST[$k] !== '' ? (float)$_POST[$k] : null;
-    $int = fn(string $k) => isset($_POST[$k]) && $_POST[$k] !== '' ? (int)$_POST[$k] : null;
+    $str = static function (string $k) { return isset($_POST[$k]) && $_POST[$k] !== '' ? trim((string)$_POST[$k]) : null; };
+    $date = static function (string $k) { return isset($_POST[$k]) && $_POST[$k] !== '' ? trim((string)$_POST[$k]) : null; };
+    $dec = static function (string $k) { return isset($_POST[$k]) && $_POST[$k] !== '' ? (float)$_POST[$k] : null; };
+    $int = static function (string $k) { return isset($_POST[$k]) && $_POST[$k] !== '' ? (int)$_POST[$k] : null; };
 
     $asset_id = $int('asset_id') ?? $next_asset_id;
     $serial_num = $str('serial_num');

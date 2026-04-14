@@ -10,12 +10,16 @@ require_once __DIR__ . '/../config/database.php';
 function admin_editasset_table(string $cls): ?string
 {
     $cls = strtolower(trim($cls));
-    return match ($cls) {
-        'laptop' => 'laptop',
-        'network' => 'network',
-        'av' => 'av',
-        default => null,
-    };
+    switch ($cls) {
+        case 'laptop':
+            return 'laptop';
+        case 'network':
+            return 'network';
+        case 'av':
+            return 'av';
+        default:
+            return null;
+    }
 }
 
 function admin_editasset_has_table(PDO $pdo, string $table): bool

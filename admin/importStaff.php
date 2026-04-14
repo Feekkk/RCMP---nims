@@ -152,7 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             for ($li = 1; $li < count($lines); $li++) {
                 $row = str_getcsv($lines[$li], $delimiter);
                 $row_num++;
-                if (count(array_filter($row, fn($c) => trim((string)$c) !== '')) === 0) {
+                if (count(array_filter($row, static function ($c): bool { return trim((string)$c) !== ''; })) === 0) {
                     continue;
                 }
 

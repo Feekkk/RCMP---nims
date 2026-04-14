@@ -50,7 +50,7 @@ function av_csv_resolve_status(string $raw, array $statusById, array $nameToId):
 
 function av_csv_device_label(?string $category, ?string $brand, ?string $model): string
 {
-    $t = trim(implode(' ', array_filter([$category ?? '', $brand ?? '', $model ?? ''], static fn ($x) => $x !== '')));
+    $t = trim(implode(' ', array_filter([$category ?? '', $brand ?? '', $model ?? ''], static function ($x): bool { return $x !== ''; })));
     return $t !== '' ? $t : '—';
 }
 
@@ -147,7 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     $results[] = ['row' => 0, 'status' => 'error', 'legacy' => '—', 'new_id' => '—', 'serial' => '—', 'device' => '—', 'msg' => 'CSV is empty.'];
                     $total_err++;
                 } else {
-                    $keys = array_map(static fn ($h) => norm_csv_header((string) $h), $header);
+                    $keys = array_map(static function ($h): string { return norm_csv_header((string) $h); }, $header);
                     if (!in_array('status_id', $keys, true)) {
                         $results[] = ['row' => 0, 'status' => 'error', 'legacy' => '—', 'new_id' => '—', 'serial' => '—', 'device' => '—', 'msg' => 'CSV must include status_id column.'];
                         $total_err++;

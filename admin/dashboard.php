@@ -98,7 +98,9 @@ try {
         LIMIT 5
     ")->fetchAll() as $r) { $recent[] = $r; }
 
-    usort($recent, fn($a, $b) => strcmp($b['created_at'], $a['created_at']));
+    usort($recent, static function ($a, $b): int {
+        return strcmp($b['created_at'], $a['created_at']);
+    });
     $recent = array_slice($recent, 0, 8);
 } catch (PDOException $e) {
     $dbError = $e->getMessage();

@@ -343,7 +343,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 if ($pdo->inTransaction()) {
                     $pdo->rollBack();
                 }
-                $msg = str_contains($e->getMessage(), 'Duplicate')
+                $msg = strpos($e->getMessage(), 'Duplicate') !== false
                     ? 'Duplicate serial number or asset ID — skipped'
                     : 'DB error: '.$e->getMessage();
                 $results[] = ['row'=>$row_num, 'status'=>'error',

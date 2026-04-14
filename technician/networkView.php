@@ -80,7 +80,7 @@ foreach ($deployments as $d) {
     $loc = trim((string)($d['building'] ?? ''));
     $lvl = trim((string)($d['level'] ?? ''));
     $zon = trim((string)($d['zone'] ?? ''));
-    $metaParts = array_values(array_filter([$loc, $lvl, $zon], static fn($v) => $v !== ''));
+    $metaParts = array_values(array_filter([$loc, $lvl, $zon], static function ($v): bool { return $v !== ''; }));
     $meta = $metaParts ? implode(' • ', $metaParts) : null;
     $by = trim((string)($d['deployed_by_name'] ?? ''));
     if ($by === '') $by = (string)($d['deployed_by'] ?? '—');

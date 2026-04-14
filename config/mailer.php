@@ -68,7 +68,7 @@ function smtp_send_html_with_logo(string $to, string $subject, string $plainBody
         $plainBody .= mailer_plain_footer();
     }
 
-    $cc = array_values(array_unique(array_filter(array_map('trim', $cc), static fn ($a) => $a !== '')));
+    $cc = array_values(array_unique(array_filter(array_map('trim', $cc), static function ($a): bool { return $a !== ''; })));
     $ccFiltered = [];
     $toNorm = smtp__normalize_addr($to);
     foreach ($cc as $c) {
@@ -174,7 +174,7 @@ function smtp__send_raw(array $rcptTos, string $rawMessage, ?string $from = null
     $port = (int) ($cfg['port'] ?? 1025);
     $fromAddr = $from ?: (string) (($cfg['from']['address'] ?? null) ?: 'nexcheck.rcmp@unikl.edu.my');
 
-    $rcptTos = array_values(array_unique(array_filter(array_map('trim', $rcptTos), static fn ($a) => $a !== '')));
+    $rcptTos = array_values(array_unique(array_filter(array_map('trim', $rcptTos), static function ($a): bool { return $a !== ''; })));
     if ($rcptTos === []) {
         throw new RuntimeException('SMTP: no recipients');
     }
@@ -211,7 +211,7 @@ function smtp_send(string $to, string $subject, string $body, ?string $from = nu
         $body .= mailer_plain_footer();
     }
 
-    $cc = array_values(array_unique(array_filter(array_map('trim', $cc), static fn ($a) => $a !== '')));
+    $cc = array_values(array_unique(array_filter(array_map('trim', $cc), static function ($a): bool { return $a !== ''; })));
     $ccFiltered = [];
     $toNorm = smtp__normalize_addr($to);
     foreach ($cc as $c) {

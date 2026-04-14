@@ -77,7 +77,9 @@ function nextcheck_fetch_pipeline_assets(PDO $pdo): array
         }
     }
 
-    usort($out, static fn ($a, $b) => $b['asset_id'] <=> $a['asset_id']);
+    usort($out, static function ($a, $b): int {
+        return $b['asset_id'] <=> $a['asset_id'];
+    });
     return $out;
 }
 

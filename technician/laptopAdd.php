@@ -24,10 +24,10 @@ $success_message = '';
 $error_message   = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $str  = fn($k) => isset($_POST[$k]) && $_POST[$k] !== '' ? trim($_POST[$k])  : null;
-    $date = fn($k) => isset($_POST[$k]) && $_POST[$k] !== '' ? trim($_POST[$k])  : null;
-    $dec  = fn($k) => isset($_POST[$k]) && $_POST[$k] !== '' ? (float)$_POST[$k] : null;
-    $int  = fn($k) => isset($_POST[$k]) && $_POST[$k] !== '' ? (int)$_POST[$k]   : null;
+    $str  = static function ($k) { return isset($_POST[$k]) && $_POST[$k] !== '' ? trim($_POST[$k]) : null; };
+    $date = static function ($k) { return isset($_POST[$k]) && $_POST[$k] !== '' ? trim($_POST[$k]) : null; };
+    $dec  = static function ($k) { return isset($_POST[$k]) && $_POST[$k] !== '' ? (float)$_POST[$k] : null; };
+    $int  = static function ($k) { return isset($_POST[$k]) && $_POST[$k] !== '' ? (int)$_POST[$k] : null; };
 
     $serial_num    = $str('serial_num');
     $status_id     = $int('status_id');

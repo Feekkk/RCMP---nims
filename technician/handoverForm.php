@@ -23,8 +23,12 @@ if ($assetId !== '') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $str = fn(string $k): ?string => isset($_POST[$k]) && $_POST[$k] !== '' ? trim((string)$_POST[$k]) : null;
-    $date = fn(string $k): ?string => isset($_POST[$k]) && $_POST[$k] !== '' ? trim((string)$_POST[$k]) : null;
+    $str = static function (string $k): ?string {
+        return isset($_POST[$k]) && $_POST[$k] !== '' ? trim((string)$_POST[$k]) : null;
+    };
+    $date = static function (string $k): ?string {
+        return isset($_POST[$k]) && $_POST[$k] !== '' ? trim((string)$_POST[$k]) : null;
+    };
 
     $asset_id = isset($_POST['asset_id']) ? (int)$_POST['asset_id'] : 0;
     $receiver_staff_id = $str('receiver_staff_id') ?? '';
