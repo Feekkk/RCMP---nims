@@ -7,16 +7,20 @@ if (!isset($_SESSION['staff_id']) || (int)($_SESSION['role_id'] ?? 0) !== 2) {
 
 require_once __DIR__ . '/../config/database.php';
 
-function users_page_url(string $filter, int $page): string
+function users_page_url(string $filter, int $page, ?string $q = null): string
 {
-    $q = [];
+    $params = [];
     if ($filter !== 'all') {
-        $q['filter'] = $filter;
+        $params['filter'] = $filter;
+    }
+    $search = trim((string)($q ?? ''));
+    if ($search !== '') {
+        $params['q'] = $search;
     }
     if ($page > 1) {
-        $q['page'] = $page;
+        $params['page'] = $page;
     }
-    $s = http_build_query($q);
+    $s = http_build_query($params);
 
     return 'users.php' . ($s !== '' ? '?' . $s : '');
 }
@@ -110,9 +114,26 @@ $filter = $_GET['filter'] ?? 'all';
 if (!in_array($filter, ['all', 'admin', 'technician', 'staff'], true)) {
     $filter = 'all';
 }
+$rawQ = $_GET['q'] ?? '';
+$searchQ = trim(is_array($rawQ) ? '' : (string)$rawQ);
+if (mb_strlen($searchQ) > 80) {
+    $searchQ = mb_substr($searchQ, 0, 80);
+}
 $filteredPeople = array_values(array_filter(
     $peopleRows,
-    static fn(array $p): bool => $filter === 'all' || ($p['kind'] ?? '') === $filter
+    static function (array $p) use ($filter, $searchQ): bool {
+        if ($filter !== 'all' && ($p['kind'] ?? '') !== $filter) return false;
+        if ($searchQ === '') return true;
+        $hay = strtolower(
+            (string)($p['full_name'] ?? '') . ' ' .
+            (string)($p['employee_no'] ?? '') . ' ' .
+            (string)($p['staff_id'] ?? '') . ' ' .
+            (string)($p['email'] ?? '') . ' ' .
+            (string)($p['department'] ?? '') . ' ' .
+            (string)($p['phone'] ?? '')
+        );
+        return str_contains($hay, strtolower($searchQ));
+    }
 ));
 $perPage = 10;
 $totalFiltered = count($filteredPeople);
@@ -388,6 +409,71 @@ $showTo = $totalFiltered === 0 ? 0 : min($offset + $perPage, $totalFiltered);
             opacity: 0.85;
             font-weight: 900;
         }
+        .people-search {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+            flex: 1 1 min(100%, 380px);
+            min-width: 0;
+        }
+        .people-search__input-wrap {
+            position: relative;
+            flex: 1 1 200px;
+            min-width: 0;
+        }
+        .people-search__icon {
+            position: absolute;
+            left: 0.85rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            pointer-events: none;
+        }
+        .people-search__input {
+            width: 100%;
+            box-sizing: border-box;
+            height: 2.75rem;
+            padding: 0 0.85rem 0 2.55rem;
+            border-radius: 10px;
+            border: 1px solid var(--card-border);
+            background: var(--glass-panel);
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .people-search__input::placeholder {
+            color: var(--text-muted);
+            font-weight: 600;
+            opacity: 0.85;
+        }
+        .people-search__input:hover {
+            border-color: rgba(37, 99, 235, 0.22);
+        }
+        .people-search__input:focus {
+            outline: none;
+            border-color: rgba(37, 99, 235, 0.45);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+        }
+        .people-search__submit {
+            height: 2.75rem;
+            padding: 0 1.1rem;
+            border-radius: 10px;
+            font-size: 0.88rem;
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.22);
+        }
+        .people-search__submit:hover {
+            transform: translateY(-1px);
+        }
+        .people-search__reset {
+            height: 2.75rem;
+            padding: 0 1rem;
+            border-radius: 10px;
+            font-size: 0.88rem;
+        }
         .table-meta {
             font-size: 0.85rem;
             color: var(--text-muted);
@@ -454,6 +540,7 @@ $showTo = $totalFiltered === 0 ? 0 : min($offset + $perPage, $totalFiltered);
         .mono { font-family: ui-monospace, monospace; font-size: 0.82rem; }
         .cell-main { font-weight: 800; color: var(--text-main); }
         .cell-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem; font-weight: 600; }
+        .muted { color: var(--text-muted); font-weight: 700; }
         .empty-cell {
             text-align: center;
             padding: 2.5rem 1rem !important;
@@ -517,11 +604,22 @@ $showTo = $totalFiltered === 0 ? 0 : min($offset + $perPage, $totalFiltered);
             <div class="card-toolbar">
                 <div class="toolbar-title"><i class="ri-table-line"></i> Directory</div>
                 <div class="filter-bar" role="toolbar" aria-label="Filter by role">
-                    <a class="filter-btn <?= $filter === 'all' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('all', 1)) ?>">All <span class="ct"><?= (int)$countAll ?></span></a>
-                    <a class="filter-btn <?= $filter === 'admin' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('admin', 1)) ?>">Administrator <span class="ct"><?= (int)$countAdmin ?></span></a>
-                    <a class="filter-btn <?= $filter === 'technician' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('technician', 1)) ?>">Technician <span class="ct"><?= (int)$countTech ?></span></a>
-                    <a class="filter-btn <?= $filter === 'staff' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('staff', 1)) ?>">Staff <span class="ct"><?= (int)$countStaff ?></span></a>
+                    <a class="filter-btn <?= $filter === 'all' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('all', 1, $searchQ)) ?>">All <span class="ct"><?= (int)$countAll ?></span></a>
+                    <a class="filter-btn <?= $filter === 'admin' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('admin', 1, $searchQ)) ?>">Administrator <span class="ct"><?= (int)$countAdmin ?></span></a>
+                    <a class="filter-btn <?= $filter === 'technician' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('technician', 1, $searchQ)) ?>">Technician <span class="ct"><?= (int)$countTech ?></span></a>
+                    <a class="filter-btn <?= $filter === 'staff' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('staff', 1, $searchQ)) ?>">Staff <span class="ct"><?= (int)$countStaff ?></span></a>
                 </div>
+                <form class="people-search" method="get" action="" role="search">
+                    <?php if ($filter !== 'all'): ?>
+                        <input type="hidden" name="filter" value="<?= htmlspecialchars($filter) ?>">
+                    <?php endif; ?>
+                    <div class="people-search__input-wrap">
+                        <i class="ri-search-2-line people-search__icon" aria-hidden="true"></i>
+                        <input class="people-search__input" type="search" name="q" value="<?= htmlspecialchars($searchQ) ?>" placeholder="Search name, email, id…" autocomplete="off" enterkeyhint="search">
+                    </div>
+                    <button class="btn btn-primary people-search__submit" type="submit"><i class="ri-search-line" aria-hidden="true"></i> Search</button>
+                    <a class="btn btn-outline people-search__reset" href="<?= htmlspecialchars(users_page_url($filter, 1, null)) ?>"><i class="ri-close-line" aria-hidden="true"></i> Reset</a>
+                </form>
                 <div class="table-meta">
                     <?php if ($totalFiltered > 0): ?>
                         Showing <strong><?= (int)$showFrom ?></strong>–<strong><?= (int)$showTo ?></strong> of <strong><?= (int)$totalFiltered ?></strong><br>
@@ -539,22 +637,33 @@ $showTo = $totalFiltered === 0 ? 0 : min($offset + $perPage, $totalFiltered);
                             <th><span class="mono">employee_no</span></th>
                             <th><span class="mono">email</span></th>
                             <th><span class="mono">role</span></th>
+                            <th><span class="mono">action</span></th>
                         </tr>
                     </thead>
                     <tbody id="peopleTbody">
                         <?php if ($totalFiltered === 0): ?>
-                            <tr><td colspan="4" class="empty-cell">No people to show for this filter.</td></tr>
+                            <tr><td colspan="5" class="empty-cell">No people to show for this filter.</td></tr>
                         <?php else: foreach ($pageRows as $p):
                             $kind = $p['kind'] ?? '';
                             $roleDisp = $kind === 'admin' ? 'Administrator'
                                 : ($kind === 'technician' ? 'Technician'
                                 : ($kind === 'staff' ? 'Staff' : '—'));
+                            $canEdit = ($kind === 'admin' || $kind === 'technician') && ($p['staff_id'] ?? '') !== '';
                         ?>
                             <tr>
                                 <td><div class="cell-main"><?= htmlspecialchars($p['full_name']) ?></div></td>
                                 <td class="mono"><?= $p['employee_no'] !== '' ? htmlspecialchars($p['employee_no']) : '—' ?></td>
                                 <td><?= $p['email'] !== '' ? htmlspecialchars($p['email']) : '—' ?></td>
                                 <td class="mono"><?= htmlspecialchars($roleDisp) ?></td>
+                                <td>
+                                    <?php if ($canEdit): ?>
+                                        <a class="btn btn-outline" style="padding:0.55rem 0.85rem" href="editUser.php?staff_id=<?= urlencode((string)$p['staff_id']) ?>">
+                                            <i class="ri-edit-2-line"></i> Edit
+                                        </a>
+                                    <?php else: ?>
+                                        <span class="muted">—</span>
+                                    <?php endif; ?>
+                                </td>
                             </tr>
                         <?php endforeach; endif; ?>
                     </tbody>
@@ -562,13 +671,13 @@ $showTo = $totalFiltered === 0 ? 0 : min($offset + $perPage, $totalFiltered);
             </div>
             <nav class="pager" aria-label="Table pages">
                 <?php if ($page > 1): ?>
-                    <a class="pager-btn" href="<?= htmlspecialchars(users_page_url($filter, $page - 1)) ?>"><i class="ri-arrow-left-s-line"></i> Previous</a>
+                    <a class="pager-btn" href="<?= htmlspecialchars(users_page_url($filter, $page - 1, $searchQ)) ?>"><i class="ri-arrow-left-s-line"></i> Previous</a>
                 <?php else: ?>
                     <span class="pager-btn disabled"><i class="ri-arrow-left-s-line"></i> Previous</span>
                 <?php endif; ?>
                 <span class="pager-info"><?= (int)$page ?> / <?= (int)$totalPages ?></span>
                 <?php if ($page < $totalPages): ?>
-                    <a class="pager-btn" href="<?= htmlspecialchars(users_page_url($filter, $page + 1)) ?>">Next <i class="ri-arrow-right-s-line"></i></a>
+                    <a class="pager-btn" href="<?= htmlspecialchars(users_page_url($filter, $page + 1, $searchQ)) ?>">Next <i class="ri-arrow-right-s-line"></i></a>
                 <?php else: ?>
                     <span class="pager-btn disabled">Next <i class="ri-arrow-right-s-line"></i></span>
                 <?php endif; ?>
