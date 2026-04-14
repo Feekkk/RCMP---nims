@@ -140,13 +140,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_returns'])) {
                 $pdo->beginTransaction();
                 $stmtLock = $pdo->prepare('
                     SELECT a.assignment_id, a.nexcheck_id, a.asset_id, a.returned_at,
-                           l.status_id AS laptop_status_id, v.status_id AS av_status_id
+                           l.status_id AS laptop_status_id, v.status_id AS av_status_id,
+                           i.category AS item_category
                     FROM nexcheck_assignment a
+                    LEFT JOIN nexcheck_request_item i ON i.request_item_id = a.request_item_id
                     LEFT JOIN laptop l ON l.asset_id = a.asset_id
                     LEFT JOIN av v ON v.asset_id = a.asset_id
                     WHERE a.assignment_id = ?
                     FOR UPDATE
                 ');
+                $returnNotifyLines = [];
                 $stmtUpA = $pdo->prepare('
                     UPDATE nexcheck_assignment
                     SET returned_at = NOW(), return_condition = ?, returned_by = ?
@@ -183,8 +186,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_returns'])) {
                     } else {
                         throw new RuntimeException('Could not resolve inventory table for asset #' . (int)$row['asset_id'] . '.');
                     }
+                    $cat = trim((string)($row['item_category'] ?? ''));
+                    $returnNotifyLines[] = [
+                        'text' => '#' . (int)$row['asset_id'] . ($cat !== '' ? ' · ' . $cat : '') . ' — ' . $condText,
+                    ];
                 }
                 $pdo->commit();
+                if ($returnNotifyLines !== []) {
+                    $info = $pdo->prepare('SELECT u.email, u.full_name FROM nexcheck_request r JOIN users u ON u.staff_id = r.requested_by WHERE r.nexcheck_id = ? LIMIT 1');
+                    $info->execute([$nexcheckId]);
+                    $urow = $info->fetch(PDO::FETCH_ASSOC) ?: [];
+                    $procSt = $pdo->prepare('SELECT full_name FROM users WHERE staff_id = ? LIMIT 1');
+                    $procSt->execute([$staffId]);
+                    $procBy = trim((string)($procSt->fetchColumn() ?: ''));
+                    require_once __DIR__ . '/../config/mailer.php';
+                    try {
+                        nims_return_notify_recipient(
+                            (string)($urow['email'] ?? ''),
+                            (string)($urow['full_name'] ?? ''),
+                            'NIMS - Return recorded for request #' . $nexcheckId,
+                            'Return recorded',
+                            'IT has recorded the return of your booked equipment. Items are back in the pool and this booking line is closed.',
+                            [
+                                ['k' => 'Request', 'v' => '#' . $nexcheckId],
+                                ['k' => 'Confirmed at', 'v' => date('d M Y, h:i A')],
+                            ],
+                            $returnNotifyLines,
+                            $procBy !== '' ? $procBy : null
+                        );
+                    } catch (Throwable $e) {
+                        error_log('NIMS: NextCheck return notification email failed: ' . $e->getMessage());
+                    }
+                }
                 header('Location: nextItems.php?nexcheck_id=' . $nexcheckId . '&returned=1#nexcheck-return');
                 exit;
             } catch (Throwable $e) {

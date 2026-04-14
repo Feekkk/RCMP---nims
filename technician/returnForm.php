@@ -243,6 +243,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $flashType = 'ok';
             $flashMsg = 'Return recorded.';
+
+            if ($handoverStaffId !== null) {
+                $stRec = $pdo->prepare('SELECT st.email, st.full_name FROM handover_staff hs JOIN staff st ON st.employee_no = hs.employee_no WHERE hs.handover_staff_id = ? LIMIT 1');
+                $stRec->execute([$handoverStaffId]);
+                $recRow = $stRec->fetch(PDO::FETCH_ASSOC) ?: [];
+                $recEmail = trim((string) ($recRow['email'] ?? ''));
+                $recName = trim((string) ($recRow['full_name'] ?? ''));
+                $stProc = $pdo->prepare('SELECT full_name FROM users WHERE staff_id = ? LIMIT 1');
+                $stProc->execute([$sessionStaffId]);
+                $procBy = trim((string) ($stProc->fetchColumn() ?: ''));
+                $assetLabel = trim(trim((string) ($laptop['brand'] ?? '') . ' ' . (string) ($laptop['model'] ?? '')) . ((string) ($laptop['serial_num'] ?? '') !== '' ? ' · SN ' . (string) $laptop['serial_num'] : ''));
+                $statusName = '';
+                $stSn = $pdo->prepare('SELECT name FROM status WHERE status_id = ? LIMIT 1');
+                $stSn->execute([$returnStatusId]);
+                $statusName = trim((string) ($stSn->fetchColumn() ?: ''));
+                $summaryRows = [
+                    ['k' => 'Return date', 'v' => $returnDate . ($returnTime !== '' ? ' · ' . $returnTime : '')],
+                    ['k' => 'Return place', 'v' => $returnPlace],
+                ];
+                if ($handoverReturnHasConditionColumn && $returnCondition !== '') {
+                    $summaryRows[] = ['k' => 'Condition', 'v' => $returnCondition];
+                }
+                if ($returnRemarks !== '') {
+                    $summaryRows[] = ['k' => 'Remarks', 'v' => $returnRemarks];
+                }
+                if ($statusName !== '') {
+                    $summaryRows[] = ['k' => 'Asset status after return', 'v' => $statusName];
+                }
+                $itemLines = [['text' => 'Laptop #' . $assetId . ($assetLabel !== '' ? ' — ' . $assetLabel : '')]];
+                require_once __DIR__ . '/../config/mailer.php';
+                try {
+                    nims_return_notify_recipient(
+                        $recEmail,
+                        $recName,
+                        'NIMS - Equipment return recorded (asset #' . $assetId . ')',
+                        'Return recorded',
+                        'Your equipment return has been recorded by IT. Details are below.',
+                        $summaryRows,
+                        $itemLines,
+                        $procBy !== '' ? $procBy : null
+                    );
+                } catch (Throwable $e) {
+                    error_log('NIMS: handover return notification email failed: ' . $e->getMessage());
+                }
+            }
+
             $stmtTech = $pdo->prepare('SELECT full_name, email FROM users WHERE staff_id = ? LIMIT 1');
             $stmtTech->execute([$sessionStaffId]);
             $techRow = $stmtTech->fetch(PDO::FETCH_ASSOC);

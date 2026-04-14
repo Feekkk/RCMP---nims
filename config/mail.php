@@ -19,6 +19,6 @@ return [
     ],
     /** Notified when a user submits an equipment (NextCheck) request. Override with MAIL_REQUEST_ITEMS_TO. */
     'notify_item_requests_to' => getenv('MAIL_REQUEST_ITEMS_TO') ?: 'it.rcmp@unikl.edu.my',
-    /** CC on NextCheck status emails to the requester (accepted / rejected). Override with MAIL_NEXTCHECK_USER_CC. */
+    /** CC on user-facing NIMS emails (NextCheck status, equipment return confirmations). Override with MAIL_NEXTCHECK_USER_CC. */
     'nextcheck_user_notify_cc' => getenv('MAIL_NEXTCHECK_USER_CC') ?: 'it.rcmp@unikl.edu.my',
 ];
