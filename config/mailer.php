@@ -46,12 +46,23 @@ function smtp__expect_ok(string $reply, string $step): void
     }
 }
 
-function smtp__send_raw(string $to, string $rawMessage, ?string $from = null): void
+function smtp__normalize_addr(string $addr): string
+{
+    return strtolower(trim($addr));
+}
+
+/** @param string[] $rcptTos Unique envelope recipients (To + Cc + Bcc). */
+function smtp__send_raw(array $rcptTos, string $rawMessage, ?string $from = null): void
 {
     $cfg = require __DIR__ . '/mail.php';
     $host = (string) ($cfg['host'] ?? '127.0.0.1');
     $port = (int) ($cfg['port'] ?? 1025);
     $fromAddr = $from ?: (string) (($cfg['from']['address'] ?? null) ?: 'nexcheck.rcmp@unikl.edu.my');
+
+    $rcptTos = array_values(array_unique(array_filter(array_map('trim', $rcptTos), static fn ($a) => $a !== '')));
+    if ($rcptTos === []) {
+        throw new RuntimeException('SMTP: no recipients');
+    }
 
     $fp = fsockopen($host, $port, $errno, $errstr, 10);
     if (!$fp) {
@@ -61,7 +72,9 @@ function smtp__send_raw(string $to, string $rawMessage, ?string $from = null): v
     smtp__expect_ok(smtp__read_reply($fp), 'greeting');
     smtp__expect_ok(smtp__cmd($fp, 'EHLO nims.local'), 'EHLO');
     smtp__expect_ok(smtp__cmd($fp, 'MAIL FROM:<' . $fromAddr . '>'), 'MAIL FROM');
-    smtp__expect_ok(smtp__cmd($fp, 'RCPT TO:<' . $to . '>'), 'RCPT TO');
+    foreach ($rcptTos as $to) {
+        smtp__expect_ok(smtp__cmd($fp, 'RCPT TO:<' . $to . '>'), 'RCPT TO');
+    }
     smtp__expect_ok(smtp__cmd($fp, 'DATA'), 'DATA');
 
     $rawMessage = preg_replace("/\r?\n/", "\r\n", (string) $rawMessage);
@@ -71,7 +84,10 @@ function smtp__send_raw(string $to, string $rawMessage, ?string $from = null): v
     fclose($fp);
 }
 
-function smtp_send(string $to, string $subject, string $body, ?string $from = null): void
+/**
+ * @param string[] $cc Each address is added to headers and SMTP envelope (RCPT TO).
+ */
+function smtp_send(string $to, string $subject, string $body, ?string $from = null, array $cc = []): void
 {
     $cfg = require __DIR__ . '/mail.php';
     $fromAddr = $from ?: (string) (($cfg['from']['address'] ?? null) ?: 'nexcheck.rcmp@unikl.edu.my');
@@ -81,6 +97,15 @@ function smtp_send(string $to, string $subject, string $body, ?string $from = nu
         $body .= $signature;
     }
 
+    $cc = array_values(array_unique(array_filter(array_map('trim', $cc), static fn ($a) => $a !== '')));
+    $ccFiltered = [];
+    $toNorm = smtp__normalize_addr($to);
+    foreach ($cc as $c) {
+        if (smtp__normalize_addr($c) !== $toNorm) {
+            $ccFiltered[] = $c;
+        }
+    }
+
     $headers = [
         'From: ' . $fromAddr,
         'To: ' . $to,
@@ -88,8 +113,13 @@ function smtp_send(string $to, string $subject, string $body, ?string $from = nu
         'MIME-Version: 1.0',
         'Content-Type: text/plain; charset=UTF-8',
     ];
+    if ($ccFiltered !== []) {
+        $headers[] = 'Cc: ' . implode(', ', $ccFiltered);
+    }
+
     $raw = implode("\r\n", $headers) . "\r\n\r\n" . $body;
-    smtp__send_raw($to, $raw, $from);
+    $envelope = array_merge([$to], $ccFiltered);
+    smtp__send_raw($envelope, $raw, $from);
 }
 
 function smtp_send_with_attachment(
@@ -138,12 +168,70 @@ function smtp_send_with_attachment(
     $parts[] = '';
 
     $raw = implode("\r\n", $headers) . "\r\n\r\n" . implode("\r\n", $parts);
-    smtp__send_raw($to, $raw, $from);
+    smtp__send_raw([$to], $raw, $from);
 }
 
 /**
- * Email the laptop/desktop return form PDF to the technician who completed the return (NIMS user).
+ * Email the requester when a NextCheck request is rejected or fully accepted (all lines assigned).
+ * CCs IT per config nextcheck_user_notify_cc (default it.rcmp@unikl.edu.my).
  */
+function nexcheck_request_notify_user_status(
+    string $userEmail,
+    string $userDisplayName,
+    int $nexcheckId,
+    string $status,
+    array $ctx = []
+): void {
+    $email = trim($userEmail);
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return;
+    }
+
+    $cfg = require __DIR__ . '/mail.php';
+    $ccAddr = trim((string) ($cfg['nextcheck_user_notify_cc'] ?? ''));
+    $cc = ($ccAddr !== '' && smtp__normalize_addr($ccAddr) !== smtp__normalize_addr($email)) ? [$ccAddr] : [];
+
+    $name = trim($userDisplayName) !== '' ? trim($userDisplayName) : 'there';
+    $borrow = (string) ($ctx['borrow_date'] ?? '');
+    $ret = (string) ($ctx['return_date'] ?? '');
+    $loc = trim((string) ($ctx['usage_location'] ?? ''));
+    $ptKey = (string) ($ctx['program_type'] ?? '');
+    $programLabels = [
+        'academic' => 'Academic project / class',
+        'official_event' => 'Official event',
+        'club_society' => 'Club / society activities',
+    ];
+    $pt = $programLabels[$ptKey] ?? ($ptKey !== '' ? $ptKey : '—');
+
+    if ($status === 'rejected') {
+        $subject = 'NIMS - Your equipment request #' . $nexcheckId . ' was not approved';
+        $body = 'Hi ' . $name . ",\n\n"
+            . 'Your NextCheck equipment request #' . $nexcheckId . " was not approved (rejected) by IT.\n\n"
+            . 'Borrow: ' . $borrow . "\n"
+            . 'Return: ' . $ret . "\n"
+            . 'Program: ' . $pt . "\n"
+            . 'Location: ' . ($loc !== '' ? $loc : '—') . "\n\n";
+        $rej = trim((string) ($ctx['rejection_reason'] ?? ''));
+        if ($rej !== '') {
+            $body .= "Reason given:\n" . wordwrap($rej, 72, "\n", true) . "\n\n";
+        }
+        $body .= "If you have questions, contact the IT department.\n";
+    } elseif ($status === 'accepted') {
+        $subject = 'NIMS - Your equipment request #' . $nexcheckId . ' is being fulfilled';
+        $body = 'Hi ' . $name . ",\n\n"
+            . 'Good news: your NextCheck equipment request #' . $nexcheckId . " has been approved — all lines are assigned and equipment is prepared for checkout.\n\n"
+            . 'Borrow: ' . $borrow . "\n"
+            . 'Return: ' . $ret . "\n"
+            . 'Program: ' . $pt . "\n"
+            . 'Location: ' . ($loc !== '' ? $loc : '—') . "\n\n"
+            . "Please follow any instructions from IT for collection and return.\n";
+    } else {
+        return;
+    }
+
+    smtp_send($email, $subject, $body, null, $cc);
+}
+
 /**
  * Email IT when a staff member submits a NextCheck equipment request (nexcheck_request).
  * Failures are non-fatal; callers should catch and log.
@@ -203,6 +291,9 @@ function nexcheck_request_notify_it(
     smtp_send($to, $subject, $body);
 }
 
+/**
+ * Email the laptop/desktop return form PDF to the technician who completed the return (NIMS user).
+ */
 function smtp_send_return_completion_pdf(
     string $toEmail,
     string $technicianName,

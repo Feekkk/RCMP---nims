@@ -60,6 +60,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reject_request'])) {
                 if ($up->rowCount() < 1) {
                     $reject_error = 'This request cannot be rejected (already rejected or not found).';
                 } else {
+                    $info = $pdo->prepare('SELECT u.email, u.full_name, r.borrow_date, r.return_date, r.program_type, r.usage_location FROM nexcheck_request r JOIN users u ON u.staff_id = r.requested_by WHERE r.nexcheck_id = ? LIMIT 1');
+                    $info->execute([$nexcheckId]);
+                    $urow = $info->fetch(PDO::FETCH_ASSOC) ?: [];
+                    require_once __DIR__ . '/../config/mailer.php';
+                    try {
+                        nexcheck_request_notify_user_status(
+                            (string)($urow['email'] ?? ''),
+                            (string)($urow['full_name'] ?? ''),
+                            $nexcheckId,
+                            'rejected',
+                            [
+                                'borrow_date' => (string)($urow['borrow_date'] ?? ''),
+                                'return_date' => (string)($urow['return_date'] ?? ''),
+                                'program_type' => (string)($urow['program_type'] ?? ''),
+                                'usage_location' => (string)($urow['usage_location'] ?? ''),
+                                'rejection_reason' => $rejReason,
+                            ]
+                        );
+                    } catch (Throwable $e) {
+                        error_log('NIMS: requester reject notification email failed: ' . $e->getMessage());
+                    }
                     header('Location: nextCheckout.php?rejected=1');
                     exit;
                 }
@@ -240,6 +261,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_assignments'])) 
                     }
                 }
                 $pdo->commit();
+                $sni = $pdo->prepare('SELECT COUNT(*) FROM nexcheck_request_item WHERE nexcheck_id = ?');
+                $sni->execute([$nexcheckId]);
+                $ni = (int)$sni->fetchColumn();
+                $sna = $pdo->prepare('SELECT COUNT(*) FROM nexcheck_assignment WHERE nexcheck_id = ?');
+                $sna->execute([$nexcheckId]);
+                $na = (int)$sna->fetchColumn();
+                if ($ni > 0 && $ni === $na) {
+                    $info = $pdo->prepare('SELECT u.email, u.full_name, r.borrow_date, r.return_date, r.program_type, r.usage_location FROM nexcheck_request r JOIN users u ON u.staff_id = r.requested_by WHERE r.nexcheck_id = ? LIMIT 1');
+                    $info->execute([$nexcheckId]);
+                    $urow = $info->fetch(PDO::FETCH_ASSOC) ?: [];
+                    require_once __DIR__ . '/../config/mailer.php';
+                    try {
+                        nexcheck_request_notify_user_status(
+                            (string)($urow['email'] ?? ''),
+                            (string)($urow['full_name'] ?? ''),
+                            $nexcheckId,
+                            'accepted',
+                            [
+                                'borrow_date' => (string)($urow['borrow_date'] ?? ''),
+                                'return_date' => (string)($urow['return_date'] ?? ''),
+                                'program_type' => (string)($urow['program_type'] ?? ''),
+                                'usage_location' => (string)($urow['usage_location'] ?? ''),
+                            ]
+                        );
+                    } catch (Throwable $e) {
+                        error_log('NIMS: requester accept notification email failed: ' . $e->getMessage());
+                    }
+                }
                 header('Location: nextItems.php?nexcheck_id=' . $nexcheckId . '&saved=1');
                 exit;
             } catch (Throwable $e) {
