@@ -905,7 +905,7 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
                                 </td>
                                 <td style="text-align:right;">
                                     <div class="row-actions">
-                                        <button type="button" class="icon-btn" title="View (soon)" disabled><i class="ri-eye-line"></i></button>
+                                        <a class="icon-btn" title="View details" href="networkView.php?asset_id=<?= (int)$row['asset_id'] ?>"><i class="ri-eye-line"></i></a>
                                         <?php if ((int)$row['status_id'] === 9): ?>
                                             <a class="icon-btn" title="Deploy" href="networkDeploy.php?asset_id=<?= (int)$row['asset_id'] ?>">
                                                 <i class="ri-upload-2-line"></i>
