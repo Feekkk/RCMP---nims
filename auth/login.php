@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .brand-area{opacity:0;transform:translateY(24px);animation:riseIn 0.8s cubic-bezier(0.16,1,0.3,1) 0.05s forwards;}
         @keyframes riseIn{to{opacity:1;transform:translateY(0);}}
 
-        .brand-logo{height:52px;object-fit:contain;filter:drop-shadow(0 2px 8px rgba(37,99,235,0.15));margin-bottom:2.5rem;transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1);}
+        .brand-logo{height:80px;max-width:min(320px,100%);object-fit:contain;filter:drop-shadow(0 2px 8px rgba(37,99,235,0.15));margin-bottom:2.5rem;transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1);}
         .brand-logo:hover{transform:scale(1.06);}
 
         .brand-eyebrow{font-family:var(--mono);font-size:0.7rem;letter-spacing:2.5px;text-transform:uppercase;color:var(--primary);margin-bottom:1rem;display:flex;align-items:center;gap:8px;}
