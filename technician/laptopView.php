@@ -12,10 +12,39 @@ if ($assetId <= 0) { header('Location: laptop.php'); exit; }
 
 $pdo = db();
 
+// Allow quick status updates from this page (only status_id 1 or 2)
+$statusFlash = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_status') {
+    $postedAssetId = (int)($_POST['asset_id'] ?? 0);
+    $newStatusId   = (int)($_POST['status_id'] ?? 0);
+    $csrf          = (string)($_POST['csrf'] ?? '');
+
+    $csrfOk = isset($_SESSION['csrf_token']) && hash_equals((string)$_SESSION['csrf_token'], $csrf);
+    if (!$csrfOk) {
+        $statusFlash = 'Invalid session token. Please refresh and try again.';
+    } elseif ($postedAssetId !== $assetId) {
+        $statusFlash = 'Invalid asset selected.';
+    } elseif ($newStatusId !== 1 && $newStatusId !== 2) {
+        $statusFlash = 'Only status 1 or 2 can be changed from this page.';
+    } else {
+        $upd = $pdo->prepare("UPDATE laptop SET status_id = ? WHERE asset_id = ? LIMIT 1");
+        $upd->execute([$newStatusId, $assetId]);
+        header('Location: laptopView.php?asset_id=' . urlencode((string)$assetId) . '&status_updated=1');
+        exit;
+    }
+}
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 $stmt = $pdo->prepare("SELECT l.*, s.name AS status_name FROM laptop l JOIN status s ON s.status_id = l.status_id WHERE l.asset_id = ? LIMIT 1");
 $stmt->execute([$assetId]);
 $asset = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$asset) { header('Location: laptop.php'); exit; }
+
+$stmtAllowedStatus = $pdo->query("SELECT status_id, name FROM status WHERE status_id IN (1,2) ORDER BY status_id ASC");
+$allowedStatuses = $stmtAllowedStatus ? $stmtAllowedStatus->fetchAll(PDO::FETCH_ASSOC) : [];
 
 $stmtW = $pdo->prepare("SELECT warranty_id, warranty_start_date, warranty_end_date, warranty_remarks, created_at FROM warranty WHERE asset_type = 'laptop' AND asset_id = ? ORDER BY warranty_end_date DESC, warranty_id DESC LIMIT 1");
 $stmtW->execute([$assetId]);
@@ -625,6 +654,31 @@ $typeMeta = [
 
         /* ── Hidden rows (search filter) ── */
         .tl-item.hidden-tl { display: none; }
+
+        /* ── Status dropdown ── */
+        .status-form { display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-top:0.55rem; }
+        .status-select {
+            padding: 0.45rem 0.65rem;
+            border-radius: 10px;
+            border: 1.5px solid var(--card-border);
+            background: #fff;
+            color: var(--text-main);
+            font-weight: 600;
+            font-size: 0.82rem;
+            outline: none;
+        }
+        .status-select:focus { border-color: rgba(37,99,235,0.45); box-shadow: 0 0 0 3px rgba(37,99,235,0.10); }
+        .btn-mini {
+            padding: 0.48rem 0.7rem;
+            border-radius: 10px;
+            font-size: 0.82rem;
+        }
+        .flash {
+            margin-top: 0.55rem;
+            font-size: 0.78rem;
+            color: #b91c1c;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -808,12 +862,26 @@ $typeMeta = [
                     <div class="snapshot-icon si-blue"><i class="ri-pulse-line"></i></div>
                     <div class="snapshot-content">
                         <div class="snapshot-label">Current status</div>
-                        <div class="snapshot-value">
-                            <span class="status-badge <?= htmlspecialchars((string)$sm['cls']) ?>">
-                                <i class="<?= htmlspecialchars((string)$sm['icon']) ?>"></i>
-                                <?= htmlspecialchars((string)($asset['status_name'] ?? '—')) ?>
-                            </span>
-                        </div>
+                        <form class="status-form" method="POST" action="">
+                            <input type="hidden" name="action" value="set_status">
+                            <input type="hidden" name="asset_id" value="<?= (int)$assetId ?>">
+                            <input type="hidden" name="csrf" value="<?= htmlspecialchars((string)$_SESSION['csrf_token']) ?>">
+                            <select class="status-select" name="status_id" aria-label="Change status" id="statusSelect">
+                                <?php foreach ($allowedStatuses as $st):
+                                    $sid = (int)($st['status_id'] ?? 0);
+                                    $sname = (string)($st['name'] ?? ('Status ' . $sid));
+                                ?>
+                                    <option value="<?= $sid ?>" <?= $sid === (int)($asset['status_id'] ?? 0) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($sid . ' — ' . $sname) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </form>
+                        <?php if (!empty($statusFlash)): ?>
+                            <div class="flash"><?= htmlspecialchars($statusFlash) ?></div>
+                        <?php elseif (!empty($_GET['status_updated'])): ?>
+                            <div class="flash" style="color:#047857">Status updated.</div>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -968,6 +1036,14 @@ if (trailSearchEl) {
         });
         if (trailCountEl) trailCountEl.textContent = visible + (visible === 1 ? ' event' : ' events');
         if (emptyTrailEl) emptyTrailEl.style.display = visible === 0 ? 'block' : 'none';
+    });
+}
+
+// ── Auto-save status dropdown ──
+var statusSelect = document.getElementById('statusSelect');
+if (statusSelect && statusSelect.form) {
+    statusSelect.addEventListener('change', function () {
+        statusSelect.form.submit();
     });
 }
 </script>
