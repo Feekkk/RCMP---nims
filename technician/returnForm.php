@@ -244,12 +244,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $flashType = 'ok';
             $flashMsg = 'Return recorded.';
 
+            $returnStaffEmail = '';
+            $returnStaffName = '';
             if ($handoverStaffId !== null) {
                 $stRec = $pdo->prepare('SELECT st.email, st.full_name FROM handover_staff hs JOIN staff st ON st.employee_no = hs.employee_no WHERE hs.handover_staff_id = ? LIMIT 1');
                 $stRec->execute([$handoverStaffId]);
                 $recRow = $stRec->fetch(PDO::FETCH_ASSOC) ?: [];
-                $recEmail = trim((string) ($recRow['email'] ?? ''));
-                $recName = trim((string) ($recRow['full_name'] ?? ''));
+                $returnStaffEmail = trim((string) ($recRow['email'] ?? ''));
+                $returnStaffName = trim((string) ($recRow['full_name'] ?? ''));
                 $stProc = $pdo->prepare('SELECT full_name FROM users WHERE staff_id = ? LIMIT 1');
                 $stProc->execute([$sessionStaffId]);
                 $procBy = trim((string) ($stProc->fetchColumn() ?: ''));
@@ -275,8 +277,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 require_once __DIR__ . '/../config/mailer.php';
                 try {
                     nims_return_notify_recipient(
-                        $recEmail,
-                        $recName,
+                        $returnStaffEmail,
+                        $returnStaffName,
                         'NIMS - Equipment return recorded (asset #' . $assetId . ')',
                         'Return recorded',
                         'Your equipment return has been recorded by IT. Details are below.',
@@ -289,20 +291,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            $stmtTech = $pdo->prepare('SELECT full_name, email FROM users WHERE staff_id = ? LIMIT 1');
-            $stmtTech->execute([$sessionStaffId]);
-            $techRow = $stmtTech->fetch(PDO::FETCH_ASSOC);
-            $techEmail = trim((string) ($techRow['email'] ?? ''));
-            $techName = trim((string) ($techRow['full_name'] ?? ''));
-            if ($techEmail !== '' && filter_var($techEmail, FILTER_VALIDATE_EMAIL) && $newReturnId > 0) {
+            if ($returnStaffEmail !== '' && filter_var($returnStaffEmail, FILTER_VALIDATE_EMAIL) && $newReturnId > 0) {
                 try {
                     require_once __DIR__ . '/../services/returnPDF.php';
-                    return_mail_pdf_to_technician(
+                    return_mail_pdf_to_recipient(
                         $newReturnId,
-                        $techEmail,
-                        $techName !== '' ? $techName : $sessionStaffId
+                        $returnStaffEmail,
+                        $returnStaffName !== '' ? $returnStaffName : 'Staff'
                     );
-                    $flashMsg .= ' The return form PDF was emailed to you.';
+                    $flashMsg .= ' The return form PDF was emailed to the staff member.';
                 } catch (Throwable $mailEx) {
                     error_log('NIMS return PDF email failed: ' . $mailEx->getMessage());
                     $flashType = 'warning';
@@ -312,12 +309,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     $flashMsg .= ' Could not email the PDF: ' . $detail;
                 }
-            } elseif ($techEmail !== '' && filter_var($techEmail, FILTER_VALIDATE_EMAIL) && $newReturnId <= 0) {
+            } elseif ($newReturnId <= 0) {
                 $flashType = 'warning';
                 $flashMsg .= ' Could not email the PDF (return record id missing — check database).';
+            } elseif ($handoverStaffId !== null) {
+                $flashType = 'warning';
+                $flashMsg .= ' Return form PDF was not emailed (no valid email for the staff recipient).';
             } else {
                 $flashType = 'warning';
-                $flashMsg .= ' No valid email on your profile — PDF was not sent.';
+                $flashMsg .= ' Return form PDF was not emailed (place handover has no individual recipient on file).';
             }
             $_SESSION['laptop_flash'] = ['type' => $flashType, 'msg' => $flashMsg];
 

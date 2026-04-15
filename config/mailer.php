@@ -10,7 +10,7 @@ declare(strict_types=1);
  *   require_once __DIR__ . '/mailer.php';
  *   smtp_send('to@example.com', 'Subject', "Body\n");
  *   smtp_send_html_with_logo(...) — branded HTML + inline logo (public/logo-nims.png).
- *   smtp_send_return_completion_pdf(...) — return form PDF to technician (see services/returnPDF.php).
+ *   smtp_send_return_completion_pdf(...) — return form PDF to staff recipient (see services/returnPDF.php).
  */
 
 const MAILER_LOGO_CONTENT_ID = 'nimslogo@nims.rcmp';
@@ -541,21 +541,21 @@ function nexcheck_request_notify_it(
 }
 
 /**
- * Email the laptop/desktop return form PDF to the technician who completed the return (NIMS user).
+ * Email the laptop/desktop return form PDF to the staff member who returned the equipment.
  */
 function smtp_send_return_completion_pdf(
     string $toEmail,
-    string $technicianName,
+    string $recipientName,
     string $pdfBytes,
     int $assetId,
     ?string $from = null
 ): void {
-    $name = trim($technicianName) !== '' ? trim($technicianName) : 'Technician';
+    $name = trim($recipientName) !== '' ? trim($recipientName) : 'Staff';
     $subject = 'NIMS - Return form PDF (Asset ' . $assetId . ')';
     $body = 'Hi ' . $name . ",\n\n"
-        . 'Thank you for completing the equipment return in NIMS. Attached is the generated return form PDF for your records.' . "\n\n"
+        . 'Your equipment return has been recorded in NIMS. Attached is a copy of the return form PDF for your records.' . "\n\n"
         . 'Asset ID: ' . $assetId . "\n\n"
-        . 'If you did not perform this return, please contact the IT Department.' . "\n";
+        . 'If you did not return this equipment, please contact the IT Department.' . "\n";
     $filename = 'UNIKL_RCMP_Return_Form_' . $assetId . '.pdf';
     smtp_send_with_attachment($toEmail, $subject, $body, $pdfBytes, $filename, $from);
 }

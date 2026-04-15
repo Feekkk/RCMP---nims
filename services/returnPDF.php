@@ -301,11 +301,11 @@ function return_build_pdf(array $data): TCPDF
     return $pdf;
 }
 
-function return_mail_pdf_to_technician(int $returnId, string $toEmail, string $toName): void
+function return_mail_pdf_to_recipient(int $returnId, string $toEmail, string $toName): void
 {
     $toEmail = trim($toEmail);
     if ($toEmail === '' || !filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
-        throw new InvalidArgumentException('Invalid technician email address.');
+        throw new InvalidArgumentException('Invalid recipient email address.');
     }
     require_once __DIR__ . '/../config/mailer.php';
     $data = return_fetch_data($returnId);
