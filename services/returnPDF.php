@@ -13,8 +13,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/laptop_asset_id.php';
 
 const RETURN_ORG = 'UNIVERSITY KUALA LUMPUR ROYAL COLLEGE OF MEDICINE PERAK';
-const RETURN_DEPT_LINE = 'INFORMATION TECHNOLOGY DEPARTMENT';
-const RETURN_DOC_TITLE = 'RETURN FORM OF COMPANY\'S DESKTOP';
+const RETURN_HEADER_LINE2 = 'HANDING OVER OF COMPANY\'S NOTEBOOK/DESKTOP';
 
 function return_logo_path(): string
 {
@@ -92,7 +91,11 @@ function return_fetch_data(int $returnId): array
 
 function return_draw_header(TCPDF $pdf): void
 {
-    $lm = $pdf->getMargins()['left'];
+    $margins = $pdf->getMargins();
+    $lm = $margins['left'];
+    $rm = $margins['right'];
+    $usableW = $pdf->getPageWidth() - $lm - $rm;
+
     $y0 = $pdf->GetY();
     if ($y0 < 14) {
         $y0 = 14;
@@ -102,27 +105,25 @@ function return_draw_header(TCPDF $pdf): void
     $path = return_logo_path();
     $logoH = 0.0;
     if (is_readable($path)) {
-        $logoW = 20.0;
-        $pdf->Image($path, $lm, $y0, $logoW, 0, 'PNG', '', '', true, 300, '', false, false, 0, false, false, false);
+        $logoW = 22.0;
+        $xLogo = $lm + max(0.0, ($usableW - $logoW) / 2);
+        $pdf->Image($path, $xLogo, $y0, $logoW, 0, 'PNG', '', '', true, 300, '', false, false, 0, false, false, false);
         $logoH = $pdf->getImageRBY() - $y0;
         if ($logoH <= 0) {
             $logoH = 22.0;
         }
     }
 
-    $pdf->SetXY($lm, $y0);
+    $yText = $y0 + $logoH + 5;
+    $pdf->SetXY($lm, $yText);
     $pdf->SetFont('helvetica', 'B', 10);
-    $pdf->MultiCell(0, 4.2, RETURN_ORG, 0, 'C', false, 1, null, null, true, 0, false, true, 0, 'M', false);
-    $pdf->SetFont('helvetica', 'B', 10);
-    $pdf->MultiCell(0, 4.2, RETURN_DEPT_LINE, 0, 'C', false, 1, null, null, true, 0, false, true, 0, 'M', false);
-    $pdf->SetFont('helvetica', 'B', 10);
-    $pdf->MultiCell(0, 4.8, RETURN_DOC_TITLE, 0, 'C', false, 1, null, null, true, 0, false, true, 0, 'M', false);
+    $pdf->SetTextColor(15, 23, 42);
+    $pdf->MultiCell(0, 4.5, RETURN_ORG, 0, 'C', false, 1, null, null, true, 0, false, true, 0, 'M', false);
+    $pdf->SetX($lm);
+    $pdf->MultiCell(0, 4.5, RETURN_HEADER_LINE2, 0, 'C', false, 1, null, null, true, 0, false, true, 0, 'M', false);
+    $pdf->SetTextColor(0, 0, 0);
 
-    $below = $y0 + $logoH + 3;
-    if ($pdf->GetY() < $below) {
-        $pdf->SetY($below);
-    }
-    $pdf->Ln(2);
+    $pdf->Ln(10);
 }
 
 function return_draw_footer(TCPDF $pdf): void
