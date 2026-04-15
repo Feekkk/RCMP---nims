@@ -14,6 +14,7 @@ $pdo = db();
 
 // Allow quick status updates from this page (only status_id 1 or 2)
 $statusFlash = '';
+$remarksFlash = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_status') {
     $postedAssetId = (int)($_POST['asset_id'] ?? 0);
     $newStatusId   = (int)($_POST['status_id'] ?? 0);
@@ -36,6 +37,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_s
 
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_remarks') {
+    $postedAssetId = (int)($_POST['asset_id'] ?? 0);
+    $csrf          = (string)($_POST['csrf'] ?? '');
+    $newRemarks    = trim((string)($_POST['remarks'] ?? ''));
+
+    $csrfOk = isset($_SESSION['csrf_token']) && hash_equals((string)$_SESSION['csrf_token'], $csrf);
+    if (!$csrfOk) {
+        $remarksFlash = 'Invalid session token. Please refresh and try again.';
+    } elseif ($postedAssetId !== $assetId) {
+        $remarksFlash = 'Invalid asset selected.';
+    } elseif (mb_strlen($newRemarks) > 1000) {
+        $remarksFlash = 'Remarks is too long (max 1000 characters).';
+    } else {
+        $upd = $pdo->prepare("UPDATE laptop SET remarks = ? WHERE asset_id = ? LIMIT 1");
+        $upd->execute([$newRemarks, $assetId]);
+        header('Location: laptopView.php?asset_id=' . urlencode((string)$assetId) . '&remarks_updated=1');
+        exit;
+    }
 }
 
 $stmt = $pdo->prepare("SELECT l.*, s.name AS status_name FROM laptop l JOIN status s ON s.status_id = l.status_id WHERE l.asset_id = ? LIMIT 1");
@@ -679,6 +700,24 @@ $typeMeta = [
             color: #b91c1c;
             font-weight: 600;
         }
+        .remarks-textarea{
+            width:100%;
+            border: 1.5px solid var(--card-border);
+            border-radius: 12px;
+            padding: 0.7rem 0.85rem;
+            font-size: 0.88rem;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 90px;
+            outline: none;
+            background: #fff;
+        }
+        .remarks-textarea:focus{
+            border-color: rgba(37,99,235,0.45);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
+        }
+        .remarks-actions{display:flex;align-items:center;gap:0.6rem;margin-top:0.6rem;flex-wrap:wrap;}
+        .remarks-hint{font-size:0.75rem;color:var(--text-muted);font-weight:600;}
     </style>
 </head>
 <body>
@@ -783,12 +822,24 @@ $typeMeta = [
                         <span class="kv-label">Operating system</span>
                         <span class="kv-val"><?= htmlspecialchars((string)($asset['os'] ?? '—')) ?></span>
                     </div>
-                    <?php $remarks = trim((string)($asset['remarks'] ?? '')); if ($remarks !== ''): ?>
                     <div class="kv-row full-row">
                         <span class="kv-label">Remarks</span>
-                        <span class="kv-val wrap"><?= htmlspecialchars($remarks) ?></span>
+                        <form method="POST" action="" style="width:100%">
+                            <input type="hidden" name="action" value="save_remarks">
+                            <input type="hidden" name="asset_id" value="<?= (int)$assetId ?>">
+                            <input type="hidden" name="csrf" value="<?= htmlspecialchars((string)$_SESSION['csrf_token']) ?>">
+                            <textarea class="remarks-textarea" name="remarks" maxlength="1000" placeholder="Add notes about this asset..."><?= htmlspecialchars((string)($asset['remarks'] ?? '')) ?></textarea>
+                            <div class="remarks-actions">
+                                <button type="submit" class="btn btn-action btn-mini"><i class="ri-save-3-line"></i> Save</button>
+                                <span class="remarks-hint">Max 1000 characters</span>
+                            </div>
+                            <?php if (!empty($remarksFlash)): ?>
+                                <div class="flash"><?= htmlspecialchars($remarksFlash) ?></div>
+                            <?php elseif (!empty($_GET['remarks_updated'])): ?>
+                                <div class="flash" style="color:#047857">Remarks updated.</div>
+                            <?php endif; ?>
+                        </form>
                     </div>
-                    <?php endif; ?>
                 </div>
             </div>
 
