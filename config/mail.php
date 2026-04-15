@@ -14,8 +14,8 @@ return [
     'password' => getenv('MAIL_PASSWORD') ?: null,
     'encryption' => getenv('MAIL_ENCRYPTION') ?: null, // 'tls' | 'ssl' | null
     'from' => [
-        'address' => getenv('MAIL_FROM_ADDRESS') ?: 'noreply@nims.local',
-        'name' => getenv('MAIL_FROM_NAME') ?: 'NIMS',
+        'address' => getenv('MAIL_FROM_ADDRESS') ?: 'nexcheck.rcmp@unikl.edu.my',
+        'name' => getenv('MAIL_FROM_NAME') ?: 'NexCheck',
     ],
     /** Notified when a user submits an equipment (NextCheck) request. Override with MAIL_REQUEST_ITEMS_TO. */
     'notify_item_requests_to' => getenv('MAIL_REQUEST_ITEMS_TO') ?: 'it.rcmp@unikl.edu.my',
