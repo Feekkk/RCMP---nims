@@ -12,10 +12,60 @@ if ($assetId <= 0) { header('Location: network.php'); exit; }
 
 $pdo = db();
 
+// Allow quick status updates from this page (only status_id 9 or 10)
+$statusFlash = '';
+$remarksFlash = '';
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_status') {
+    $postedAssetId = (int)($_POST['asset_id'] ?? 0);
+    $newStatusId   = (int)($_POST['status_id'] ?? 0);
+    $csrf          = (string)($_POST['csrf'] ?? '');
+
+    $csrfOk = isset($_SESSION['csrf_token']) && hash_equals((string)$_SESSION['csrf_token'], $csrf);
+    if (!$csrfOk) {
+        $statusFlash = 'Invalid session token. Please refresh and try again.';
+    } elseif ($postedAssetId !== $assetId) {
+        $statusFlash = 'Invalid asset selected.';
+    } elseif ($newStatusId !== 9 && $newStatusId !== 10) {
+        $statusFlash = 'Only status 9 or 10 can be changed from this page.';
+    } else {
+        $upd = $pdo->prepare("UPDATE network SET status_id = ? WHERE asset_id = ? LIMIT 1");
+        $upd->execute([$newStatusId, $assetId]);
+        header('Location: networkView.php?asset_id=' . urlencode((string)$assetId) . '&status_updated=1');
+        exit;
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_remarks') {
+    $postedAssetId = (int)($_POST['asset_id'] ?? 0);
+    $csrf          = (string)($_POST['csrf'] ?? '');
+    $newRemarks    = trim((string)($_POST['remarks'] ?? ''));
+
+    $csrfOk = isset($_SESSION['csrf_token']) && hash_equals((string)$_SESSION['csrf_token'], $csrf);
+    if (!$csrfOk) {
+        $remarksFlash = 'Invalid session token. Please refresh and try again.';
+    } elseif ($postedAssetId !== $assetId) {
+        $remarksFlash = 'Invalid asset selected.';
+    } elseif (mb_strlen($newRemarks) > 1000) {
+        $remarksFlash = 'Remarks is too long (max 1000 characters).';
+    } else {
+        $upd = $pdo->prepare("UPDATE network SET remarks = ? WHERE asset_id = ? LIMIT 1");
+        $upd->execute([$newRemarks, $assetId]);
+        header('Location: networkView.php?asset_id=' . urlencode((string)$assetId) . '&remarks_updated=1');
+        exit;
+    }
+}
+
 $stmt = $pdo->prepare("SELECT n.*, s.name AS status_name FROM network n JOIN status s ON s.status_id = n.status_id WHERE n.asset_id = ? LIMIT 1");
 $stmt->execute([$assetId]);
 $asset = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$asset) { header('Location: network.php'); exit; }
+
+$stmtAllowedStatus = $pdo->query("SELECT status_id, name FROM status WHERE status_id IN (9,10) ORDER BY status_id ASC");
+$allowedStatuses = $stmtAllowedStatus ? $stmtAllowedStatus->fetchAll(PDO::FETCH_ASSOC) : [];
 
 $stmtW = $pdo->prepare("SELECT warranty_id, warranty_start_date, warranty_end_date, warranty_remarks, created_at FROM warranty WHERE asset_type = 'network' AND asset_id = ? ORDER BY warranty_end_date DESC, warranty_id DESC LIMIT 1");
 $stmtW->execute([$assetId]);
@@ -601,6 +651,36 @@ $typeMeta = [
         .empty-trail i { font-size: 2rem; opacity: 0.3; display: block; margin-bottom: 0.5rem; }
 
         .tl-item.hidden-tl { display: none; }
+
+        /* ── Status dropdown / remarks editor ── */
+        .status-form { display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-top:0.45rem; }
+        .status-select {
+            padding: 0.45rem 0.65rem;
+            border-radius: 10px;
+            border: 1.5px solid var(--card-border);
+            background: #fff;
+            color: var(--text-main);
+            font-weight: 600;
+            font-size: 0.82rem;
+            outline: none;
+        }
+        .status-select:focus { border-color: rgba(37,99,235,0.45); box-shadow: 0 0 0 3px rgba(37,99,235,0.10); }
+        .flash { margin-top: 0.55rem; font-size: 0.78rem; color: #b91c1c; font-weight: 600; }
+        .remarks-textarea{
+            width:100%;
+            border: 1.5px solid var(--card-border);
+            border-radius: 12px;
+            padding: 0.7rem 0.85rem;
+            font-size: 0.88rem;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 90px;
+            outline: none;
+            background: #fff;
+        }
+        .remarks-textarea:focus{ border-color: rgba(37,99,235,0.45); box-shadow: 0 0 0 3px rgba(37,99,235,0.10); }
+        .remarks-actions{display:flex;align-items:center;gap:0.6rem;margin-top:0.6rem;flex-wrap:wrap;}
+        .remarks-hint{font-size:0.75rem;color:var(--text-muted);font-weight:600;}
     </style>
 </head>
 <body>
@@ -676,7 +756,21 @@ $typeMeta = [
                     </div>
                     <div class="kv-row full-row">
                         <span class="kv-label">Remarks</span>
-                        <span class="kv-val wrap"><?= htmlspecialchars((string)($asset['remarks'] ?? '—')) ?></span>
+                        <form method="POST" action="" style="width:100%">
+                            <input type="hidden" name="action" value="save_remarks">
+                            <input type="hidden" name="asset_id" value="<?= (int)$assetId ?>">
+                            <input type="hidden" name="csrf" value="<?= htmlspecialchars((string)$_SESSION['csrf_token']) ?>">
+                            <textarea class="remarks-textarea" name="remarks" maxlength="1000" placeholder="Add notes about this asset..."><?= htmlspecialchars((string)($asset['remarks'] ?? '')) ?></textarea>
+                            <div class="remarks-actions">
+                                <button type="submit" class="btn btn-action" style="padding:0.48rem 0.7rem;border-radius:10px;font-size:0.82rem"><i class="ri-save-3-line"></i> Save</button>
+                                <span class="remarks-hint">Max 1000 characters</span>
+                            </div>
+                            <?php if (!empty($remarksFlash)): ?>
+                                <div class="flash"><?= htmlspecialchars($remarksFlash) ?></div>
+                            <?php elseif (!empty($_GET['remarks_updated'])): ?>
+                                <div class="flash" style="color:#047857">Remarks updated.</div>
+                            <?php endif; ?>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -745,12 +839,26 @@ $typeMeta = [
                     <div class="snapshot-icon si-blue"><i class="ri-pulse-line"></i></div>
                     <div>
                         <div class="snapshot-label">Current status</div>
-                        <div class="snapshot-value">
-                            <span class="status-badge <?= htmlspecialchars((string)$sm['cls']) ?>">
-                                <i class="<?= htmlspecialchars((string)$sm['icon']) ?>"></i>
-                                <?= htmlspecialchars((string)($asset['status_name'] ?? '—')) ?>
-                            </span>
-                        </div>
+                        <form class="status-form" method="POST" action="">
+                            <input type="hidden" name="action" value="set_status">
+                            <input type="hidden" name="asset_id" value="<?= (int)$assetId ?>">
+                            <input type="hidden" name="csrf" value="<?= htmlspecialchars((string)$_SESSION['csrf_token']) ?>">
+                            <select class="status-select" name="status_id" aria-label="Change status" id="statusSelect">
+                                <?php foreach ($allowedStatuses as $st):
+                                    $sid = (int)($st['status_id'] ?? 0);
+                                    $sname = (string)($st['name'] ?? ('Status ' . $sid));
+                                ?>
+                                    <option value="<?= $sid ?>" <?= $sid === (int)($asset['status_id'] ?? 0) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($sid . ' — ' . $sname) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </form>
+                        <?php if (!empty($statusFlash)): ?>
+                            <div class="flash"><?= htmlspecialchars($statusFlash) ?></div>
+                        <?php elseif (!empty($_GET['status_updated'])): ?>
+                            <div class="flash" style="color:#047857">Status updated.</div>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -895,6 +1003,13 @@ if (trailSearchEl) {
         });
         if (trailCountEl) trailCountEl.textContent = visible + (visible === 1 ? ' event' : ' events');
         if (emptyTrailEl) emptyTrailEl.style.display = visible === 0 ? 'block' : 'none';
+    });
+}
+
+var statusSelect = document.getElementById('statusSelect');
+if (statusSelect && statusSelect.form) {
+    statusSelect.addEventListener('change', function () {
+        statusSelect.form.submit();
     });
 }
 </script>
