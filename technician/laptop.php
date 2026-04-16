@@ -33,6 +33,12 @@ unset($_SESSION['laptop_flash']);
 $filter_status = isset($_GET['status_id']) && is_numeric($_GET['status_id'])
     ? (int)$_GET['status_id'] : null;
 
+// Pagination
+$perPage = 20;
+$page = isset($_GET['page']) && is_numeric($_GET['page']) ? (int) $_GET['page'] : 1;
+if ($page < 1) $page = 1;
+$offset = ($page - 1) * $perPage;
+
 //  Status counts (all statuses, even zero)
 $status_counts = db()->query("
     SELECT s.status_id, s.name, COUNT(l.asset_id) AS total
@@ -64,6 +70,21 @@ $out_total = 0;
 foreach ($out_stock_ids as $sid) $out_total += $countsById[$sid] ?? 0;
 
 //  Laptop list (+ warranty info for maintenance view)
+$countSql = "SELECT COUNT(*) FROM laptop l";
+$countParams = [];
+if ($filter_status !== null) {
+    $countSql .= " WHERE l.status_id = :status_id";
+    $countParams[':status_id'] = $filter_status;
+}
+$countStmt = db()->prepare($countSql);
+$countStmt->execute($countParams);
+$total_filtered = (int) $countStmt->fetchColumn();
+$total_pages = max(1, (int) ceil($total_filtered / $perPage));
+if ($page > $total_pages) {
+    $page = $total_pages;
+    $offset = ($page - 1) * $perPage;
+}
+
 $sql = "
     SELECT l.asset_id, l.serial_num, l.brand, l.model,
            l.category, l.processor, l.memory, l.os, l.storage,
@@ -102,9 +123,14 @@ if ($filter_status !== null) {
     $sql .= " WHERE l.status_id = :status_id";
     $params[':status_id'] = $filter_status;
 }
-$sql .= " ORDER BY l.asset_id DESC";
+$sql .= " ORDER BY l.asset_id DESC LIMIT :limit OFFSET :offset";
 $stmt = db()->prepare($sql);
-$stmt->execute($params);
+foreach ($params as $k => $v) {
+    $stmt->bindValue($k, $v, PDO::PARAM_INT);
+}
+$stmt->bindValue(':limit', (int) $perPage, PDO::PARAM_INT);
+$stmt->bindValue(':offset', (int) $offset, PDO::PARAM_INT);
+$stmt->execute();
 $laptops = $stmt->fetchAll();
 
 // Status visual meta (icon, badge class, colour) 
@@ -1230,8 +1256,28 @@ $status_meta = [
             <!-- Pagination -->
             <div class="pagination">
                 <div class="page-info">
-                    Showing <strong><?= count($laptops) ?></strong> record<?= count($laptops) !== 1 ? 's' : '' ?><?= $filter_status !== null ? ' (filtered)' : '' ?>
+                    <?php
+                        $shown = count($laptops);
+                        $from = $total_filtered === 0 ? 0 : ($offset + 1);
+                        $to = $total_filtered === 0 ? 0 : min($offset + $shown, $total_filtered);
+                    ?>
+                    Showing <strong><?= (int) $from ?>–<?= (int) $to ?></strong> of <strong><?= (int) $total_filtered ?></strong><?= $filter_status !== null ? ' (filtered)' : '' ?>
                 </div>
+                <?php
+                    $qs = [];
+                    if ($filter_status !== null) $qs['status_id'] = (string) (int) $filter_status;
+                    $prevDisabled = ($page <= 1);
+                    $nextDisabled = ($page >= $total_pages);
+                    $prevQs = http_build_query(array_merge($qs, ['page' => max(1, $page - 1)]));
+                    $nextQs = http_build_query(array_merge($qs, ['page' => min($total_pages, $page + 1)]));
+                ?>
+                <a class="page-btn" href="laptop.php<?= $prevDisabled ? '#' : ('?' . $prevQs) ?>" <?= $prevDisabled ? 'aria-disabled="true" onclick="return false;"' : '' ?> title="Previous">
+                    <i class="ri-arrow-left-s-line"></i>
+                </a>
+                <span class="page-btn active" title="Current page" style="pointer-events:none;"><?= (int) $page ?></span>
+                <a class="page-btn" href="laptop.php<?= $nextDisabled ? '#' : ('?' . $nextQs) ?>" <?= $nextDisabled ? 'aria-disabled="true" onclick="return false;"' : '' ?> title="Next">
+                    <i class="ri-arrow-right-s-line"></i>
+                </a>
             </div>
         </div>
 
