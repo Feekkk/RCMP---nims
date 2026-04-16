@@ -1146,7 +1146,7 @@ $status_meta = [
                             if (!$device) $device = 'Unknown Device';
                             $assignee   = htmlspecialchars($row['assignee_name'] ?? '—');
                             $department = htmlspecialchars($row['department'] ?? '—');
-                            $po_date    = $row['PO_DATE'] ? date('d M Y', strtotime($row['PO_DATE'])) : 'â€”';
+                            $po_date    = $row['PO_DATE'] ? date('d M Y', strtotime($row['PO_DATE'])) : '-';
 
                             $assetInfoParts = [];
                             if (!empty($row['category']))  $assetInfoParts[] = htmlspecialchars((string)$row['category']);
@@ -1180,7 +1180,7 @@ $status_meta = [
                                     <div class="laptop-icon" style="<?= $icon_style ?>"><i class="<?= $meta['icon'] ?>"></i></div>
                                     <div class="laptop-info">
                                         <h4><?= $device ?></h4>
-                                        <p>SN: <?= htmlspecialchars($row['serial_num'] ?? 'â€”') ?> &bull; <?= htmlspecialchars($row['asset_id']) ?></p>
+                                        <p>SN: <?= htmlspecialchars($row['serial_num'] ?? '-') ?> &bull; <?= htmlspecialchars($row['asset_id']) ?></p>
                                     </div>
                                 </div>
                             </td>
