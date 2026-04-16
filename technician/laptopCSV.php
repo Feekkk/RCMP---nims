@@ -8,12 +8,75 @@ if (!isset($_SESSION['staff_id']) || (int)$_SESSION['role_id'] !== 1) {
 require_once '../config/database.php';
 require_once __DIR__ . '/../config/laptop_asset_id.php';
 
+function laptopcsv_utf8_clean(string $s): string
+{
+    // If invalid UTF-8 sneaks in (common in CSV exports), Unicode regexes with /u will warn.
+    if (@preg_match('//u', $s) === 1) {
+        return $s;
+    }
+    $fixed = @iconv('UTF-8', 'UTF-8//IGNORE', $s);
+    return is_string($fixed) ? $fixed : '';
+}
+
+function laptopcsv_normalize_date(?string $raw): ?string
+{
+    if ($raw === null) return null;
+    $s = trim(laptopcsv_utf8_clean($raw));
+    if ($s === '') return null;
+    $sLower = strtolower($s);
+    if ($sLower === '-' || $sLower === '—' || $sLower === 'n/a' || $sLower === 'na' || $sLower === 'null') {
+        return null;
+    }
+
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $s)) {
+        [$yyyy, $mm, $dd] = array_map('intval', explode('-', $s));
+        return checkdate($mm, $dd, $yyyy) ? $s : null;
+    }
+
+    if (preg_match('/^(\d{2})[\/-](\d{2})[\/-](\d{2})$/', $s, $m)) {
+        $dd = (int) $m[1];
+        $mm = (int) $m[2];
+        $yy = (int) $m[3];
+        $yyyy = 2000 + $yy;
+        return checkdate($mm, $dd, $yyyy) ? sprintf('%04d-%02d-%02d', $yyyy, $mm, $dd) : null;
+    }
+
+    if (preg_match('/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/', $s, $m)) {
+        $dd = (int) $m[1];
+        $mm = (int) $m[2];
+        $yyyy = (int) $m[3];
+        return checkdate($mm, $dd, $yyyy) ? sprintf('%04d-%02d-%02d', $yyyy, $mm, $dd) : null;
+    }
+
+    return null;
+}
+
+function laptopcsv_normalize_category(?string $raw): string
+{
+    if ($raw === null) return '';
+    $s = laptopcsv_utf8_clean((string) $raw);
+    // Replace NBSP/unicode spaces with normal space then collapse.
+    $s = preg_replace('/[\x{00A0}\x{2000}-\x{200B}\x{202F}\x{205F}\x{3000}]/u', ' ', $s);
+    $s = preg_replace('/\s+/u', ' ', $s);
+    return trim($s);
+}
+
+function laptopcsv_normalize_employee_no(?string $raw): ?string
+{
+    if ($raw === null) return null;
+    $s = laptopcsv_utf8_clean((string) $raw);
+    // Remove normal whitespace + NBSP and other unicode spaces.
+    $s = preg_replace('/[\s\x{00A0}\x{2000}-\x{200B}\x{202F}\x{205F}\x{3000}]+/u', '', $s);
+    $s = trim($s);
+    return $s !== '' ? $s : null;
+}
+
 // ── CSV Template Download ─────────────────────────────────────────────────────
 if (isset($_GET['download_template'])) {
     $headers = ['asset_id','category','serial_num','brand','model','part_number','processor',
                 'memory','storage','gpu','os','po_date','po_num','do_date','do_num',
                 'invoice_date','invoice_num','purchase_cost','status_id','remarks',
-                'handover_date','handover_technician_staff_id','handover_remarks','recipient_employee_no',
+                'handover_date','handover_technician_staff_id','handover_remarks','recipient_employee_no','full_name',
                 'warranty_start_date','warranty_end_date','warranty_remarks','handover_place'];
     header('Content-Type: text/csv');
     header('Content-Disposition: attachment; filename="laptop_import_template.csv"');
@@ -23,15 +86,15 @@ if (isset($_GET['download_template'])) {
                    'Intel Core i7-1165G7','16GB DDR4','512GB NVMe SSD','Intel Iris Xe',
                    'Windows 11 Pro','2024-01-15','PO-2024-001','2024-01-20','DO-2024-001',
                    '2024-01-25','INV-2024-001','4500.00','1','Good condition',
-                   '', '', '', '',
+                   '', '', '', '', '',
                    '2024-01-01','2027-01-01','3 Year on-site','']);
     fputcsv($out, ['','Desktop IO','SN-DEPLOY-PLACE','Lenovo','ThinkCentre M90','','','','','',
-                   '','','','','','','','3','Deployed — no handover row',
-                   '','','','',
-                   '', '', '','']);
+                   '','','','','','','','','3','Deployed — no handover row',
+                   '', '', '', '', '',
+                   '', '', '', '']);
     fputcsv($out, ['','Notebook','SN-DEPLOY-STAFF','Lenovo','ThinkPad T14s','','','','','',
-                   '','','','','','','','3','Deployed with handover',
-                   '2024-06-15','TECH001','Lab checkout','EMP001',
+                   '','','','','','','','','3','Deployed with handover',
+                   '2024-06-15','TECH001','Lab checkout','EMP001','Jane Doe',
                    '', '', '','Building A / Lab 3']);
     fclose($out);
     exit;
@@ -41,6 +104,7 @@ if (isset($_GET['download_template'])) {
 $results    = [];
 $total_ok   = 0;
 $total_err  = 0;
+$total_new_staff = 0;
 $processed  = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
@@ -57,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         $expected = ['asset_id','category','serial_num','brand','model','part_number','processor',
                      'memory','storage','gpu','os','po_date','po_num','do_date','do_num',
                      'invoice_date','invoice_num','purchase_cost','status_id','remarks',
-                     'handover_date','handover_technician_staff_id','handover_remarks','recipient_employee_no',
+                     'handover_date','handover_technician_staff_id','handover_remarks','recipient_employee_no','full_name',
                      'warranty_start_date','warranty_end_date','warranty_remarks','handover_place'];
 
         if ($header === false || $header === []) {
@@ -81,7 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         $sessionStaffId = (string)($_SESSION['staff_id'] ?? '');
 
         $stmtUserExists = $pdo->prepare('SELECT 1 FROM users WHERE staff_id = ? LIMIT 1');
-        $stmtStaffExists = $pdo->prepare('SELECT 1 FROM staff WHERE employee_no = ? LIMIT 1');
+        $stmtStaffFetch = $pdo->prepare('SELECT employee_no, full_name FROM staff WHERE employee_no = ? LIMIT 1');
 
         while (($row = fgetcsv($handle)) !== false) {
             $row_num++;
@@ -92,8 +156,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 $idx = $colIndex[strtolower($col)] ?? $i;
                 $d[$col] = isset($row[$idx]) && trim((string)$row[$idx]) !== '' ? trim((string)$row[$idx]) : null;
             }
+            if (!isset($colIndex['full_name'])) {
+                $d['full_name'] = null;
+            }
 
-            $catTrim = isset($d['category']) ? trim((string)$d['category']) : '';
+            $catTrim = laptopcsv_normalize_category($d['category'] ?? null);
             $catPrefix = laptop_category_to_asset_prefix($catTrim !== '' ? $catTrim : null);
             if ($catTrim === '' || $catPrefix === null) {
                 $results[] = ['row'=>$row_num, 'status'=>'error',
@@ -149,7 +216,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
 
             $assetLabelErr = $generateAssetId ? '(auto)' : $assetIdRaw;
 
+            $poDateNorm = laptopcsv_normalize_date($d['po_date'] ?? null);
+            $doDateNorm = laptopcsv_normalize_date($d['do_date'] ?? null);
+            $invDateNorm = laptopcsv_normalize_date($d['invoice_date'] ?? null);
+            if (($d['po_date'] ?? null) !== null && $poDateNorm === null) {
+                $results[] = ['row'=>$row_num, 'status'=>'error',
+                    'asset_id'=>$assetLabelErr, 'serial'=>$d['serial_num']??'—',
+                    'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
+                    'msg'=>'Invalid po_date. Use DD-MM-YY (or DD/MM/YY).'];
+                $total_err++;
+                continue;
+            }
+            if (($d['do_date'] ?? null) !== null && $doDateNorm === null) {
+                $results[] = ['row'=>$row_num, 'status'=>'error',
+                    'asset_id'=>$assetLabelErr, 'serial'=>$d['serial_num']??'—',
+                    'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
+                    'msg'=>'Invalid do_date. Use DD-MM-YY (or DD/MM/YY).'];
+                $total_err++;
+                continue;
+            }
+            if (($d['invoice_date'] ?? null) !== null && $invDateNorm === null) {
+                $results[] = ['row'=>$row_num, 'status'=>'error',
+                    'asset_id'=>$assetLabelErr, 'serial'=>$d['serial_num']??'—',
+                    'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
+                    'msg'=>'Invalid invoice_date. Use DD-MM-YY (or DD/MM/YY).'];
+                $total_err++;
+                continue;
+            }
+
             $hoDate = $d['handover_date'] ?? null;
+            $hoDateNorm = laptopcsv_normalize_date($hoDate);
             $hoTech = isset($d['handover_technician_staff_id']) && trim((string)$d['handover_technician_staff_id']) !== ''
                 ? trim((string)$d['handover_technician_staff_id']) : null;
             $hoRemarks = $d['handover_remarks'] ?? null;
@@ -158,10 +254,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             }
             $hoPlaceRaw = isset($d['handover_place']) && trim((string)$d['handover_place']) !== ''
                 ? trim((string)$d['handover_place']) : null;
-            $hoEmployee = isset($d['recipient_employee_no']) && trim((string)$d['recipient_employee_no']) !== ''
-                ? trim((string)$d['recipient_employee_no']) : null;
+            $hoEmployee = laptopcsv_normalize_employee_no($d['recipient_employee_no'] ?? null);
 
-            $hasHoDate = $hoDate !== null && trim((string)$hoDate) !== '';
+            if ($hoDate !== null && trim((string)$hoDate) !== '' && $hoDateNorm === null) {
+                $results[] = ['row'=>$row_num, 'status'=>'error',
+                    'asset_id'=>$assetLabelErr, 'serial'=>$d['serial_num']??'—',
+                    'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
+                    'msg'=>'Invalid handover_date. Use DD-MM-YY (or DD/MM/YY).'];
+                $total_err++;
+                continue;
+            }
+
+            $hasHoDate = $hoDateNorm !== null;
             $isDeploy = (int)$d['status_id'] === 3;
             $needsHandover = $hasHoDate || $hoEmployee !== null;
 
@@ -217,6 +321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 $mergedHoRemarks = $parts !== [] ? implode(' | ', $parts) : null;
             }
 
+            $staffRow = null;
             if ($needsHandover) {
                 $stmtUserExists->execute([$techStaffId]);
                 if (!$stmtUserExists->fetchColumn()) {
@@ -228,14 +333,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     continue;
                 }
                 if ($hoEmployee !== null) {
-                    $stmtStaffExists->execute([$hoEmployee]);
-                    if (!$stmtStaffExists->fetchColumn()) {
-                        $results[] = ['row'=>$row_num, 'status'=>'error',
-                            'asset_id'=>$assetLabelErr, 'serial'=>$d['serial_num']??'—',
-                            'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
-                            'msg'=>'recipient_employee_no not found in staff directory.'];
-                        $total_err++;
-                        continue;
+                    $stmtStaffFetch->execute([$hoEmployee]);
+                    $staffRow = $stmtStaffFetch->fetch(PDO::FETCH_ASSOC);
+                    if (!$staffRow) {
+                        $staffRow = null;
+                        $recipientName = trim((string)($d['full_name'] ?? ''));
+                        if ($recipientName === '') {
+                            $results[] = ['row'=>$row_num, 'status'=>'error',
+                                'asset_id'=>$assetLabelErr, 'serial'=>$d['serial_num']??'—',
+                                'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
+                                'msg'=>'full_name is required when recipient_employee_no is not in staff directory.'];
+                            $total_err++;
+                            continue;
+                        }
                     }
                 }
             }
@@ -244,12 +354,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 ? trim((string)$d['warranty_start_date']) : null;
             $wEnd = isset($d['warranty_end_date']) && trim((string)$d['warranty_end_date']) !== ''
                 ? trim((string)$d['warranty_end_date']) : null;
+            $wStartNorm = laptopcsv_normalize_date($wStart);
+            $wEndNorm = laptopcsv_normalize_date($wEnd);
             $wRemarks = $d['warranty_remarks'] ?? null;
             if ($wRemarks !== null && trim((string)$wRemarks) === '') {
                 $wRemarks = null;
             }
-            $hasWStart = $wStart !== null;
-            $hasWEnd = $wEnd !== null;
+            if ($wStart !== null && $wStartNorm === null) {
+                $results[] = ['row'=>$row_num, 'status'=>'error',
+                    'asset_id'=>$assetLabelErr, 'serial'=>$d['serial_num']??'—',
+                    'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
+                    'msg'=>'Invalid warranty_start_date. Use DD-MM-YY (or DD/MM/YY).'];
+                $total_err++;
+                continue;
+            }
+            if ($wEnd !== null && $wEndNorm === null) {
+                $results[] = ['row'=>$row_num, 'status'=>'error',
+                    'asset_id'=>$assetLabelErr, 'serial'=>$d['serial_num']??'—',
+                    'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
+                    'msg'=>'Invalid warranty_end_date. Use DD-MM-YY (or DD/MM/YY).'];
+                $total_err++;
+                continue;
+            }
+            $hasWStart = $wStartNorm !== null;
+            $hasWEnd = $wEndNorm !== null;
             if ($hasWStart xor $hasWEnd) {
                 $results[] = ['row'=>$row_num, 'status'=>'error',
                     'asset_id'=>$assetLabelErr, 'serial'=>$d['serial_num']??'—',
@@ -260,6 +388,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             }
             $anyWarranty = $hasWStart && $hasWEnd;
 
+            $staffCreatedThisRow = false;
             try {
                 $pdo->beginTransaction();
                 if ($aid === null) {
@@ -289,16 +418,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     ':os'            => $d['os'],
                     ':storage'       => $d['storage'],
                     ':gpu'           => $d['gpu'],
-                    ':po_date'       => $d['po_date'],
+                    ':po_date'       => $poDateNorm,
                     ':po_num'        => $d['po_num'],
-                    ':do_date'       => $d['do_date'],
+                    ':do_date'       => $doDateNorm,
                     ':do_num'        => $d['do_num'],
-                    ':invoice_date'  => $d['invoice_date'],
+                    ':invoice_date'  => $invDateNorm,
                     ':invoice_num'   => $d['invoice_num'],
                     ':purchase_cost' => $d['purchase_cost'] !== null ? (float)$d['purchase_cost'] : null,
                     ':status_id'     => (int)$d['status_id'],
                     ':remarks'       => $d['remarks'],
                 ]);
+
+                if ($hoEmployee !== null && $needsHandover && $staffRow === null) {
+                    $newStaffName = trim((string)($d['full_name'] ?? ''));
+                    $stmtNewStaff = $pdo->prepare('INSERT INTO staff (employee_no, full_name) VALUES (?, ?)');
+                    $stmtNewStaff->execute([$hoEmployee, $newStaffName]);
+                    $staffCreatedThisRow = true;
+                }
 
                 $okParts = [];
                 if ($needsHandover) {
@@ -306,7 +442,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     $stmt2->execute([
                         ':asset_id' => $aid,
                         ':staff_id' => $techStaffId,
-                        ':handover_date' => trim((string)$hoDate),
+                        ':handover_date' => $hoDateNorm,
                         ':handover_remarks' => $mergedHoRemarks,
                     ]);
                     $handover_id = (int) $pdo->lastInsertId();
@@ -325,20 +461,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     $stmtW = $pdo->prepare('INSERT INTO warranty (asset_id, warranty_start_date, warranty_end_date, warranty_remarks) VALUES (:asset_id, :start, :end, :remarks)');
                     $stmtW->execute([
                         ':asset_id' => $aid,
-                        ':start' => $wStart,
-                        ':end' => $wEnd,
+                        ':start' => $wStartNorm,
+                        ':end' => $wEndNorm,
                         ':remarks' => $wRemarks,
                     ]);
                     $okParts[] = 'warranty';
                 }
-                $okMsg = 'Imported successfully' . ($okParts !== [] ? ' (+' . implode(', +', $okParts) . ')' : '');
-
                 $pdo->commit();
-                $results[] = ['row'=>$row_num, 'status'=>'ok',
-                    'asset_id'=>$aid, 'serial'=>$d['serial_num'],
-                    'brand'=>trim(($d['brand']??'').' '.($d['model']??'')),
-                    'msg'=>$okMsg];
                 $total_ok++;
+                if ($staffCreatedThisRow) {
+                    $results[] = [
+                        'row' => $row_num,
+                        'status' => 'staff_new',
+                        'asset_id' => $aid,
+                        'serial' => $d['serial_num'] ?? '—',
+                        'brand' => trim(($d['brand'] ?? '') . ' ' . ($d['model'] ?? '')),
+                        'employee_no' => $hoEmployee,
+                        'full_name' => trim((string)($d['full_name'] ?? '')),
+                        'msg' => 'New staff record created — please update department, email, and phone in the staff directory.',
+                    ];
+                    $total_new_staff++;
+                }
             } catch (PDOException $e) {
                 if ($pdo->inTransaction()) {
                     $pdo->rollBack();
@@ -606,8 +749,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
 
         .result-row-ok  { background: rgba(16,185,129,0.04); }
         .result-row-err { background: rgba(239,68,68,0.04); }
+        .result-row-staff_new { background: rgba(245,158,11,0.08); }
         .badge-ok  { background:rgba(16,185,129,0.12); color:var(--success);  padding:2px 10px; border-radius:20px; font-size:0.78rem; font-weight:600; }
         .badge-err { background:rgba(239,68,68,0.12);  color:var(--danger);   padding:2px 10px; border-radius:20px; font-size:0.78rem; font-weight:600; }
+        .badge-staff_new { background:rgba(245,158,11,0.18); color:#b45309; padding:2px 10px; border-radius:20px; font-size:0.78rem; font-weight:600; }
 
         /* ── Animations ── */
         @keyframes fadeInDown { from { opacity:0; transform:translateY(-20px); } to { opacity:1; transform:translateY(0); } }
@@ -629,9 +774,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
     <header class="page-header">
         <div class="page-title">
             <h1><i class="ri-file-upload-line"></i> Bulk Import Laptops</h1>
-            <p>Upload a CSV file to register laptops. Optional columns create a <strong>handover</strong>; <code>recipient_employee_no</code> adds a <code>handover_staff</code> row (omit for place-only deploy).</p>
+            <p>Upload a CSV file to register laptops. Optional columns create a <strong>handover</strong>; <code>recipient_employee_no</code> + <code>full_name</code> can create a missing <code>staff</code> row. After import, only errors and new staff appear in the summary.</p>
         </div>
-        <a href="laptop.php" class="btn-back"><i class="ri-arrow-left-line"></i> Back to Inventory</a>
+        <a href="laptop.php" class="btn-back"><i class="ri-arrow-left-line"></i> Back</a>
     </header>
 
     <?php if ($processed): ?>
@@ -651,9 +796,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 <div class="rs-num"><?= $total_err ?></div>
                 <div class="rs-label">Failed</div>
             </div>
+            <div class="result-stat" style="border-color:rgba(245,158,11,0.35);">
+                <div class="rs-num" style="color:#d97706;"><?= (int) $total_new_staff ?></div>
+                <div class="rs-label">New staff</div>
+            </div>
         </div>
 
+        <p style="font-size:0.88rem;color:var(--text-muted);margin-bottom:1rem;">Only <strong>errors</strong> and <strong>newly created staff</strong> are listed below (successful rows with no new staff are omitted).</p>
+
         <div class="preview-wrapper">
+            <?php if ($results === []): ?>
+            <p style="padding:1.25rem;color:var(--text-muted);">All rows imported successfully. No errors and no new staff records.</p>
+            <?php else: ?>
             <table class="preview-table">
                 <thead>
                     <tr>
@@ -661,23 +815,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                         <th>Asset ID</th>
                         <th>Serial No</th>
                         <th>Device</th>
+                        <th>Employee no</th>
+                        <th>Full name</th>
                         <th>Status</th>
                         <th>Message</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($results as $r): ?>
-                    <tr class="result-row-<?= $r['status'] ?>">
-                        <td>#<?= $r['row'] ?></td>
-                        <td><strong><?= htmlspecialchars($r['asset_id'] ?? '—') ?></strong></td>
-                        <td><?= htmlspecialchars($r['serial'] ?? '—') ?></td>
-                        <td><?= htmlspecialchars($r['brand'] ?? '—') ?></td>
-                        <td><span class="badge-<?= $r['status'] ?>"><?= $r['status'] === 'ok' ? '✓ Success' : '✗ Failed' ?></span></td>
-                        <td><?= htmlspecialchars($r['msg']) ?></td>
+                    <tr class="result-row-<?= htmlspecialchars((string) $r['status']) ?>">
+                        <td>#<?= (int) $r['row'] ?></td>
+                        <td><strong><?= htmlspecialchars((string) ($r['asset_id'] ?? '—')) ?></strong></td>
+                        <td><?= htmlspecialchars((string) ($r['serial'] ?? '—')) ?></td>
+                        <td><?= htmlspecialchars((string) ($r['brand'] ?? '—')) ?></td>
+                        <td><?= htmlspecialchars((string) ($r['employee_no'] ?? '—')) ?></td>
+                        <td><?= htmlspecialchars((string) ($r['full_name'] ?? '—')) ?></td>
+                        <td><span class="badge-<?= htmlspecialchars((string) $r['status']) ?>"><?php
+                            if ($r['status'] === 'error') {
+                                echo '✗ Failed';
+                            } elseif ($r['status'] === 'staff_new') {
+                                echo 'New staff';
+                            } else {
+                                echo htmlspecialchars((string) $r['status']);
+                            }
+                        ?></span></td>
+                        <td><?= htmlspecialchars((string) ($r['msg'] ?? '')) ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
+            <?php endif; ?>
         </div>
 
         <div style="margin-top:1.5rem; display:flex; gap:1rem; flex-wrap:wrap;">
@@ -722,6 +889,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             <span class="chip">handover_technician_staff_id</span>
             <span class="chip">handover_remarks</span>
             <span class="chip">recipient_employee_no</span>
+            <span class="chip">full_name</span>
             <span class="chip">warranty_start_date</span>
             <span class="chip">warranty_end_date</span>
             <span class="chip">warranty_remarks</span>
@@ -729,12 +897,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         </div>
         <p style="font-size:0.83rem;color:var(--text-muted);margin-top:0.5rem;">
             <i class="ri-information-line"></i>
-            <strong>category</strong> is required in column 2: <code>Desktop AIO</code>, <code>Desktop IO</code>, <code>Notebook</code>, or <code>Notebook Standby</code> (any case). <strong>asset_id</strong> may be left blank to auto-assign the next id for that category (same rules as Register Laptop: Desktop → <code>14…</code>, Notebook → <code>12…</code> with current year in the number). If you set asset_id, it must start with the matching prefix. Dates: <strong>YYYY-MM-DD</strong>.
+            <strong>category</strong> is required in column 2: <code>Desktop AIO</code>, <code>Desktop IO</code>, <code>Notebook</code>, or <code>Notebook Standby</code> (any case). <strong>asset_id</strong> may be left blank to auto-assign the next id for that category (same rules as Register Laptop: Desktop → <code>14…</code>, Notebook → <code>12…</code> with current year in the number). If you set asset_id, it must start with the matching prefix. Dates: <strong>DD-MM-YY</strong> (also accepts <strong>YYYY-MM-DD</strong>).
             Status IDs: 1=Active, 2=Non-active, 3=Deploy, 4=Reserved, 5=Maintenance, 6=Faulty, 7=Disposed, 8=Lost.
             First row must be headers. Columns are matched by name (case-insensitive); if a name is missing, that field falls back to column order in the template.
             <strong>Handover:</strong> fully optional for any status including <strong>Deploy (3)</strong> — leave handover columns empty to import deploy without a <code>handover</code> row. If you set <code>handover_date</code> (with or without recipient), a handover is created; <code>recipient_employee_no</code> is optional for place handover. <code>handover_date</code> is required when recipient is set. <code>handover_place</code> merges into remarks; deploy + handover without recipient and empty place defaults to <strong>ITD office</strong>.
-            Rows go to <code>handover</code>; <code>handover_staff</code> only when recipient is set. <code>handover_technician_staff_id</code> is <code>users.staff_id</code> (defaults to you if empty). Recipient must exist in <code>staff</code> when provided.
-            <code>handover_place</code> is the last column (after warranty fields) so older 27-column files still align by position.
+            Rows go to <code>handover</code>; <code>handover_staff</code> only when recipient is set. <code>handover_technician_staff_id</code> is <code>users.staff_id</code> (defaults to you if empty). If <code>recipient_employee_no</code> is not in <code>staff</code>, provide <code>full_name</code> to create a minimal row; existing staff are left unchanged.
+            <code>handover_place</code> is the last column (after warranty fields). Older CSVs without <code>full_name</code> still work if that column is omitted from the header.
             <strong>Warranty (optional):</strong> both <code>warranty_start_date</code> and <code>warranty_end_date</code> create a <code>warranty</code> row; <code>warranty_remarks</code> is optional.
         </p>
     </div>
