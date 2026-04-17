@@ -5,6 +5,7 @@ $isDashboard = $currentPage === 'dashboard.php';
 $isLaptop    = $currentPage === 'laptop.php';
 $isAV        = $currentPage === 'av.php';
 $isNetwork   = $currentPage === 'network.php';
+$isUserManual = $currentPage === 'userManual.php';
 $isInventoryGroup = $isLaptop || $isAV || $isNetwork;
 $isRequest   = substr($currentPage, 0, 7) === 'request'
     || $currentPage === 'nextAdd.php'
@@ -277,7 +278,7 @@ $isProfile   = $currentPage === 'profile.php';
         <a href="history.php" class="nav-item">
             <i class="ri-history-line"></i> History 
         </a>
-        <a href="#" class="nav-item">
+        <a href="userManual.php" class="nav-item <?= $isUserManual ? 'active' : '' ?>">
             <i class="ri-book-read-line"></i> User Manual 
         </a>
         <a href="profile.php" class="nav-item <?= $isProfile ? 'active' : '' ?>">
