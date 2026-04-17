@@ -151,9 +151,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     if (!in_array('status_id', $keys, true)) {
                         $results[] = ['row' => 0, 'status' => 'error', 'legacy' => '—', 'new_id' => '—', 'serial' => '—', 'device' => '—', 'msg' => 'CSV must include status_id column.'];
                         $total_err++;
-                    } elseif (!in_array('serial_number', $keys, true) && !in_array('serial_num', $keys, true)) {
-                        $results[] = ['row' => 0, 'status' => 'error', 'legacy' => '—', 'new_id' => '—', 'serial' => '—', 'device' => '—', 'msg' => 'CSV must include serial_number (or serial_num).'];
-                        $total_err++;
                     } else {
                         $keyToIndex = [];
                         foreach ($keys as $i => $k) {
@@ -241,8 +238,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                 $status_id = av_csv_resolve_status($get($row, 'status') ?? '', $statusById, $nameToId);
                             }
 
-                            if ($serial_raw === null || $serial_raw === '' || $status_id < 1 || !isset($statusById[$status_id])) {
-                                $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old ?? '—', 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Missing serial_number or invalid status_id for AV.'];
+                            if ($status_id < 1 || !isset($statusById[$status_id])) {
+                                $results[] = ['row' => $row_num, 'status' => 'error', 'legacy' => $asset_id_old ?? '—', 'new_id' => '—', 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => 'Missing or invalid status_id for AV.'];
                                 $total_err++;
                                 continue;
                             }
@@ -319,7 +316,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                     ':category' => $category,
                                     ':brand' => $brand,
                                     ':model' => $model,
-                                    ':serial_num' => $serial_raw,
+                                    ':serial_num' => ($serial_raw !== null && $serial_raw !== '') ? $serial_raw : null,
                                     ':status_id' => $status_id,
                                     ':po_date' => $po_date,
                                     ':po_num' => $po_num,
@@ -346,7 +343,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                     $okMsg .= ' (+ deployment)';
                                 }
                                 $pdo->commit();
-                                $results[] = ['row' => $row_num, 'status' => 'ok', 'legacy' => $asset_id_old ?? '—', 'new_id' => (string) $asset_id, 'serial' => $serial_raw, 'device' => $device, 'msg' => $okMsg];
+                                $results[] = ['row' => $row_num, 'status' => 'ok', 'legacy' => $asset_id_old ?? '—', 'new_id' => (string) $asset_id, 'serial' => $serial_raw ?? '—', 'device' => $device, 'msg' => $okMsg];
                                 $total_ok++;
                             } catch (PDOException $e) {
                                 if ($pdo->inTransaction()) {
@@ -645,7 +642,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
     <?php else: ?>
 
     <div class="template-bar">
-        <span><strong>Need a template?</strong> Download the CSV with correct headers, a sample row, and notes. Legacy <code>asset_id</code> is required per row.</span>
+        <span><strong>Need a template?</strong> Download the CSV with correct headers, a sample row, and notes. Only <code>status_id</code> is required; other columns are optional.</span>
         <a href="?download_template=1" class="btn-template"><i class="ri-download-2-line"></i> Download template</a>
     </div>
 
@@ -653,8 +650,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         <div class="card-title"><i class="ri-table-line"></i> Columns</div>
         <div class="column-chips">
             <span class="chip">asset_id</span>
-            <span class="chip required">serial_number *</span>
             <span class="chip required">status_id *</span>
+            <span class="chip">serial_number</span>
             <span class="chip">category</span>
             <span class="chip">brand</span>
             <span class="chip">model</span>
