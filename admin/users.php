@@ -148,6 +148,15 @@ $offset = ($page - 1) * $perPage;
 $pageRows = array_slice($filteredPeople, $offset, $perPage);
 $showFrom = $totalFiltered === 0 ? 0 : $offset + 1;
 $showTo = $totalFiltered === 0 ? 0 : min($offset + $perPage, $totalFiltered);
+
+$flash = '';
+$flashKind = 'info';
+if (($_GET['added'] ?? '') === 'tech') {
+    $flash = 'Technician account created successfully.';
+} elseif (($_GET['err'] ?? '') === 'addtech') {
+    $flashKind = 'warn';
+    $flash = 'Could not create technician. Please try again.';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -333,6 +342,7 @@ $showTo = $totalFiltered === 0 ? 0 : min($offset + $perPage, $totalFiltered);
         }
         .ui-notice.show { display: flex; }
         .ui-notice i { font-size: 1.2rem; flex-shrink: 0; margin-top: 0.1rem; }
+        .ui-notice.warn { background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.35); color: #b45309; }
 
         .alert-db {
             background: rgba(239, 68, 68, 0.1);
@@ -573,9 +583,9 @@ $showTo = $totalFiltered === 0 ? 0 : min($offset + $perPage, $totalFiltered);
             </div>
         <?php endif; ?>
 
-        <div id="uiNotice" class="ui-notice" role="status" aria-live="polite">
+        <div id="uiNotice" class="ui-notice <?= $flashKind === 'warn' ? 'warn' : '' ?> <?= $flash !== '' ? 'show' : '' ?>" role="status" aria-live="polite">
             <i class="ri-information-line"></i>
-            <span id="uiNoticeText"></span>
+            <span id="uiNoticeText"><?= htmlspecialchars($flash) ?></span>
         </div>
 
         <header class="page-header">
@@ -590,7 +600,7 @@ $showTo = $totalFiltered === 0 ? 0 : min($offset + $perPage, $totalFiltered);
                     </button>
                     <div class="action-dropdown" id="addPersonMenu" onclick="event.stopPropagation()">
                         <div class="action-dropdown-hint">Register account</div>
-                        <button type="button" class="action-dropdown-item" onclick="showUiNotice('Add technician — form wiring comes next (UI preview only).')">
+                        <button type="button" class="action-dropdown-item" onclick="window.location.href='addTech.php'">
                             <i class="ri-tools-line" style="color:var(--primary);"></i> Add technician
                         </button>
                         <div class="action-dropdown-hint">Directory</div>
