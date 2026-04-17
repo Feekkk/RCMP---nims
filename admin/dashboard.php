@@ -16,6 +16,7 @@ try {
         'users' => (int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn(),
         'techs' => (int)$pdo->query('SELECT COUNT(*) FROM users WHERE role_id = 1')->fetchColumn(),
         'admins' => (int)$pdo->query('SELECT COUNT(*) FROM users WHERE role_id = 2')->fetchColumn(),
+        'nextcheck_users' => (int)$pdo->query('SELECT COUNT(*) FROM users WHERE role_id = 3')->fetchColumn(),
         'laptops' => (int)$pdo->query('SELECT COUNT(*) FROM laptop')->fetchColumn(),
         'networks' => (int)$pdo->query('SELECT COUNT(*) FROM network')->fetchColumn(),
         'av' => (int)$pdo->query('SELECT COUNT(*) FROM av')->fetchColumn(),
@@ -24,40 +25,63 @@ try {
     ];
     $counts['assets_total'] = $counts['laptops'] + $counts['networks'] + $counts['av'];
 
-    $chartAssetMix = ['labels' => ['Laptops', 'Network', 'AV'], 'data' => [$counts['laptops'], $counts['networks'], $counts['av']]];
-    $chartLaptopStatus = ['labels' => [], 'data' => []];
-    $chartNetworkStatus = ['labels' => [], 'data' => []];
-    $chartAvStatus = ['labels' => [], 'data' => []];
+    $chartAssetStatus = ['labels' => [], 'data' => []];
+    foreach ($pdo->query("
+        SELECT s.name, COUNT(*) AS c
+        FROM (
+            SELECT status_id FROM laptop
+            UNION ALL
+            SELECT status_id FROM network
+            UNION ALL
+            SELECT status_id FROM av
+        ) x
+        JOIN status s ON s.status_id = x.status_id
+        GROUP BY s.status_id, s.name
+        ORDER BY c DESC, s.name ASC
+    ")->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $chartAssetStatus['labels'][] = (string)$row['name'];
+        $chartAssetStatus['data'][] = (int)$row['c'];
+    }
 
-    foreach ($pdo->query(
-        'SELECT s.name, COUNT(l.asset_id) AS c
-         FROM laptop l
-         JOIN status s ON s.status_id = l.status_id
-         GROUP BY s.status_id, s.name
-         ORDER BY c DESC, s.name ASC'
-    )->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $chartLaptopStatus['labels'][] = (string)$row['name'];
-        $chartLaptopStatus['data'][] = (int)$row['c'];
+    $countByStatusId = [];
+    foreach ($pdo->query("
+        SELECT x.status_id, COUNT(*) AS c
+        FROM (
+            SELECT status_id FROM laptop
+            UNION ALL
+            SELECT status_id FROM network
+            UNION ALL
+            SELECT status_id FROM av
+        ) x
+        GROUP BY x.status_id
+    ")->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $countByStatusId[(int)$row['status_id']] = (int)$row['c'];
     }
-    foreach ($pdo->query(
-        'SELECT s.name, COUNT(n.asset_id) AS c
-         FROM network n
-         JOIN status s ON s.status_id = n.status_id
-         GROUP BY s.status_id, s.name
-         ORDER BY c DESC, s.name ASC'
-    )->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $chartNetworkStatus['labels'][] = (string)$row['name'];
-        $chartNetworkStatus['data'][] = (int)$row['c'];
+
+    $counts['deploy'] = (int)($countByStatusId[3] ?? 0);
+    $counts['maintenance'] = (int)($countByStatusId[5] ?? 0);
+    $counts['faulty'] = (int)($countByStatusId[6] ?? 0);
+    $counts['disposed'] = (int)($countByStatusId[7] ?? 0);
+    $counts['disposal_forms'] = (int)$pdo->query('SELECT COUNT(*) FROM disposal')->fetchColumn();
+
+    $chartUsersByRole = [
+        'labels' => ['Technician', 'Admin', 'NextCheck'],
+        'data' => [(int)$counts['techs'], (int)$counts['admins'], (int)$counts['nextcheck_users']],
+    ];
+
+    $chartNextcheck = ['labels' => [], 'data' => []];
+    foreach ($pdo->query("
+        SELECT DATE_FORMAT(MIN(created_at), '%b %Y') AS m, COUNT(*) AS c, MIN(created_at) AS sort_key
+        FROM nexcheck_request
+        WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+        GROUP BY YEAR(created_at), MONTH(created_at)
+        ORDER BY sort_key ASC
+    ")->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $chartNextcheck['labels'][] = (string)$row['m'];
+        $chartNextcheck['data'][] = (int)$row['c'];
     }
-    foreach ($pdo->query(
-        'SELECT s.name, COUNT(a.asset_id) AS c
-         FROM av a
-         JOIN status s ON s.status_id = a.status_id
-         GROUP BY s.status_id, s.name
-         ORDER BY c DESC, s.name ASC'
-    )->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $chartAvStatus['labels'][] = (string)$row['name'];
-        $chartAvStatus['data'][] = (int)$row['c'];
+    if ($chartNextcheck['labels'] === []) {
+        $chartNextcheck = ['labels' => ['No data'], 'data' => [0]];
     }
 
     $recent = [];
@@ -104,12 +128,16 @@ try {
     $recent = array_slice($recent, 0, 8);
 } catch (PDOException $e) {
     $dbError = $e->getMessage();
-    $counts = ['users'=>0,'techs'=>0,'admins'=>0,'laptops'=>0,'networks'=>0,'av'=>0,'assets_total'=>0,'handovers'=>0,'warranties'=>0];
+    $counts = [
+        'users'=>0,'techs'=>0,'admins'=>0,'nextcheck_users'=>0,
+        'laptops'=>0,'networks'=>0,'av'=>0,'assets_total'=>0,
+        'handovers'=>0,'warranties'=>0,
+        'deploy'=>0,'maintenance'=>0,'faulty'=>0,'disposed'=>0,'disposal_forms'=>0,
+    ];
     $recent = [];
-    $chartAssetMix = ['labels' => ['Laptops', 'Network', 'AV'], 'data' => [0, 0, 0]];
-    $chartLaptopStatus = ['labels' => ['No data'], 'data' => [0]];
-    $chartNetworkStatus = ['labels' => ['No data'], 'data' => [0]];
-    $chartAvStatus = ['labels' => ['No data'], 'data' => [0]];
+    $chartAssetStatus = ['labels' => ['No data'], 'data' => [0]];
+    $chartUsersByRole = ['labels' => ['Technician', 'Admin', 'NextCheck'], 'data' => [0, 0, 0]];
+    $chartNextcheck = ['labels' => ['No data'], 'data' => [0]];
 }
 ?>
 <!DOCTYPE html>
@@ -270,13 +298,22 @@ try {
             box-shadow: 0 2px 12px rgba(15,23,42,0.06);
             overflow: hidden;
         }
-        .charts-grid{
+        .mid-grid{
             display:grid;
-            grid-template-columns: 1.1fr 1fr;
-            gap:1.25rem;
-            margin-bottom:1.75rem;
+            grid-template-columns: 1.15fr 0.85fr;
+            gap: 1.25rem;
+            margin-bottom: 1.75rem;
+            align-items: stretch;
         }
-        @media (max-width: 1100px){ .charts-grid{ grid-template-columns: 1fr; } }
+        .lower-grid{
+            display:grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.25rem;
+            margin-bottom: 1.75rem;
+        }
+        @media (max-width: 1100px){
+            .mid-grid, .lower-grid{ grid-template-columns: 1fr; }
+        }
         .chart-wrap{ height: 310px; }
         canvas{ max-width:100%; }
         .card-title {
@@ -323,6 +360,9 @@ try {
             background: rgba(148,163,184,0.12);
             color: #475569;
         }
+        .kv-table td:last-child{ text-align:right; font-weight:900; }
+        .kv-table td:first-child{ font-weight:800; }
+        .kv-note{ color: var(--text-muted); font-size:0.85rem; font-weight:700; margin-top:0.6rem; line-height:1.45; }
 
         @media (max-width: 1100px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
         @media (max-width: 900px) {
@@ -360,7 +400,7 @@ try {
                 <div>
                     <div class="stat-num"><?= (int)$counts['users'] ?></div>
                     <div class="stat-label">Total users</div>
-                    <div class="stat-sub"><?= (int)$counts['techs'] ?> tech • <?= (int)$counts['admins'] ?> admin</div>
+                    <div class="stat-sub"><?= (int)$counts['techs'] ?> tech • <?= (int)$counts['admins'] ?> admin • <?= (int)$counts['nextcheck_users'] ?> nexcheck</div>
                 </div>
             </div>
             <div class="stat-card">
@@ -378,31 +418,51 @@ try {
                 </div>
             </div>
             <div class="stat-card">
-                <div class="stat-icon icon-amber"><i class="ri-exchange-line"></i></div>
+                <div class="stat-icon icon-amber"><i class="ri-film-line"></i></div>
                 <div>
-                    <div class="stat-num"><?= (int)$counts['handovers'] ?></div>
-                    <div class="stat-label">Handovers</div>
-                    <div class="stat-sub"><?= (int)$counts['warranties'] ?> warranties</div>
+                    <div class="stat-num"><?= (int)$counts['av'] ?></div>
+                    <div class="stat-label">Total AV</div>
                 </div>
             </div>
         </section>
 
-        <section class="charts-grid" aria-label="Asset analytics charts">
+        <section class="mid-grid" aria-label="Admin dashboard middle panels">
             <div class="glass-card">
-                <div class="card-title"><i class="ri-pie-chart-2-line"></i> Asset mix</div>
-                <div class="chart-wrap"><canvas id="chartAssetMix"></canvas></div>
+                <div class="card-title"><i class="ri-table-2"></i> Items list</div>
+                <div class="table-responsive">
+                    <table class="data-table kv-table">
+                        <thead>
+                            <tr>
+                                <th>Items</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Total assets</td><td><?= (int)$counts['assets_total'] ?></td></tr>
+                            <tr><td>Handover</td><td><?= (int)$counts['handovers'] ?></td></tr>
+                            <tr><td>Deploy</td><td><?= (int)$counts['deploy'] ?></td></tr>
+                            <tr><td>Faulty</td><td><?= (int)$counts['faulty'] ?></td></tr>
+                            <tr><td>Maintenance</td><td><?= (int)$counts['maintenance'] ?></td></tr>
+                            <tr><td>Disposal (forms)</td><td><?= (int)$counts['disposal_forms'] ?></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="kv-note">This summary combines Laptop, Network, and AV statuses based on the system status list.</div>
             </div>
             <div class="glass-card">
-                <div class="card-title"><i class="ri-bar-chart-horizontal-line"></i> Laptop by status</div>
-                <div class="chart-wrap"><canvas id="chartLaptopStatus"></canvas></div>
+                <div class="card-title"><i class="ri-pie-chart-2-line"></i> Asset status</div>
+                <div class="chart-wrap"><canvas id="chartAssetStatus"></canvas></div>
+            </div>
+        </section>
+
+        <section class="lower-grid" aria-label="Admin dashboard graphs">
+            <div class="glass-card">
+                <div class="card-title"><i class="ri-line-chart-line"></i> NextCheck</div>
+                <div class="chart-wrap"><canvas id="chartNextcheck"></canvas></div>
             </div>
             <div class="glass-card">
-                <div class="card-title"><i class="ri-router-line"></i> Network by status</div>
-                <div class="chart-wrap"><canvas id="chartNetworkStatus"></canvas></div>
-            </div>
-            <div class="glass-card">
-                <div class="card-title"><i class="ri-film-line"></i> AV by status</div>
-                <div class="chart-wrap"><canvas id="chartAvStatus"></canvas></div>
+                <div class="card-title"><i class="ri-bar-chart-grouped-line"></i> Users</div>
+                <div class="chart-wrap"><canvas id="chartUsersByRole"></canvas></div>
             </div>
         </section>
 
@@ -458,18 +518,17 @@ try {
             const red   = 'rgba(239, 68, 68, 0.85)';
             const violet= 'rgba(124, 58, 237, 0.82)';
 
-            const assetMix = <?= json_encode($chartAssetMix, $chartJsonFlags) ?>;
-            const laptopSt = <?= json_encode($chartLaptopStatus, $chartJsonFlags) ?>;
-            const networkSt= <?= json_encode($chartNetworkStatus, $chartJsonFlags) ?>;
-            const avSt     = <?= json_encode($chartAvStatus, $chartJsonFlags) ?>;
+            const assetStatus = <?= json_encode($chartAssetStatus, $chartJsonFlags) ?>;
+            const nextcheck = <?= json_encode($chartNextcheck, $chartJsonFlags) ?>;
+            const usersByRole = <?= json_encode($chartUsersByRole, $chartJsonFlags) ?>;
 
-            new Chart(document.getElementById('chartAssetMix'), {
+            new Chart(document.getElementById('chartAssetStatus'), {
                 type: 'doughnut',
                 data: {
-                    labels: assetMix.labels,
+                    labels: assetStatus.labels,
                     datasets: [{
-                        data: assetMix.data,
-                        backgroundColor: [blue, teal, amber],
+                        data: assetStatus.data,
+                        backgroundColor: [blue, teal, amber, green, violet, red, 'rgba(148,163,184,0.85)'],
                         borderWidth: 2,
                         borderColor: '#fff',
                         hoverOffset: 6
@@ -478,30 +537,53 @@ try {
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
             });
 
-            function barChart(elId, ds, color) {
-                const el = document.getElementById(elId);
-                if (!el) return;
-                new Chart(el, {
-                    type: 'bar',
-                    data: {
-                        labels: ds.labels,
-                        datasets: [{ label: 'Count', data: ds.data, backgroundColor: color, borderRadius: 10 }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
-                        scales: {
-                            x: { grid: { display: false } },
-                            y: { beginAtZero: true, ticks: { precision: 0 } }
-                        }
+            new Chart(document.getElementById('chartNextcheck'), {
+                type: 'line',
+                data: {
+                    labels: nextcheck.labels,
+                    datasets: [{
+                        label: 'Requests',
+                        data: nextcheck.data,
+                        borderColor: violet,
+                        backgroundColor: 'rgba(124,58,237,0.12)',
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 3,
+                        pointHoverRadius: 5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { beginAtZero: true, ticks: { precision: 0 } }
                     }
-                });
-            }
+                }
+            });
 
-            barChart('chartLaptopStatus', laptopSt, blue);
-            barChart('chartNetworkStatus', networkSt, violet);
-            barChart('chartAvStatus', avSt, amber);
+            new Chart(document.getElementById('chartUsersByRole'), {
+                type: 'bar',
+                data: {
+                    labels: usersByRole.labels,
+                    datasets: [{
+                        label: 'Users',
+                        data: usersByRole.data,
+                        backgroundColor: [blue, teal, amber],
+                        borderRadius: 12
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { beginAtZero: true, ticks: { precision: 0 } }
+                    }
+                }
+            });
         })();
     </script>
 </body>
