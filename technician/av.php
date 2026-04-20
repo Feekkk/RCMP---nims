@@ -734,7 +734,7 @@ $nextHref = 'av.php?' . http_build_query($nextParams);
                                 <td colspan="6">
                                     <div style="text-align:center; padding: 3.25rem 1rem; color: var(--text-muted);">
                                         <i class="ri-inbox-line" style="font-size:2rem; display:block; margin-bottom:0.6rem;"></i>
-                                        No AV assets found<?= $filter_status !== null ? ' for this status' : '' ?>.
+                                        Add assets in the system
                                     </div>
                                 </td>
                             </tr>
