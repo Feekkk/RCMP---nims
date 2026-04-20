@@ -15,7 +15,7 @@ return [
     'host' => getenv('MAIL_HOST') ?: 'smtp.office365.com',
     'port' => (int) (getenv('MAIL_PORT') ?: 587),
     'username' => getenv('MAIL_USERNAME') ?: 'nexcheck.rcmp@unikl.edu.my',
-    'password' => getenv('MAIL_PASSWORD') ?: 'V^555026778465al',
+    'password' => getenv('MAIL_PASSWORD') ?: 'Nex@ITD03',
     'encryption' => getenv('MAIL_ENCRYPTION') ?: 'tls', // 'tls' | 'ssl' | null
     'from' => [
         'address' => getenv('MAIL_FROM_ADDRESS') ?: 'nexcheck.rcmp@unikl.edu.my',
