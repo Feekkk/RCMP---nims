@@ -593,6 +593,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             </div>
         </div>
 
+        <?php
+        $resultsFailed = array_values(array_filter($results, static function (array $r): bool {
+            return ($r['status'] ?? '') === 'error';
+        }));
+        ?>
+        <?php if ($resultsFailed === []): ?>
+        <p style="padding:1rem 0;color:var(--success);font-weight:600;"><i class="ri-checkbox-circle-line"></i> No failed rows — see summary above for imported and duplicate counts.</p>
+        <?php else: ?>
         <div class="preview-wrapper">
             <table class="preview-table">
                 <thead>
@@ -607,30 +615,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($results as $r):
-                        $rowClass = $r['status'] === 'ok' ? 'ok' : ($r['status'] === 'dup' ? 'dup' : 'err');
-                    ?>
-                    <tr class="result-row-<?= $rowClass ?>">
+                    <?php foreach ($resultsFailed as $r): ?>
+                    <tr class="result-row-err">
                         <td>#<?= (int) $r['row'] ?></td>
                         <td><strong><?= htmlspecialchars((string) $r['legacy']) ?></strong></td>
                         <td><code style="font-weight:700;color:var(--primary);"><?= htmlspecialchars((string) $r['new_id']) ?></code></td>
                         <td><?= htmlspecialchars((string) $r['serial']) ?></td>
                         <td><?= htmlspecialchars((string) $r['device']) ?></td>
-                        <td>
-                            <?php if ($r['status'] === 'ok'): ?>
-                                <span class="badge-ok">✓ Success</span>
-                            <?php elseif ($r['status'] === 'dup'): ?>
-                                <span class="badge-dup">⚠ Duplicate</span>
-                            <?php else: ?>
-                                <span class="badge-err">✗ Failed</span>
-                            <?php endif; ?>
-                        </td>
+                        <td><span class="badge-err">✗ Failed</span></td>
                         <td><?= htmlspecialchars((string) $r['msg']) ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
+        <?php endif; ?>
 
         <div style="margin-top:1.5rem; display:flex; gap:1rem; flex-wrap:wrap;">
             <a href="avCSV.php" class="btn btn-primary"><i class="ri-upload-2-line"></i> Import another file</a>
