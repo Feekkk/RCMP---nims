@@ -140,6 +140,11 @@ function smtp__cmd($fp, string $c): string
     return smtp__read_reply($fp);
 }
 
+function smtp__capability_has(string $ehloReply, string $needle): bool
+{
+    return stripos($ehloReply, $needle) !== false;
+}
+
 function smtp__first_line(string $reply): string
 {
     $reply = trim($reply);
@@ -172,6 +177,9 @@ function smtp__send_raw(array $rcptTos, string $rawMessage, ?string $from = null
     $cfg = require __DIR__ . '/mail.php';
     $host = (string) ($cfg['host'] ?? '127.0.0.1');
     $port = (int) ($cfg['port'] ?? 1025);
+    $enc = strtolower(trim((string) ($cfg['encryption'] ?? '')));
+    $username = $cfg['username'] ?? null;
+    $password = $cfg['password'] ?? null;
     $fromAddr = $from ?: (string) (($cfg['from']['address'] ?? null) ?: 'nexcheck.rcmp@unikl.edu.my');
 
     $rcptTos = array_values(array_unique(array_filter(array_map('trim', $rcptTos), static function ($a): bool { return $a !== ''; })));
@@ -179,13 +187,54 @@ function smtp__send_raw(array $rcptTos, string $rawMessage, ?string $from = null
         throw new RuntimeException('SMTP: no recipients');
     }
 
-    $fp = fsockopen($host, $port, $errno, $errstr, 10);
+    $scheme = ($enc === 'ssl') ? 'ssl' : 'tcp';
+    $remote = $scheme . '://' . $host . ':' . $port;
+    $ctx = stream_context_create([
+        'ssl' => [
+            'verify_peer' => true,
+            'verify_peer_name' => true,
+            'allow_self_signed' => false,
+        ],
+    ]);
+
+    $fp = stream_socket_client($remote, $errno, $errstr, 15, STREAM_CLIENT_CONNECT, $ctx);
     if (!$fp) {
-        throw new RuntimeException("SMTP connect failed: {$errstr} ({$errno}) — check MAIL_HOST/MAIL_PORT or start Mailpit");
+        throw new RuntimeException("SMTP connect failed: {$errstr} ({$errno}) — check MAIL_HOST/MAIL_PORT/MAIL_ENCRYPTION");
     }
+    stream_set_timeout($fp, 20);
 
     smtp__expect_ok(smtp__read_reply($fp), 'greeting');
-    smtp__expect_ok(smtp__cmd($fp, 'EHLO nims.local'), 'EHLO');
+    $ehlo = smtp__cmd($fp, 'EHLO nims.local');
+    smtp__expect_ok($ehlo, 'EHLO');
+
+    if ($enc === 'tls') {
+        if (!smtp__capability_has($ehlo, 'STARTTLS')) {
+            throw new RuntimeException('SMTP: server does not support STARTTLS but MAIL_ENCRYPTION=tls');
+        }
+        smtp__expect_ok(smtp__cmd($fp, 'STARTTLS'), 'STARTTLS');
+        $ok = stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
+        if ($ok !== true) {
+            throw new RuntimeException('SMTP: STARTTLS negotiation failed');
+        }
+        $ehlo2 = smtp__cmd($fp, 'EHLO nims.local');
+        smtp__expect_ok($ehlo2, 'EHLO (post-STARTTLS)');
+        $ehlo = $ehlo2;
+    }
+
+    $user = is_string($username) ? trim($username) : '';
+    $pass = is_string($password) ? (string) $password : '';
+    if ($user !== '') {
+        if ($pass === '') {
+            throw new RuntimeException('SMTP: MAIL_PASSWORD is required when MAIL_USERNAME is set');
+        }
+        if (!smtp__capability_has($ehlo, 'AUTH')) {
+            throw new RuntimeException('SMTP: server does not advertise AUTH, cannot authenticate');
+        }
+        smtp__expect_ok(smtp__cmd($fp, 'AUTH LOGIN'), 'AUTH LOGIN');
+        smtp__expect_ok(smtp__cmd($fp, base64_encode($user)), 'AUTH username');
+        smtp__expect_ok(smtp__cmd($fp, base64_encode($pass)), 'AUTH password');
+    }
+
     smtp__expect_ok(smtp__cmd($fp, 'MAIL FROM:<' . $fromAddr . '>'), 'MAIL FROM');
     foreach ($rcptTos as $to) {
         smtp__expect_ok(smtp__cmd($fp, 'RCPT TO:<' . $to . '>'), 'RCPT TO');
