@@ -430,7 +430,7 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 1rem 1.25rem;
             margin-bottom: 1.75rem;
-            max-width: 960px;
+            width: 100%;
         }
         .stat-card {
             background: var(--card-bg);
@@ -442,6 +442,7 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
             align-items: center;
             gap: 1rem;
             min-width: 0;
+            width: 100%;
         }
         .stat-icon {
             width: 48px; height: 48px; border-radius: 12px;
@@ -703,7 +704,7 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
         .page-btn.disabled { pointer-events: none; opacity: 0.45; }
 
         @media (max-width: 640px) {
-            .stats-grid { grid-template-columns: 1fr; max-width: none; }
+            .stats-grid { grid-template-columns: 1fr; }
         }
         @media (max-width: 900px) {
             .sidebar { transform: translateX(-100%); width: 260px; }
@@ -878,8 +879,7 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
                                         <i class="ri-inbox-line"></i>
                                         <h3>No network assets yet</h3>
                                         <p>
-                                            Add rows to the <code>network</code> table (<code>db/schema.sql</code>). Status must reference <code>status</code>
-                                            (e.g. 9 Online, 10 Offline, 5 Maintenance, 6 Faulty, 3 Deploy, 7 Disposed, 8 Lost).
+                                            Add asset table in the system
                                         </p>
                                     </div>
                                 </td>
