@@ -125,6 +125,18 @@ function network_csv_cell(array $row, array $idx, string $key): ?string
     return $v === '' ? null : $v;
 }
 
+function next_network_asset_id(PDO $pdo): int
+{
+    $yy = date('y');
+    $prefix = '24' . $yy;
+    $stmt = $pdo->prepare('SELECT MAX(asset_id) FROM network WHERE asset_id LIKE ?');
+    $stmt->execute([$prefix . '%']);
+    $maxVal = (int)$stmt->fetchColumn();
+    $nextSeq = ($maxVal === 0) ? 1 : ($maxVal % 10000) + 1;
+
+    return (int)($prefix . str_pad((string)$nextSeq, 4, '0', STR_PAD_LEFT));
+}
+
 function network_normalize_mac(?string $mac): ?string
 {
     if ($mac === null || $mac === '') {
@@ -135,8 +147,11 @@ function network_normalize_mac(?string $mac): ?string
     if ($norm === null) {
         return null;
     }
-
-    return (strlen($norm) === 12 && ctype_xdigit($norm)) ? $s : null;
+    $norm = strtoupper($norm);
+    if (strlen($norm) !== 12 || !ctype_xdigit($norm)) {
+        return null;
+    }
+    return implode(':', str_split($norm, 2));
 }
 
 function network_csv_date_ymd(?string $raw): ?string
@@ -207,6 +222,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         } else {
             $idx = network_csv_col_index($header);
             $row_num = 1;
+            $nextAutoAssetId = next_network_asset_id($pdo);
+            $usedAssetIds = [];
 
             while (($row = fgetcsv($handle)) !== false) {
                 $row_num++;
@@ -219,7 +236,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 $statusRaw = network_csv_cell($row, $idx, 'status');
 
                 $assetTrim = $assetRaw !== null ? trim($assetRaw) : '';
-                if ($assetRaw === null || $assetTrim === '' || !ctype_digit($assetTrim)) {
+                if ($assetTrim === '') {
+                    while (isset($usedAssetIds[$nextAutoAssetId])) {
+                        $nextAutoAssetId++;
+                    }
+                    $aid = $nextAutoAssetId;
+                    $usedAssetIds[$aid] = true;
+                    $nextAutoAssetId++;
+                } elseif (!ctype_digit($assetTrim)) {
                     $results[] = [
                         'row' => $row_num, 'status' => 'error',
                         'asset_id' => $assetRaw ?? '—', 'serial' => $serial ?? '—',
@@ -227,8 +251,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     ];
                     $total_err++;
                     continue;
+                } else {
+                    $aid = (int)$assetTrim;
+                    if (isset($usedAssetIds[$aid])) {
+                        $results[] = [
+                            'row' => $row_num, 'status' => 'error',
+                            'asset_id' => (string)$aid, 'serial' => $serial ?? '—',
+                            'brand' => '—', 'msg' => 'Duplicate Asset ID in this CSV.',
+                        ];
+                        $total_err++;
+                        continue;
+                    }
+                    $usedAssetIds[$aid] = true;
                 }
-                $aid = (int)$assetTrim;
 
                 // Serial Number is optional (network.serial_num allows NULL).
 
@@ -268,7 +303,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 $brand = network_csv_cell($row, $idx, 'brand');
                 $model = network_csv_cell($row, $idx, 'model');
                 $mac = network_csv_cell($row, $idx, 'mac_address');
-                if ($mac !== null && network_normalize_mac($mac) === null) {
+                $macNorm = $mac !== null ? network_normalize_mac($mac) : null;
+                if ($mac !== null && $macNorm === null) {
                     $results[] = [
                         'row' => $row_num, 'status' => 'error',
                         'asset_id' => (string)$aid, 'serial' => $serial ?? '—',
@@ -278,6 +314,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     $total_err++;
                     continue;
                 }
+                $mac = $macNorm;
                 $ip = network_csv_cell($row, $idx, 'ip_address');
                 if ($ip !== null && filter_var($ip, FILTER_VALIDATE_IP) === false) {
                     $results[] = [
@@ -489,6 +526,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             }
             fclose($handle);
             $processed = true;
+            // Only show error rows in the post-import message table.
+            $results = array_values(array_filter($results, static function (array $r): bool {
+                return ($r['status'] ?? '') === 'error';
+            }));
         }
     }
 }
@@ -719,14 +760,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         <div class="card-title"><i class="ri-bar-chart-2-line"></i> Import summary</div>
         <div class="results-grid">
             <div class="result-stat rs-total"><div class="rs-num"><?= $total_ok + $total_err ?></div><div class="rs-label">Rows</div></div>
-            <div class="result-stat rs-ok"><div class="rs-num"><?= $total_ok ?></div><div class="rs-label">Imported</div></div>
             <div class="result-stat rs-err"><div class="rs-num"><?= $total_err ?></div><div class="rs-label">Failed</div></div>
         </div>
         <div class="preview-wrapper">
             <table class="preview-table">
                 <thead>
                     <tr>
-                        <th>Row</th><th>Asset ID</th><th>Serial</th><th>Device</th><th>Result</th><th>Message</th>
+                        <th>Row</th><th>Asset ID</th><th>Serial</th><th>Device</th><th>Message</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -736,7 +776,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                         <td><strong><?= htmlspecialchars((string)($r['asset_id'] ?? '—')) ?></strong></td>
                         <td><?= htmlspecialchars((string)($r['serial'] ?? '—')) ?></td>
                         <td><?= htmlspecialchars((string)($r['brand'] ?? '—')) ?></td>
-                        <td><span class="badge-<?= $r['status'] === 'ok' ? 'ok' : 'err' ?>"><?= $r['status'] === 'ok' ? 'OK' : 'Fail' ?></span></td>
                         <td><?= htmlspecialchars($r['msg'] ?? '') ?></td>
                     </tr>
                     <?php endforeach; ?>
