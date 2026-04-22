@@ -339,7 +339,7 @@ if ($manualDirFs !== false && is_dir($manualDirFs)) {
             <p>Step-by-step screenshots for the most common tasks. Click any image to view it larger.</p>
         </div>
         <div class="toolbar">
-            <div class="pill"><i class="ri-image-2-line"></i> <?= (int)count(array_filter($gallery, static fn($x) => (bool)($x['exists'] ?? false))) ?> screenshots</div>
+            <div class="pill"><i class="ri-image-2-line"></i> <?= (int)count(array_filter($gallery, static function ($x): bool { return (bool)($x['exists'] ?? false); })) ?> screenshots</div>
             <div class="search" title="Filter by title">
                 <i class="ri-search-2-line"></i>
                 <input id="filterInput" type="text" placeholder="Search manual…" autocomplete="off">
