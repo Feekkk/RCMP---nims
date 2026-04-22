@@ -10,6 +10,7 @@ require_once __DIR__ . '/../config/database.php';
 $filter_status = isset($_GET['status_id']) && is_numeric($_GET['status_id'])
     ? (int)$_GET['status_id']
     : null;
+$search_q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $page = isset($_GET['page']) && is_numeric($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
 $perPage = 10;
 
@@ -45,9 +46,22 @@ try {
 
     $countSql = 'SELECT COUNT(*) FROM network n';
     $countParams = [];
+    $where = [];
     if ($filter_status !== null) {
-        $countSql .= ' WHERE n.status_id = :status_id';
+        $where[] = 'n.status_id = :status_id';
         $countParams[':status_id'] = $filter_status;
+    }
+    if ($search_q !== '') {
+        $countParams[':q_like'] = '%' . $search_q . '%';
+        if (ctype_digit($search_q)) {
+            $countParams[':q_id'] = (int)$search_q;
+            $where[] = '(n.asset_id = :q_id OR n.serial_num LIKE :q_like OR n.brand LIKE :q_like)';
+        } else {
+            $where[] = '(n.serial_num LIKE :q_like OR n.brand LIKE :q_like)';
+        }
+    }
+    if ($where !== []) {
+        $countSql .= ' WHERE ' . implode(' AND ', $where);
     }
     $countStmt = $pdo->prepare($countSql);
     $countStmt->execute($countParams);
@@ -65,9 +79,22 @@ try {
         JOIN status s ON s.status_id = n.status_id
     ';
     $params = [];
+    $where2 = [];
     if ($filter_status !== null) {
-        $sql .= ' WHERE n.status_id = :status_id';
+        $where2[] = 'n.status_id = :status_id';
         $params[':status_id'] = $filter_status;
+    }
+    if ($search_q !== '') {
+        $params[':q_like'] = '%' . $search_q . '%';
+        if (ctype_digit($search_q)) {
+            $params[':q_id'] = (int)$search_q;
+            $where2[] = '(n.asset_id = :q_id OR n.serial_num LIKE :q_like OR n.brand LIKE :q_like)';
+        } else {
+            $where2[] = '(n.serial_num LIKE :q_like OR n.brand LIKE :q_like)';
+        }
+    }
+    if ($where2 !== []) {
+        $sql .= ' WHERE ' . implode(' AND ', $where2);
     }
     $sql .= ' ORDER BY n.asset_id DESC LIMIT ' . (int) $perPage . ' OFFSET ' . (int) $offset;
     $stmt = $pdo->prepare($sql);
@@ -121,6 +148,9 @@ $rowEnd = min($offset + count($assets), $filteredTotal);
 $baseParams = [];
 if ($filter_status !== null) {
     $baseParams['status_id'] = $filter_status;
+}
+if ($search_q !== '') {
+    $baseParams['q'] = $search_q;
 }
 $prevParams = $baseParams;
 $prevParams['page'] = max(1, $page - 1);
@@ -769,7 +799,8 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
         <div class="table-controls">
             <div class="search-box">
                 <i class="ri-search-2-line"></i>
-                <input id="searchInput" class="search-input" type="text" placeholder="Search asset ID, serial, brand, model, MAC, IP, status, remarks...">
+                <input id="searchInput" class="search-input" type="text" placeholder="Search asset ID, serial, brand…" value="<?= htmlspecialchars($search_q, ENT_QUOTES, 'UTF-8') ?>">
+                <div class="muted" style="font-size:0.78rem;margin-top:0.35rem;">Search: Asset ID, Serial No, Brand</div>
             </div>
             <div class="action-buttons">
                 <?php
@@ -893,7 +924,11 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
                                 $device = 'Network device';
                             }
                         ?>
-                            <tr class="network-row" data-filter-status="<?= htmlspecialchars($filterKey) ?>">
+                            <tr
+                                class="network-row"
+                                data-filter-status="<?= htmlspecialchars($filterKey) ?>"
+                                data-search="<?= htmlspecialchars(strtolower(trim(((string)($row['asset_id'] ?? '')) . ' ' . ((string)($row['serial_num'] ?? '')) . ' ' . ((string)($row['brand'] ?? '')))), ENT_QUOTES, 'UTF-8') ?>"
+                            >
                                 <td>
                                     <div class="asset-cell">
                                         <div class="asset-icon"><i class="ri-router-line"></i></div>
@@ -982,19 +1017,19 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
         });
 
         const searchInput = document.getElementById('searchInput');
-        const tbody = document.getElementById('assetTbody');
-
-        function applyFilters() {
-            const q = (searchInput.value || '').toLowerCase();
-            const rows = Array.from(tbody.querySelectorAll('tr.network-row'));
-
-            rows.forEach(row => {
-                const textOk = row.innerText.toLowerCase().includes(q);
-                row.style.display = textOk ? '' : 'none';
-            });
+        let searchTimer = null;
+        function applyServerSearch() {
+            const q = (searchInput?.value || '').trim();
+            const url = new URL(window.location.href);
+            if (q) url.searchParams.set('q', q);
+            else url.searchParams.delete('q');
+            url.searchParams.delete('page');
+            window.location.href = url.toString();
         }
-
-        searchInput.addEventListener('input', applyFilters);
+        searchInput && searchInput.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(applyServerSearch, 350);
+        });
     </script>
 </body>
 </html>

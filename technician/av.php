@@ -35,6 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $filter_status = isset($_GET['status_id']) && is_numeric($_GET['status_id'])
     ? (int)$_GET['status_id']
     : null;
+$search_q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $page = isset($_GET['page']) && is_numeric($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
 $perPage = 10;
 
@@ -87,9 +88,22 @@ try {
     $pdo = db();
     $countSql = "SELECT COUNT(*) FROM av a";
     $countParams = [];
+    $where = [];
     if ($filter_status !== null) {
-        $countSql .= " WHERE a.status_id = :status_id";
+        $where[] = "a.status_id = :status_id";
         $countParams[':status_id'] = $filter_status;
+    }
+    if ($search_q !== '') {
+        $countParams[':q_like'] = '%' . $search_q . '%';
+        if (ctype_digit($search_q)) {
+            $countParams[':q_id'] = (int)$search_q;
+            $where[] = "(a.asset_id = :q_id OR a.serial_num LIKE :q_like OR a.brand LIKE :q_like)";
+        } else {
+            $where[] = "(a.serial_num LIKE :q_like OR a.brand LIKE :q_like)";
+        }
+    }
+    if ($where !== []) {
+        $countSql .= " WHERE " . implode(" AND ", $where);
     }
     $countStmt = $pdo->prepare($countSql);
     $countStmt->execute($countParams);
@@ -132,9 +146,22 @@ try {
         LEFT JOIN users u ON u.staff_id = d.staff_id
     ";
     $params = [];
+    $where2 = [];
     if ($filter_status !== null) {
-        $sql .= " WHERE a.status_id = :status_id";
+        $where2[] = "a.status_id = :status_id";
         $params[':status_id'] = $filter_status;
+    }
+    if ($search_q !== '') {
+        $params[':q_like'] = '%' . $search_q . '%';
+        if (ctype_digit($search_q)) {
+            $params[':q_id'] = (int)$search_q;
+            $where2[] = "(a.asset_id = :q_id OR a.serial_num LIKE :q_like OR a.brand LIKE :q_like)";
+        } else {
+            $where2[] = "(a.serial_num LIKE :q_like OR a.brand LIKE :q_like)";
+        }
+    }
+    if ($where2 !== []) {
+        $sql .= " WHERE " . implode(" AND ", $where2);
     }
     $sql .= " ORDER BY a.asset_id DESC LIMIT " . (int) $perPage . " OFFSET " . (int) $offset;
     $stmt = $pdo->prepare($sql);
@@ -201,6 +228,9 @@ $rowEnd = min($offset + count($assets), $filteredTotal);
 $baseParams = [];
 if ($filter_status !== null) {
     $baseParams['status_id'] = $filter_status;
+}
+if ($search_q !== '') {
+    $baseParams['q'] = $search_q;
 }
 $prevParams = $baseParams;
 $prevParams['page'] = max(1, $page - 1);
@@ -661,7 +691,8 @@ $nextHref = 'av.php?' . http_build_query($nextParams);
         <div class="table-controls">
             <div class="search-box">
                 <i class="ri-search-2-line"></i>
-                <input type="text" id="searchInput" class="search-input" placeholder="<?= htmlspecialchars($searchPlaceholder) ?>">
+                <input type="text" id="searchInput" class="search-input" placeholder="Search asset ID, serial, brand…" value="<?= htmlspecialchars($search_q, ENT_QUOTES, 'UTF-8') ?>">
+                <div class="muted" style="font-size:0.78rem;margin-top:0.35rem;">Search: Asset ID, Serial No, Brand</div>
             </div>
 
             <div class="action-buttons">
@@ -768,7 +799,10 @@ $nextHref = 'av.php?' . http_build_query($nextParams);
                                 $deviceName = trim(($row['category'] ?? '') . ' ' . ($row['brand'] ?? '') . ' ' . ($row['model'] ?? ''));
                                 if ($deviceName === '') $deviceName = 'AV Asset';
                             ?>
-                                <tr class="av-row">
+                                <tr
+                                    class="av-row"
+                                    data-search="<?= htmlspecialchars(strtolower(trim(((string)($row['asset_id'] ?? '')) . ' ' . ((string)($row['serial_num'] ?? '')) . ' ' . ((string)($row['brand'] ?? '')))), ENT_QUOTES, 'UTF-8') ?>"
+                                >
                                     <td>
                                         <div class="asset-cell">
                                             <div class="asset-icon"><i class="ri-vidicon-line"></i></div>
@@ -886,18 +920,19 @@ $nextHref = 'av.php?' . http_build_query($nextParams);
         });
 
         const searchInput = document.getElementById('searchInput');
-        const tbody = document.getElementById('assetTbody');
-
-        function applyFilters() {
-            const q = (searchInput.value || '').toLowerCase();
-            const rows = Array.from(tbody.querySelectorAll('tr.av-row'));
-            rows.forEach(row => {
-                const textOk = row.innerText.toLowerCase().includes(q);
-                row.style.display = textOk ? '' : 'none';
-            });
+        let searchTimer = null;
+        function applyServerSearch() {
+            const q = (searchInput?.value || '').trim();
+            const url = new URL(window.location.href);
+            if (q) url.searchParams.set('q', q);
+            else url.searchParams.delete('q');
+            url.searchParams.delete('page');
+            window.location.href = url.toString();
         }
-
-        searchInput && searchInput.addEventListener('input', applyFilters);
+        searchInput && searchInput.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(applyServerSearch, 350);
+        });
     </script>
 </body>
 </html>

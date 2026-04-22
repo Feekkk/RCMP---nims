@@ -32,6 +32,7 @@ unset($_SESSION['laptop_flash']);
 //  Active status filter (from URL ?status_id=N) 
 $filter_status = isset($_GET['status_id']) && is_numeric($_GET['status_id'])
     ? (int)$_GET['status_id'] : null;
+$search_q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 
 // Pagination
 $perPage = 20;
@@ -72,9 +73,22 @@ foreach ($out_stock_ids as $sid) $out_total += $countsById[$sid] ?? 0;
 //  Laptop list (+ warranty info for maintenance view)
 $countSql = "SELECT COUNT(*) FROM laptop l";
 $countParams = [];
+$where = [];
 if ($filter_status !== null) {
-    $countSql .= " WHERE l.status_id = :status_id";
+    $where[] = "l.status_id = :status_id";
     $countParams[':status_id'] = $filter_status;
+}
+if ($search_q !== '') {
+    $countParams[':q_like'] = '%' . $search_q . '%';
+    if (ctype_digit($search_q)) {
+        $countParams[':q_id'] = (int)$search_q;
+        $where[] = "(l.asset_id = :q_id OR l.serial_num LIKE :q_like OR l.brand LIKE :q_like)";
+    } else {
+        $where[] = "(l.serial_num LIKE :q_like OR l.brand LIKE :q_like)";
+    }
+}
+if ($where !== []) {
+    $countSql .= " WHERE " . implode(" AND ", $where);
 }
 $countStmt = db()->prepare($countSql);
 $countStmt->execute($countParams);
@@ -119,14 +133,27 @@ $sql = "
         )
 ";
 $params = [];
+$where2 = [];
 if ($filter_status !== null) {
-    $sql .= " WHERE l.status_id = :status_id";
+    $where2[] = "l.status_id = :status_id";
     $params[':status_id'] = $filter_status;
+}
+if ($search_q !== '') {
+    $params[':q_like'] = '%' . $search_q . '%';
+    if (ctype_digit($search_q)) {
+        $params[':q_id'] = (int)$search_q;
+        $where2[] = "(l.asset_id = :q_id OR l.serial_num LIKE :q_like OR l.brand LIKE :q_like)";
+    } else {
+        $where2[] = "(l.serial_num LIKE :q_like OR l.brand LIKE :q_like)";
+    }
+}
+if ($where2 !== []) {
+    $sql .= " WHERE " . implode(" AND ", $where2);
 }
 $sql .= " ORDER BY l.asset_id DESC LIMIT :limit OFFSET :offset";
 $stmt = db()->prepare($sql);
 foreach ($params as $k => $v) {
-    $stmt->bindValue($k, $v, PDO::PARAM_INT);
+    $stmt->bindValue($k, $v, ($k === ':status_id' || $k === ':q_id') ? PDO::PARAM_INT : PDO::PARAM_STR);
 }
 $stmt->bindValue(':limit', (int) $perPage, PDO::PARAM_INT);
 $stmt->bindValue(':offset', (int) $offset, PDO::PARAM_INT);
@@ -1038,7 +1065,8 @@ $status_meta = [
         <div class="table-controls">
             <div class="search-box">
                 <i class="ri-search-2-line"></i>
-                <input type="text" id="searchInput" class="search-input" placeholder="Search asset ID, serial, brand, model, category, status, remarks...">
+                <input type="text" id="searchInput" class="search-input" placeholder="Search asset ID, serial, brand…" value="<?= htmlspecialchars($search_q, ENT_QUOTES, 'UTF-8') ?>">
+                <div class="muted" style="font-size:0.78rem;margin-top:0.35rem;">Search: Asset ID, Serial No, Brand</div>
             </div>
             <div class="action-buttons">
                 <?php /* stock/out totals prepared above */ ?>
@@ -1174,7 +1202,7 @@ $status_meta = [
                                 );
                             }
                         ?>
-                        <tr>
+                        <tr data-search="<?= htmlspecialchars(strtolower(trim(((string)($row['asset_id'] ?? '')) . ' ' . ((string)($row['serial_num'] ?? '')) . ' ' . ((string)($row['brand'] ?? '')))), ENT_QUOTES, 'UTF-8') ?>">
                             <td>
                                 <div class="laptop-identity">
                                     <div class="laptop-icon" style="<?= $icon_style ?>"><i class="<?= $meta['icon'] ?>"></i></div>
@@ -1266,6 +1294,7 @@ $status_meta = [
                 <?php
                     $qs = [];
                     if ($filter_status !== null) $qs['status_id'] = (string) (int) $filter_status;
+                    if ($search_q !== '') $qs['q'] = $search_q;
                     $prevDisabled = ($page <= 1);
                     $nextDisabled = ($page >= $total_pages);
                     $prevQs = http_build_query(array_merge($qs, ['page' => max(1, $page - 1)]));
@@ -1284,12 +1313,19 @@ $status_meta = [
     </main>
 
     <script>
-        // Client-side search
-        document.getElementById('searchInput').addEventListener('input', function () {
-            const q = this.value.toLowerCase();
-            document.querySelectorAll('#laptopTableBody tr').forEach(row => {
-                row.style.display = row.innerText.toLowerCase().includes(q) ? '' : 'none';
-            });
+        const searchInput = document.getElementById('searchInput');
+        let searchTimer = null;
+        function applyServerSearch() {
+            const q = (searchInput?.value || '').trim();
+            const url = new URL(window.location.href);
+            if (q) url.searchParams.set('q', q);
+            else url.searchParams.delete('q');
+            url.searchParams.delete('page');
+            window.location.href = url.toString();
+        }
+        searchInput && searchInput.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(applyServerSearch, 350);
         });
 
         function toggleDropdown(element, event) {
