@@ -536,12 +536,12 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
             flex-wrap: wrap;
         }
         .search-box {
-            position: relative;
             flex: 1;
             max-width: 520px;
             min-width: 260px;
         }
-        .search-box i {
+        .search-field { position: relative; }
+        .search-field i {
             position: absolute;
             left: 1.2rem;
             top: 50%;
@@ -798,8 +798,10 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
 
         <div class="table-controls">
             <div class="search-box">
-                <i class="ri-search-2-line"></i>
-                <input id="searchInput" class="search-input" type="text" placeholder="Search asset ID, serial, brand…" value="<?= htmlspecialchars($search_q, ENT_QUOTES, 'UTF-8') ?>">
+                <div class="search-field">
+                    <i class="ri-search-2-line"></i>
+                    <input id="searchInput" class="search-input" type="text" placeholder="Search asset ID, serial, brand…" value="<?= htmlspecialchars($search_q, ENT_QUOTES, 'UTF-8') ?>">
+                </div>
                 <div class="muted" style="font-size:0.78rem;margin-top:0.35rem;">Search: Asset ID, Serial No, Brand</div>
             </div>
             <div class="action-buttons">
