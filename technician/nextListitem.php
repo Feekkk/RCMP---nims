@@ -34,6 +34,16 @@ try {
     $pipeline_assets = [];
 }
 
+$pipeline_by_class = ['laptop' => 0, 'av' => 0];
+foreach ($pipeline_assets as $pa) {
+    $cls = strtolower((string)($pa['asset_class'] ?? ''));
+    if ($cls === 'av') {
+        $pipeline_by_class['av']++;
+        continue;
+    }
+    $pipeline_by_class['laptop']++;
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
