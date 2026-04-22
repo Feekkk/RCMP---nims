@@ -624,6 +624,18 @@ $nextHref = 'av.php?' . http_build_query($nextParams);
                 <div>
                     <div class="stat-num"><?= (int)$stats['in'] ?></div>
                     <div class="stat-label">In-stock</div>
+                    <div class="asset-sub">
+                        <?= htmlspecialchars(
+                            trim(implode(', ', array_filter([
+                                $statusNameById[1] ?? 'Online',
+                                $statusNameById[2] ?? 'Offline',
+                                $statusNameById[5] ?? 'Maintenance',
+                                $statusNameById[6] ?? 'Faulty',
+                            ]))),
+                            ENT_QUOTES,
+                            'UTF-8'
+                        ) ?>
+                    </div>
                 </div>
             </div>
             <div class="stat-card">
@@ -631,6 +643,17 @@ $nextHref = 'av.php?' . http_build_query($nextParams);
                 <div>
                     <div class="stat-num"><?= (int)$stats['out'] ?></div>
                     <div class="stat-label">Out-stock</div>
+                    <div class="asset-sub">
+                        <?= htmlspecialchars(
+                            trim(implode(', ', array_filter([
+                                $statusNameById[3] ?? 'Deploy',
+                                $statusNameById[7] ?? 'Disposed',
+                                $statusNameById[8] ?? 'Lost',
+                            ]))),
+                            ENT_QUOTES,
+                            'UTF-8'
+                        ) ?>
+                    </div>
                 </div>
             </div>
         </section>
