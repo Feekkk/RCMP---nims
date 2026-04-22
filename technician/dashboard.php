@@ -173,35 +173,76 @@ try {
     ';
     $recentActivities = $pdo->query($recentSql)->fetchAll(PDO::FETCH_ASSOC);
 
-    $stmtNc = $pdo->prepare(
+    // Calendar should show only request items + assigned items (exclude rejected requests).
+    $stmtReqItems = $pdo->prepare(
         'SELECT r.nexcheck_id, r.borrow_date, r.return_date, r.usage_location, u.full_name AS requester_name,
-                r.rejected_at
+                i.category, i.quantity
          FROM nexcheck_request r
          JOIN users u ON u.staff_id = r.requested_by
-         WHERE r.return_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+         JOIN nexcheck_request_item i ON i.nexcheck_id = r.nexcheck_id
+         WHERE r.rejected_at IS NULL
+           AND r.return_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
            AND r.borrow_date <= DATE_ADD(CURDATE(), INTERVAL 120 DAY)
-         ORDER BY r.borrow_date ASC, r.nexcheck_id DESC
-         LIMIT 300'
+         ORDER BY r.borrow_date ASC, r.nexcheck_id DESC, i.request_item_id ASC
+         LIMIT 600'
     );
-    $stmtNc->execute();
-    foreach ($stmtNc->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $nid = (int) ($r['nexcheck_id'] ?? 0);
-        $bd = (string) ($r['borrow_date'] ?? '');
-        $rd = (string) ($r['return_date'] ?? '');
-        if ($nid < 1 || $bd === '' || $rd === '') {
-            continue;
-        }
-        $title = '#' . $nid . ' ' . trim((string) ($r['requester_name'] ?? ''));
-        $loc = trim((string) ($r['usage_location'] ?? ''));
-        if ($loc !== '') {
-            $title .= ' — ' . $loc;
-        }
+    $stmtReqItems->execute();
+    foreach ($stmtReqItems->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $nid = (int)($r['nexcheck_id'] ?? 0);
+        $bd = (string)($r['borrow_date'] ?? '');
+        $rd = (string)($r['return_date'] ?? '');
+        if ($nid < 1 || $bd === '' || $rd === '') continue;
+
+        $who = trim((string)($r['requester_name'] ?? ''));
+        $cat = trim((string)($r['category'] ?? 'Request item'));
+        $qty = (int)($r['quantity'] ?? 1);
+        $loc = trim((string)($r['usage_location'] ?? ''));
+
+        $title = 'Request #' . $nid . ' · ' . $cat;
+        if ($qty > 1) $title .= ' ×' . $qty;
+        if ($who !== '') $title .= ' · ' . $who;
+        if ($loc !== '') $title .= ' — ' . $loc;
+
         $nexcheckEvents[] = [
             'title'  => $title,
             'start'  => $bd,
             'end'    => (new DateTimeImmutable($rd))->modify('+1 day')->format('Y-m-d'),
             'allDay' => true,
             'url'    => 'nextItems.php?nexcheck_id=' . $nid,
+            'color'  => '#2563eb',
+        ];
+    }
+
+    $stmtAssigned = $pdo->prepare(
+        'SELECT r.nexcheck_id, r.borrow_date, r.return_date, a.asset_id, a.returned_at, i.category
+         FROM nexcheck_assignment a
+         JOIN nexcheck_request r ON r.nexcheck_id = a.nexcheck_id
+         LEFT JOIN nexcheck_request_item i ON i.request_item_id = a.request_item_id
+         WHERE r.rejected_at IS NULL
+           AND r.return_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+           AND r.borrow_date <= DATE_ADD(CURDATE(), INTERVAL 120 DAY)
+           AND a.returned_at IS NULL
+         ORDER BY r.borrow_date ASC, r.nexcheck_id DESC, a.assignment_id DESC
+         LIMIT 800'
+    );
+    $stmtAssigned->execute();
+    foreach ($stmtAssigned->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $nid = (int)($r['nexcheck_id'] ?? 0);
+        $bd = (string)($r['borrow_date'] ?? '');
+        $rd = (string)($r['return_date'] ?? '');
+        $aid = (int)($r['asset_id'] ?? 0);
+        if ($nid < 1 || $aid < 1 || $bd === '' || $rd === '') continue;
+
+        $cat = trim((string)($r['category'] ?? 'Assigned item'));
+        $title = 'Assigned #' . $aid . ($cat !== '' ? ' · ' . $cat : '') . ' · Req #' . $nid;
+
+        $nexcheckEvents[] = [
+            'title'  => $title,
+            'start'  => $bd,
+            'end'    => (new DateTimeImmutable($rd))->modify('+1 day')->format('Y-m-d'),
+            'allDay' => true,
+            'url'    => 'nextItems.php?nexcheck_id=' . $nid,
+            'color'  => '#10b981',
         ];
     }
 
