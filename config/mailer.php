@@ -475,7 +475,7 @@ function nexcheck_request_notify_user_status(
         $inner .= '<p style="margin:0;font-size:14px;color:#475569">If you have questions, contact the IT department.</p>';
         $html = mailer_wrap_document('Request update', $inner);
     } elseif ($status === 'accepted') {
-        $subject = 'NIMS - Your equipment request #' . $nexcheckId . ' is being fulfilled';
+        $subject = 'NIMS - Your equipment request #' . $nexcheckId . ' is being completed';
         $body = 'Hi ' . $name . ",\n\n"
             . 'Good news: your NextCheck equipment request #' . $nexcheckId . " has been approved — all lines are assigned and equipment is prepared for checkout.\n\n"
             . 'Borrow: ' . $borrow . "\n"
