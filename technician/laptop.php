@@ -1038,7 +1038,7 @@ $status_meta = [
         <div class="table-controls">
             <div class="search-box">
                 <i class="ri-search-2-line"></i>
-                <input type="text" id="searchInput" class="search-input" placeholder="Search by Model, Serial No, or Assignee...">
+                <input type="text" id="searchInput" class="search-input" placeholder="Search asset ID, serial, brand, model, category, status, remarks...">
             </div>
             <div class="action-buttons">
                 <?php /* stock/out totals prepared above */ ?>

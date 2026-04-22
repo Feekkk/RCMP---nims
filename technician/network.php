@@ -769,7 +769,7 @@ $nextHref = 'network.php?' . http_build_query($nextParams);
         <div class="table-controls">
             <div class="search-box">
                 <i class="ri-search-2-line"></i>
-                <input id="searchInput" class="search-input" type="text" placeholder="Search asset ID, serial, brand, model, IP, MAC, status, remarks...">
+                <input id="searchInput" class="search-input" type="text" placeholder="Search asset ID, serial, brand, model, MAC, IP, status, remarks...">
             </div>
             <div class="action-buttons">
                 <?php

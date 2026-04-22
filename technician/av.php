@@ -195,7 +195,7 @@ function av_badge_meta(int $statusId): array
     }
 }
 
-$searchPlaceholder = 'Search brand, model, serial, category, remarks...';
+$searchPlaceholder = 'Search asset ID, old ID, category, brand, model, serial, status, remarks...';
 $rowStart = $filteredTotal > 0 ? ($offset + 1) : 0;
 $rowEnd = min($offset + count($assets), $filteredTotal);
 $baseParams = [];
