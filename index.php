@@ -169,22 +169,7 @@ if (!empty($recentActivities[0]['ts'])) {
             color:var(--text-main);
             min-height:100vh;
             overflow-x:hidden;
-            cursor:none;
         }
-
-        /* Custom cursor */
-        .cursor-dot {
-            width:6px; height:6px; background:var(--primary);
-            border-radius:50%; position:fixed; top:0; left:0;
-            pointer-events:none; z-index:9999; transform:translate(-50%,-50%);
-        }
-        .cursor-ring {
-            width:32px; height:32px; border:1.5px solid rgba(37,99,235,0.4);
-            border-radius:50%; position:fixed; top:0; left:0;
-            pointer-events:none; z-index:9998; transform:translate(-50%,-50%);
-            transition:all 0.15s ease;
-        }
-        .cursor-ring.hovering { width:48px; height:48px; border-color:var(--primary); background:rgba(37,99,235,0.06); }
 
         /* Background */
         .page-bg {
@@ -215,12 +200,11 @@ if (!empty($recentActivities[0]['ts'])) {
         .navbar {
             display:flex; justify-content:space-between; align-items:center;
             padding:0 5%; height:72px;
-            background:rgba(255,255,255,0.75);
-            backdrop-filter:blur(20px);
-            border-bottom:1px solid rgba(37,99,235,0.08);
+            background:#021A54;
+            border-bottom:1px solid rgba(255,255,255,0.12);
             position:sticky; top:0; z-index:200;
             animation:navSlideDown 0.6s cubic-bezier(0.16,1,0.3,1) forwards;
-            box-shadow:0 1px 0 rgba(37,99,235,0.06);
+            box-shadow:0 10px 30px rgba(2,26,84,0.18);
         }
         @keyframes navSlideDown { from{opacity:0;transform:translateY(-20px)} to{opacity:1;transform:translateY(0)} }
 
@@ -234,10 +218,10 @@ if (!empty($recentActivities[0]['ts'])) {
 
         .nav-live {
             display:flex; align-items:center; gap:6px;
-            font-family:var(--mono); font-size:0.7rem; color:var(--green);
+            font-family:var(--mono); font-size:0.7rem; color:#dbeafe;
             letter-spacing:1px; text-transform:uppercase;
-            padding:4px 10px; border:1px solid rgba(16,185,129,0.25);
-            border-radius:4px; background:rgba(16,185,129,0.07);
+            padding:4px 10px; border:1px solid rgba(255,255,255,0.22);
+            border-radius:4px; background:rgba(255,255,255,0.08);
         }
         .live-dot {
             width:6px; height:6px; border-radius:50%;
@@ -248,7 +232,7 @@ if (!empty($recentActivities[0]['ts'])) {
 
         .nav-links { display:flex; gap:2rem; align-items:center; }
         .nav-links a {
-            color:var(--text-muted); text-decoration:none;
+            color:rgba(255,255,255,0.85); text-decoration:none;
             font-weight:500; font-size:0.9rem; transition:color 0.2s; position:relative;
         }
         .nav-links a::after {
@@ -256,7 +240,7 @@ if (!empty($recentActivities[0]['ts'])) {
             width:0; height:1.5px; background:var(--primary);
             transition:width 0.3s cubic-bezier(0.4,0,0.2,1);
         }
-        .nav-links a:hover { color:var(--primary); }
+        .nav-links a:hover { color:#ffffff; }
         .nav-links a:hover::after { width:100%; }
 
         .btn-login-nav {
@@ -264,7 +248,7 @@ if (!empty($recentActivities[0]['ts'])) {
             background:linear-gradient(135deg,var(--primary),var(--secondary));
             border:none; color:white;
             font-family:'Outfit',sans-serif; font-weight:600; font-size:0.9rem;
-            cursor:none; transition:all 0.3s;
+            cursor:pointer; transition:all 0.3s;
             box-shadow:0 4px 16px rgba(37,99,235,0.3);
             position:relative; overflow:hidden;
         }
@@ -332,7 +316,7 @@ if (!empty($recentActivities[0]['ts'])) {
         .btn {
             padding:0.9rem 2rem; border-radius:10px;
             font-family:'Outfit',sans-serif; font-weight:600; font-size:0.95rem;
-            cursor:none; transition:all 0.3s cubic-bezier(0.4,0,0.2,1);
+            cursor:pointer; transition:all 0.3s cubic-bezier(0.4,0,0.2,1);
             text-decoration:none; display:inline-flex; align-items:center; gap:8px;
             position:relative; overflow:hidden;
         }
@@ -500,13 +484,11 @@ if (!empty($recentActivities[0]['ts'])) {
 
         @media(max-width:1024px){ .hero-headline{font-size:4rem} .features-grid{grid-template-columns:1fr 1fr} .feature-card-wide{grid-column:span 1} }
         @media(max-width:768px){ .hero{flex-direction:column;text-align:center;padding:3rem 5%;gap:3rem} .hero-content{max-width:100%;display:flex;flex-direction:column;align-items:center} .hero-desc{margin:1.75rem auto 2.5rem} .hero-headline{font-size:3.5rem} .nav-links{display:none} .hero-visual{width:100%} .features-grid{grid-template-columns:1fr} .cta-section{flex-direction:column} .section-title{font-size:2rem} }
-        @media(max-width:480px){ .hero-headline{font-size:2.8rem} .headline-accent{font-size:1.8rem} .cta-group,.cta-actions{flex-direction:column;width:100%} .btn{width:100%;justify-content:center} body{cursor:auto} .cursor-dot,.cursor-ring{display:none} }
+        @media(max-width:480px){ .hero-headline{font-size:2.8rem} .headline-accent{font-size:1.8rem} .cta-group,.cta-actions{flex-direction:column;width:100%} .btn{width:100%;justify-content:center} }
     </style>
 </head>
 <body>
 
-<div class="cursor-dot" id="cursorDot"></div>
-<div class="cursor-ring" id="cursorRing"></div>
 <div class="page-bg"></div>
 <div class="bg-overlay"></div>
 <div class="grid-bg"></div>
@@ -531,8 +513,8 @@ if (!empty($recentActivities[0]['ts'])) {
         <img src="public/unikl-official.png" alt="UniKL RCMP Logo" class="hero-logo">
         <div class="system-tag"><i class="ri-shield-keyhole-line"></i> IT Dept · Asset Management Platform</div>
         <h1 class="hero-headline">RCMP<br>NIMS</h1>
-        <span class="headline-accent">NextCheck Inventory Management</span>
-        <p class="hero-desc">A secure, centralized infrastructure tracking platform built for the UniKL RCMP IT Department — giving full visibility and control over every technical asset in real time.</p>
+        <span class="headline-accent">NexCheck Inventory Management System</span>
+        <p class="hero-desc">A secure, centralized infrastructure tracking platform built for Information Technology Department giving full visibility and control over every technical asset in real time.</p>
         <div class="cta-group">
             <a href="auth/login.php" class="btn btn-primary"><i class="ri-login-circle-line"></i> System Access</a>
             <a href="#features" class="btn btn-ghost"><i class="ri-article-line"></i> Learn More</a>
@@ -592,14 +574,14 @@ if (!empty($recentActivities[0]['ts'])) {
 <section class="features-section" id="features">
     <div class="reveal">
         <div class="section-eyebrow"><span class="eyebrow-line"></span> Platform Capabilities</div>
-        <h2 class="section-title">Everything you need to<br>manage IT assets</h2>
-        <p class="section-desc">Built specifically for UniKL RCMP's IT environment, NIMS provides complete visibility from device onboarding to decommissioning.</p>
+        <h2 class="section-title">Everything you need to<br>manage Assets</h2>
+        <p class="section-desc">Built specifically for Information Technology Department environment, NIMS provides complete visibility from device onboarding to decommissioning.</p>
     </div>
     <div class="features-grid">
         <div class="feature-card feature-card-wide reveal" style="--card-hover-border:rgba(37,99,235,0.2);--card-hover-shadow:0 20px 40px rgba(37,99,235,0.08);--card-hover-bg:linear-gradient(135deg,rgba(37,99,235,0.03),transparent);">
             <div class="feature-icon-wrap" style="background:rgba(37,99,235,0.1);color:#2563eb;"><i class="ri-radar-line"></i></div>
             <div class="feature-name">Real-Time Asset Tracking</div>
-            <div class="feature-desc">Monitor all IT hardware and software assets across every department — desktops, servers, network gear, and peripherals — with live status updates and location tagging.</div>
+            <div class="feature-desc">Monitor all IT hardware and software assets across every department desktops, servers, network gear, and peripherals with live status updates and location tagging.</div>
         </div>
         <div class="feature-card reveal" style="--card-hover-border:rgba(16,185,129,0.2);--card-hover-shadow:0 16px 32px rgba(16,185,129,0.08);--card-hover-bg:linear-gradient(135deg,rgba(16,185,129,0.03),transparent);">
             <div class="feature-icon-wrap" style="background:rgba(16,185,129,0.1);color:#10b981;"><i class="ri-shield-check-line"></i></div>
@@ -619,7 +601,7 @@ if (!empty($recentActivities[0]['ts'])) {
         <div class="feature-card reveal" style="--card-hover-border:rgba(244,63,94,0.2);--card-hover-shadow:0 16px 32px rgba(244,63,94,0.07);--card-hover-bg:linear-gradient(135deg,rgba(244,63,94,0.03),transparent);">
             <div class="feature-icon-wrap" style="background:rgba(244,63,94,0.1);color:#f43f5e;"><i class="ri-file-chart-line"></i></div>
             <div class="feature-name">Automated Reports</div>
-            <div class="feature-desc">Generate department-level asset reports for audits, procurement, and management reviews in one click.</div>
+            <div class="feature-desc">Generate department-level asset reports for audits and management reviews in one click.</div>
         </div>
     </div>
 </section>
@@ -627,7 +609,7 @@ if (!empty($recentActivities[0]['ts'])) {
 <section class="cta-section reveal">
     <div class="cta-text">
         <h3>Ready to take control of<br>your IT infrastructure?</h3>
-        <p>Log in with your UniKL RCMP staff credentials to access the full management dashboard.</p>
+        <p>Log in with your RCMP NIMS credentials to access the full management dashboard.</p>
     </div>
     <div class="cta-actions">
         <a href="auth/login.php" class="btn btn-primary"><i class="ri-login-circle-line"></i> IT Staff Login</a>
@@ -637,8 +619,7 @@ if (!empty($recentActivities[0]['ts'])) {
 
 <footer class="footer-bar">
     <div class="footer-brand">
-        <img src="public/logo-nims.png" alt="NIMS">
-        <span>RCMP NIMS &copy; <?php echo date('Y'); ?> · UniKL RCMP IT Department</span>
+        <span>RCMP NIMS &copy; <?php echo date('Y'); ?> - Information Technology Department</span>
     </div>
     <div class="footer-links">
         <a href="#">Privacy</a><a href="#">Support</a><a href="auth/login.php">Login</a>
@@ -647,16 +628,6 @@ if (!empty($recentActivities[0]['ts'])) {
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    const dot = document.getElementById('cursorDot');
-    const ring = document.getElementById('cursorRing');
-    let mouseX=0,mouseY=0,ringX=0,ringY=0;
-    document.addEventListener('mousemove',e=>{ mouseX=e.clientX;mouseY=e.clientY; dot.style.left=mouseX+'px';dot.style.top=mouseY+'px'; });
-    (function animRing(){ ringX+=(mouseX-ringX)*0.12;ringY+=(mouseY-ringY)*0.12; ring.style.left=ringX+'px';ring.style.top=ringY+'px'; requestAnimationFrame(animRing); })();
-    document.querySelectorAll('a,button,.stat-card,.feature-card,.nav-logo').forEach(el=>{
-        el.addEventListener('mouseenter',()=>ring.classList.add('hovering'));
-        el.addEventListener('mouseleave',()=>ring.classList.remove('hovering'));
-    });
-
     function animateCounter(el,target,duration=1800){
         let start=null;
         const step=ts=>{ if(!start)start=ts; const p=Math.min((ts-start)/duration,1); const e=1-Math.pow(1-p,3); el.textContent=Math.floor(e*target).toLocaleString(); if(p<1)requestAnimationFrame(step); else el.textContent=target.toLocaleString(); };
@@ -677,7 +648,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.feature-card').forEach((c,i)=>{ c.style.transitionDelay=`${i*80}ms`;obs.observe(c); });
 
     const navbar=document.querySelector('.navbar');
-    window.addEventListener('scroll',()=>{ if(window.scrollY>20){navbar.style.background='rgba(255,255,255,0.95)';navbar.style.boxShadow='0 4px 24px rgba(37,99,235,0.1)';}else{navbar.style.background='rgba(255,255,255,0.75)';navbar.style.boxShadow='none';} },{passive:true});
+    window.addEventListener('scroll',()=>{ if(window.scrollY>20){navbar.style.background='#021A54';navbar.style.boxShadow='0 10px 30px rgba(2,26,84,0.18)';}else{navbar.style.background='#021A54';navbar.style.boxShadow='0 10px 30px rgba(2,26,84,0.18)';} },{passive:true});
 });
 </script>
 </body>
