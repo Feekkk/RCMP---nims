@@ -115,25 +115,7 @@ if ($manualDirFs !== false && is_dir($manualDirFs)) {
             align-items:center;
             flex-wrap:wrap;
         }
-        .search{
-            display:flex;
-            align-items:center;
-            gap:0.6rem;
-            background:var(--panel);
-            border:1px solid var(--border);
-            border-radius:14px;
-            padding:0.65rem 0.9rem;
-            min-width:280px;
-        }
-        .search i{color:var(--text-muted)}
-        .search input{
-            border:none;
-            outline:none;
-            background:transparent;
-            font-size:0.92rem;
-            width:100%;
-            color:var(--text-main);
-        }
+        
         .pill{
             display:inline-flex;
             align-items:center;
@@ -336,14 +318,10 @@ if ($manualDirFs !== false && is_dir($manualDirFs)) {
     <header class="page-header">
         <div class="page-title">
             <h1><i class="ri-book-read-line"></i> User Manual</h1>
-            <p>Step-by-step screenshots for the most common tasks. Click any image to view it larger.</p>
+            <p>Step-by-step manuals for the most common tasks. Click any picture to view it larger.</p>
         </div>
         <div class="toolbar">
-            <div class="pill"><i class="ri-image-2-line"></i> <?= (int)count(array_filter($gallery, static function ($x): bool { return (bool)($x['exists'] ?? false); })) ?> screenshots</div>
-            <div class="search" title="Filter by title">
-                <i class="ri-search-2-line"></i>
-                <input id="filterInput" type="text" placeholder="Search manual…" autocomplete="off">
-            </div>
+            <div class="pill"><i class="ri-image-2-line"></i> <?= (int)count(array_filter($gallery, static function ($x): bool { return (bool)($x['exists'] ?? false); })) ?> Manuals</div>
         </div>
     </header>
 
