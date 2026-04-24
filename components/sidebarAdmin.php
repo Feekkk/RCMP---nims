@@ -3,6 +3,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
 $isDashboard = $currentPage === 'dashboard.php';
 $isUsers = $currentPage === 'users.php';
 $isInventory = $currentPage === 'inventory.php';
+$isReport = $currentPage === 'report.php';
 ?>
 
 <style>
@@ -175,7 +176,7 @@ $isInventory = $currentPage === 'inventory.php';
         <a href="users.php" class="nav-item <?= $isUsers ? 'active' : '' ?>">
             <i class="ri-user-3-line"></i> Users
         </a>
-        <a href="#" class="nav-item">
+        <a href="report.php" class="nav-item <?= $isReport ? 'active' : '' ?>">
             <i class="ri-file-chart-line"></i> Reports
         </a>
     </nav>
