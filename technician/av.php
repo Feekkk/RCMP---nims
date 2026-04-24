@@ -636,8 +636,8 @@ $nextHref = 'av.php?' . http_build_query($nextParams);
 
         <header class="page-header">
             <div class="page-title">
-                <h1><i class="ri-vidicon-line"></i> AV Inventory</h1>
-                <p>View, search, and filter all registered audio/visual assets.</p>
+                <h1><i class="ri-vidicon-line"></i> Audio Visual Inventory</h1>
+                <p>View, search, and filter all registered audio visual assets.</p>
             </div>
         </header>
 

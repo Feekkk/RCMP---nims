@@ -1015,7 +1015,7 @@ $status_meta = [
         <!-- Header -->
         <header class="page-header">
             <div class="page-title">
-                <h1><i class="ri-macbook-line"></i> Laptop Inventory</h1>
+                <h1><i class="ri-macbook-line"></i> Laptop / Desktop Inventory</h1>
                 <p>Manage, track, and monitor all registered campus laptops.</p>
             </div>
         </header>
