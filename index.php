@@ -1,5 +1,131 @@
 <?php
 // RCMP NIMS - UniKL RCMP NextCheck Inventory Management System
+require_once __DIR__ . '/config/database.php';
+
+$totalAssets = 0;
+$nexcheckRequestTotal = 0;
+$recentActivities = [];
+$dbOk = false;
+
+function index_time_ago(?string $datetime): string
+{
+    if ($datetime === null || $datetime === '') {
+        return '—';
+    }
+    $t = strtotime($datetime);
+    if ($t === false) {
+        return '—';
+    }
+    $diff = time() - $t;
+    if ($diff < 45) {
+        return 'just now';
+    }
+    if ($diff < 3600) {
+        return (int) floor($diff / 60) . 'm ago';
+    }
+    if ($diff < 86400) {
+        return (int) floor($diff / 3600) . 'h ago';
+    }
+    if ($diff < 604800) {
+        return (int) floor($diff / 86400) . 'd ago';
+    }
+    return date('M j, Y', $t);
+}
+
+function index_kind_color(string $kind): string
+{
+    switch ($kind) {
+        case 'laptop_reg':
+        case 'network_reg':
+        case 'av_reg':
+            return '#2563eb';
+        case 'handover':
+            return '#10b981';
+        case 'warranty':
+            return '#f59e0b';
+        case 'repair':
+            return '#f43f5e';
+        default:
+            return '#64748b';
+    }
+}
+
+try {
+    $pdo = db();
+    $laptops  = (int) $pdo->query('SELECT COUNT(*) FROM laptop')->fetchColumn();
+    $networks = (int) $pdo->query('SELECT COUNT(*) FROM network')->fetchColumn();
+    $avs      = (int) $pdo->query('SELECT COUNT(*) FROM av')->fetchColumn();
+    $totalAssets = $laptops + $networks + $avs;
+
+    $nexcheckRequestTotal = (int) $pdo->query('SELECT COUNT(*) FROM nexcheck_request WHERE rejected_at IS NULL')->fetchColumn();
+
+    $recentSql = '
+        SELECT kind, title, ts, asset_id, asset_type FROM (
+            SELECT
+                \'laptop_reg\' AS kind,
+                CONCAT(\'Laptop: \', TRIM(CONCAT(IFNULL(l.brand, \'\'), \' \', IFNULL(l.model, \'\')))) AS title,
+                l.created_at AS ts,
+                l.asset_id,
+                \'laptop\' AS asset_type
+            FROM laptop l
+            UNION ALL
+            SELECT
+                \'network_reg\',
+                CONCAT(\'Network: \', TRIM(CONCAT(IFNULL(n.brand, \'\'), \' \', IFNULL(n.model, \'\')))),
+                n.created_at,
+                n.asset_id,
+                \'network\'
+            FROM network n
+            UNION ALL
+            SELECT
+                \'av_reg\',
+                CONCAT(\'AV: \', TRIM(CONCAT(IFNULL(a.category, \'\'), \' \', IFNULL(a.brand, \'\'), \' \', IFNULL(a.model, \'\')))),
+                a.created_at,
+                a.asset_id,
+                \'av\'
+            FROM av a
+            UNION ALL
+            SELECT
+                \'handover\',
+                CONCAT(\'Handover #\', h.handover_id, \' · laptop #\', h.asset_id),
+                h.created_at,
+                h.asset_id,
+                \'laptop\'
+            FROM handover h
+            UNION ALL
+            SELECT
+                \'warranty\',
+                CONCAT(\'Warranty (\', w.asset_type, \') #\', w.asset_id),
+                w.created_at,
+                w.asset_id,
+                w.asset_type
+            FROM warranty w
+            UNION ALL
+            SELECT
+                \'repair\',
+                CONCAT(\'Repair (\', r.asset_type, \'): \', LEFT(r.issue_summary, 80)),
+                r.created_at,
+                r.asset_id,
+                r.asset_type
+            FROM repair r
+        ) u
+        ORDER BY ts DESC
+        LIMIT 3
+    ';
+    $recentActivities = $pdo->query($recentSql)->fetchAll(PDO::FETCH_ASSOC);
+    $dbOk = true;
+} catch (Throwable $e) {
+    $dbOk = false;
+}
+
+$lastActivityAgo = '';
+if (!empty($recentActivities[0]['ts'])) {
+    $lastActivityAgo = index_time_ago($recentActivities[0]['ts']);
+} elseif ($dbOk) {
+    $lastActivityAgo = 'No events yet';
+} else {
+    $lastActivityAgo = '—';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -428,28 +554,36 @@
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-icon" style="color:#2563eb;background:rgba(37,99,235,0.1);"><i class="ri-computer-line"></i></div>
-                    <div class="stat-value" data-target="1542">0</div>
-                    <div class="stat-label">Total Endpoints</div>
+                    <div class="stat-value" data-target="<?php echo (int) $totalAssets; ?>">0</div>
+                    <div class="stat-label">Total Assets</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-icon" style="color:#f59e0b;background:rgba(245,158,11,0.1);"><i class="ri-tools-fill"></i></div>
-                    <div class="stat-value" data-target="28">0</div>
-                    <div class="stat-label">Action Required</div>
+                    <div class="stat-icon" style="color:#0ea5e9;background:rgba(14,165,233,0.1);"><i class="ri-calendar-check-line"></i></div>
+                    <div class="stat-value" data-target="<?php echo (int) $nexcheckRequestTotal; ?>">0</div>
+                    <div class="stat-label">NexCheck Requests</div>
                 </div>
                 <div class="stat-card-wide">
                     <div class="wide-header">
-                        <div><div class="wide-label">Network Integrity Protocol</div><div class="wide-title">NextCheck Scanning Engine</div></div>
+                        <div><div class="wide-label">Live from NIMS</div><div class="wide-title">NextCheck activity</div></div>
                         <div class="wide-icon"><i class="ri-shield-check-fill"></i></div>
                     </div>
-                    <div class="health-bar-track"><div class="health-bar-fill" id="healthBar"></div></div>
-                    <div class="health-footer"><span>Scan complete · 3 mins ago</span><span>100% Secure</span></div>
+                    <div class="health-bar-track"><div class="health-bar-fill" id="healthBar" data-pct="<?php echo $dbOk ? '100' : '15'; ?>"></div></div>
+                    <div class="health-footer"><span>Last activity · <?php echo htmlspecialchars($lastActivityAgo, ENT_QUOTES, 'UTF-8'); ?></span><span><?php echo $dbOk ? 'Data live' : 'Database offline'; ?></span></div>
                 </div>
             </div>
             <div class="activity-feed">
                 <div class="feed-title">Recent Activity</div>
-                <div class="feed-item"><span class="feed-dot" style="background:#2563eb;"></span><span class="feed-text">Asset #1193 checked in — Lab PC Unit</span><span class="feed-time">2m ago</span></div>
-                <div class="feed-item"><span class="feed-dot" style="background:#f59e0b;"></span><span class="feed-text">Maintenance flag raised — Switch B4</span><span class="feed-time">18m ago</span></div>
-                <div class="feed-item"><span class="feed-dot" style="background:#10b981;"></span><span class="feed-text">Full network scan completed</span><span class="feed-time">1h ago</span></div>
+                <?php if (empty($recentActivities)) : ?>
+                <div class="feed-item"><span class="feed-dot" style="background:#94a3b8;"></span><span class="feed-text"><?php echo $dbOk ? 'No recorded activity yet.' : 'Connect the database to show live data.'; ?></span><span class="feed-time">—</span></div>
+                <?php else : ?>
+                <?php foreach ($recentActivities as $row) :
+                    $title = (string) ($row['title'] ?? 'Activity');
+                    $ts   = (string) ($row['ts'] ?? '');
+                    $kind = (string) ($row['kind'] ?? '');
+                    ?>
+                <div class="feed-item"><span class="feed-dot" style="background:<?php echo htmlspecialchars(index_kind_color($kind), ENT_QUOTES, 'UTF-8'); ?>;"></span><span class="feed-text"><?php echo htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?></span><span class="feed-time"><?php echo htmlspecialchars(index_time_ago($ts), ENT_QUOTES, 'UTF-8'); ?></span></div>
+                <?php endforeach; ?>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -476,11 +610,6 @@
             <div class="feature-icon-wrap" style="background:rgba(245,158,11,0.1);color:#f59e0b;"><i class="ri-bar-chart-2-line"></i></div>
             <div class="feature-name">Lifecycle Analytics</div>
             <div class="feature-desc">Track asset age, maintenance history, and warranty expiry. Plan upgrades before failures happen.</div>
-        </div>
-        <div class="feature-card reveal" style="--card-hover-border:rgba(139,92,246,0.2);--card-hover-shadow:0 16px 32px rgba(139,92,246,0.07);--card-hover-bg:linear-gradient(135deg,rgba(139,92,246,0.03),transparent);">
-            <div class="feature-icon-wrap" style="background:rgba(139,92,246,0.1);color:#8b5cf6;"><i class="ri-qr-code-line"></i></div>
-            <div class="feature-name">QR Code Check-In</div>
-            <div class="feature-desc">Scan assets in and out with QR tags. Instantly log movement, assignments, and custody transfers.</div>
         </div>
         <div class="feature-card reveal" style="--card-hover-border:rgba(14,165,233,0.2);--card-hover-shadow:0 16px 32px rgba(14,165,233,0.07);--card-hover-bg:linear-gradient(135deg,rgba(14,165,233,0.03),transparent);">
             <div class="feature-icon-wrap" style="background:rgba(14,165,233,0.1);color:#0ea5e9;"><i class="ri-notification-3-line"></i></div>
@@ -534,8 +663,8 @@ document.addEventListener('DOMContentLoaded', () => {
         requestAnimationFrame(step);
     }
     document.querySelectorAll('.stat-value[data-target]').forEach(el=>animateCounter(el,+el.dataset.target));
-    const heroEp=document.getElementById('stat-endpoints'); if(heroEp)animateCounter(heroEp,1542,2200);
-    setTimeout(()=>{ const b=document.getElementById('healthBar'); if(b)b.style.width='100%'; },500);
+    const heroEp=document.getElementById('stat-endpoints'); if(heroEp)animateCounter(heroEp,<?php echo (int) $totalAssets; ?>,2200);
+    setTimeout(()=>{ const b=document.getElementById('healthBar'); if(b) b.style.width=(b.dataset.pct==='100'?'100%':b.dataset.pct+'%'); },500);
 
     const panel=document.getElementById('tiltPanel'),visual=document.querySelector('.hero-visual');
     if(panel&&visual&&window.matchMedia('(hover:hover) and (pointer:fine)').matches){
