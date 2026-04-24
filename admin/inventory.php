@@ -120,13 +120,13 @@ try {
     };
 
     if ($type === 'all' || $type === 'laptop') {
-        $addPart($parts, $params, 'laptop', 'laptop', 't.category', ['t.serial_num', 't.brand', 't.model', 't.category']);
+        $addPart($parts, $params, 'laptop', 'laptop', 't.category', ['t.serial_num', 't.brand']);
     }
     if ($type === 'all' || $type === 'network') {
-        $addPart($parts, $params, 'network', 'network', 'NULL', ['t.serial_num', 't.brand', 't.model', 't.mac_address', 't.ip_address']);
+        $addPart($parts, $params, 'network', 'network', 'NULL', ['t.serial_num', 't.brand']);
     }
     if (($type === 'all' || $type === 'av') && $hasAv) {
-        $addPart($parts, $params, 'av', 'av', 't.category', ['t.serial_num', 't.brand', 't.model', 't.category']);
+        $addPart($parts, $params, 'av', 'av', 't.category', ['t.serial_num', 't.brand']);
     }
 
     if ($parts === []) {
@@ -490,7 +490,7 @@ function admin_inventory_type_pill(string $t): string
     <header class="page-header">
         <div class="title">
             <h1><i class="ri-archive-drawer-line"></i> Inventory</h1>
-            <p>Unified view of <strong>laptop</strong>, <strong>network</strong>, and <strong>AV</strong> assets. Use filters to quickly find devices by ID, serial, model, category, or status.</p>
+            <p>Unified view of <strong>laptop</strong>, <strong>network</strong>, and <strong>AV</strong> assets. Search matches <strong>asset ID</strong>, <strong>serial number</strong>, or <strong>brand</strong>; use filters for type and status.</p>
         </div>
     </header>
 
@@ -546,7 +546,7 @@ function admin_inventory_type_pill(string $t): string
         </div>
         <div class="card-bd">
             <form class="filters" method="get" action="">
-                <input class="input" type="search" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Search asset id, serial, brand, model, category…" aria-label="Search inventory">
+                <input class="input" type="search" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Search by asset ID, serial number, or brand…" aria-label="Search by asset ID, serial number, or brand">
                 <select class="input select" name="type" aria-label="Asset type">
                     <option value="all" <?= $type === 'all' ? 'selected' : '' ?>>All types</option>
                     <option value="laptop" <?= $type === 'laptop' ? 'selected' : '' ?>>Laptop</option>
