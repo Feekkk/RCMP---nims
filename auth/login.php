@@ -210,7 +210,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <img src="../public/logo-nims.png" alt="NIMS" class="brand-logo">
         <div class="brand-eyebrow"><span class="eyebrow-line"></span> UniKL RCMP IT Dept</div>
         <h1 class="brand-headline">Secure<br>Access<br>Portal</h1>
-        <p class="brand-sub"><strong>Staff</strong> — technicians and administrators. <strong>User</strong> — NextCheck checkout accounts (register to create).</p>
+        <p class="brand-sub"><strong>Staff</strong> — technicians and administrators. <strong>User</strong> — checkout processes. (register to access).</p>
         <div class="info-cards">
             <div class="info-card">
                 <div class="info-icon" style="background:rgba(37,99,235,0.1);color:#2563eb;"><i class="ri-shield-keyhole-line"></i></div>
@@ -218,7 +218,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <div class="info-card">
                 <div class="info-icon" style="background:rgba(16,185,129,0.1);color:#10b981;"><i class="ri-database-2-line"></i></div>
-                <div class="info-text"><strong>1,542 Assets Online</strong>Live tracking across all departments</div>
+                <div class="info-text"><strong>1,542 Assets Online</strong>Live tracking across all assets</div>
             </div>
             <div class="info-card">
                 <div class="info-icon" style="background:rgba(245,158,11,0.1);color:#f59e0b;"><i class="ri-time-line"></i></div>
