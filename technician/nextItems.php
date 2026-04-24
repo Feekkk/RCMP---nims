@@ -440,7 +440,7 @@ $pct        = $totalItems > 0 ? round(($doneCount / $totalItems) * 100) : 0;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Assign items #<?= (int)$nexcheckId ?> — NextCheck</title>
+    <title>Assign items #<?= (int)$nexcheckId ?> - RCMP NIMS</title>
     <link rel="icon" type="image/png" href="../public/rcmp.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

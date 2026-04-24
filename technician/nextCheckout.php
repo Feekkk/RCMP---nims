@@ -130,7 +130,7 @@ foreach ($requests as $r) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User requests — NextCheck — RCMP NIMS</title>
+    <title>User requests - RCMP NIMS</title>
     <link rel="icon" type="image/png" href="../public/rcmp.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -349,7 +349,7 @@ foreach ($requests as $r) {
     <header class="page-header">
         <div>
             <h1 class="page-title">User Requests</h1>
-            <p class="page-subtitle">Equipment checkout requests from NextCheck users — assign pool laptops and manage returns.</p>
+            <p class="page-subtitle">Equipment checkout requests from users. Assign pool laptop or Audio Visual and manage returns.</p>
         </div>
         <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center">
             <a class="btn-ghost" href="nextHistory.php"><i class="ri-history-line"></i> History</a>

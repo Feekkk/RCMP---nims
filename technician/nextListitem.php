@@ -50,7 +50,7 @@ foreach ($pipeline_assets as $pa) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>List items — NextCheck — RCMP NIMS</title>
+    <title>List items - RCMP NIMS</title>
     <link rel="icon" type="image/png" href="../public/rcmp.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -330,8 +330,8 @@ foreach ($pipeline_assets as $pa) {
 <main class="main-content">
     <header class="page-header">
         <div class="title">
-            <h1><i class="ri-list-check-2"></i> NexCheck Items List</h1>
-            <p>Assets in status <strong>(Active / Pending / Checkout)</strong>. Counts update when you filter the table.</p>
+            <h1><i class="ri-list-check-2"></i> Requested Items List</h1>
+            <p>Assigned assets in status <strong>(Active / Pending / Checkout)</strong>. Counts update when you filter the table.</p>
         </div>
         <a class="btn btn-ghost" href="nextAdd.php"><i class="ri-add-line"></i> Add items</a>
     </header>
