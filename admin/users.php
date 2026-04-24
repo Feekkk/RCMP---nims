@@ -10,7 +10,7 @@ require_once __DIR__ . '/../config/database.php';
 function users_page_url(string $filter, int $page, ?string $q = null): string
 {
     $params = [];
-    if ($filter !== 'all') {
+    if ($filter !== 'it') {
         $params['filter'] = $filter;
     }
     $search = trim((string)($q ?? ''));
@@ -29,6 +29,7 @@ $pdo = db();
 $dbError = '';
 $admins = [];
 $technicians = [];
+$nextcheckUsers = [];
 $staffDirectory = [];
 $staffTableOk = true;
 
@@ -44,6 +45,13 @@ try {
         SELECT staff_id, full_name, email, created_at
         FROM users
         WHERE role_id = 1
+        ORDER BY full_name
+    ")->fetchAll(PDO::FETCH_ASSOC);
+
+    $nextcheckUsers = $pdo->query("
+        SELECT staff_id, full_name, email, created_at
+        FROM users
+        WHERE role_id = 3
         ORDER BY full_name
     ")->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
@@ -88,6 +96,19 @@ foreach ($technicians as $u) {
         'created_at' => $u['created_at'] ?? null,
     ];
 }
+foreach ($nextcheckUsers as $u) {
+    $peopleRows[] = [
+        'kind' => 'nextcheck',
+        'role_id' => 3,
+        'full_name' => $u['full_name'],
+        'staff_id' => $u['staff_id'],
+        'employee_no' => '',
+        'email' => $u['email'] ?? '',
+        'department' => '',
+        'phone' => '',
+        'created_at' => $u['created_at'] ?? null,
+    ];
+}
 if ($staffTableOk) {
     foreach ($staffDirectory as $s) {
         $peopleRows[] = [
@@ -110,31 +131,40 @@ usort($peopleRows, static function ($a, $b): int {
 $countAll = count($peopleRows);
 $countAdmin = count($admins);
 $countTech = count($technicians);
+$countNextcheck = count($nextcheckUsers);
 $countStaff = $staffTableOk ? count($staffDirectory) : 0;
+$countIt = $countAdmin + $countTech;
 
-$filter = $_GET['filter'] ?? 'all';
-if (!in_array($filter, ['all', 'admin', 'technician', 'staff'], true)) {
-    $filter = 'all';
+$filter = $_GET['filter'] ?? 'it';
+if (!in_array($filter, ['it', 'staff', 'nextcheck'], true)) {
+    $filter = 'it';
 }
 $rawQ = $_GET['q'] ?? '';
 $searchQ = trim(is_array($rawQ) ? '' : (string)$rawQ);
 if (mb_strlen($searchQ) > 80) {
     $searchQ = mb_substr($searchQ, 0, 80);
 }
+$searchNeedle = $searchQ === '' ? '' : mb_strtolower($searchQ);
 $filteredPeople = array_values(array_filter(
     $peopleRows,
-    static function (array $p) use ($filter, $searchQ): bool {
-        if ($filter !== 'all' && ($p['kind'] ?? '') !== $filter) return false;
-        if ($searchQ === '') return true;
-        $hay = strtolower(
-            (string)($p['full_name'] ?? '') . ' ' .
-            (string)($p['employee_no'] ?? '') . ' ' .
-            (string)($p['staff_id'] ?? '') . ' ' .
-            (string)($p['email'] ?? '') . ' ' .
-            (string)($p['department'] ?? '') . ' ' .
-            (string)($p['phone'] ?? '')
-        );
-        return strpos($hay, strtolower($searchQ)) !== false;
+    static function (array $p) use ($filter, $searchNeedle): bool {
+        $kind = (string)($p['kind'] ?? '');
+        if ($filter === 'it') {
+            if ($kind !== 'admin' && $kind !== 'technician') return false;
+        } elseif ($filter === 'staff') {
+            if ($kind !== 'staff') return false;
+        } elseif ($filter === 'nextcheck') {
+            if ($kind !== 'nextcheck') return false;
+        }
+        if ($searchNeedle === '') return true;
+
+        $name = (string)($p['full_name'] ?? '');
+        $email = (string)($p['email'] ?? '');
+        // "id" means: staff_id for system accounts, employee_no for staff directory rows.
+        $id = $kind === 'staff' ? (string)($p['employee_no'] ?? '') : (string)($p['staff_id'] ?? '');
+
+        $hay = mb_strtolower(trim($name . ' ' . $email . ' ' . $id));
+        return $hay !== '' && mb_strpos($hay, $searchNeedle) !== false;
     }
 ));
 $perPage = 10;
@@ -157,6 +187,7 @@ if (($_GET['added'] ?? '') === 'tech') {
     $flashKind = 'warn';
     $flash = 'Could not create technician. Please try again.';
 }
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -591,7 +622,7 @@ if (($_GET['added'] ?? '') === 'tech') {
         <header class="page-header">
             <div class="page-title">
                 <h1><i class="ri-group-line"></i> People</h1>
-                <p>Administrators and technicians are system accounts (<code>users</code>). Staff are directory records in <code>staff</code> (no login). Forms for “Add” are UI-only for now.</p>
+                <p>List of technician, staff and users in this system.</p>
             </div>
             <div class="header-actions">
                 <div class="dropdown-container">
@@ -616,29 +647,23 @@ if (($_GET['added'] ?? '') === 'tech') {
             <div class="card-toolbar">
                 <div class="toolbar-title"><i class="ri-table-line"></i> Directory</div>
                 <div class="filter-bar" role="toolbar" aria-label="Filter by role">
-                    <a class="filter-btn <?= $filter === 'all' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('all', 1, $searchQ)) ?>">All <span class="ct"><?= (int)$countAll ?></span></a>
-                    <a class="filter-btn <?= $filter === 'admin' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('admin', 1, $searchQ)) ?>">Administrator <span class="ct"><?= (int)$countAdmin ?></span></a>
-                    <a class="filter-btn <?= $filter === 'technician' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('technician', 1, $searchQ)) ?>">Technician <span class="ct"><?= (int)$countTech ?></span></a>
+                    <a class="filter-btn <?= $filter === 'it' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('it', 1, $searchQ)) ?>">Admin & Technician <span class="ct"><?= (int)$countIt ?></span></a>
                     <a class="filter-btn <?= $filter === 'staff' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('staff', 1, $searchQ)) ?>">Staff <span class="ct"><?= (int)$countStaff ?></span></a>
+                    <a class="filter-btn <?= $filter === 'nextcheck' ? 'active' : '' ?>" href="<?= htmlspecialchars(users_page_url('nextcheck', 1, $searchQ)) ?>">Users<span class="ct"><?= (int)$countNextcheck ?></span></a>
                 </div>
                 <form class="people-search" method="get" action="" role="search">
-                    <?php if ($filter !== 'all'): ?>
+                    <?php if ($filter !== 'it'): ?>
                         <input type="hidden" name="filter" value="<?= htmlspecialchars($filter) ?>">
                     <?php endif; ?>
                     <div class="people-search__input-wrap">
                         <i class="ri-search-2-line people-search__icon" aria-hidden="true"></i>
-                        <input class="people-search__input" type="search" name="q" value="<?= htmlspecialchars($searchQ) ?>" placeholder="Search name, email, id…" autocomplete="off" enterkeyhint="search">
+                        <input class="people-search__input" type="search" name="q" value="<?= htmlspecialchars($searchQ) ?>" placeholder="Search name, email, or ID…" aria-label="Search name, email, or ID" autocomplete="off" enterkeyhint="search">
                     </div>
                     <button class="btn btn-primary people-search__submit" type="submit"><i class="ri-search-line" aria-hidden="true"></i> Search</button>
                     <a class="btn btn-outline people-search__reset" href="<?= htmlspecialchars(users_page_url($filter, 1, null)) ?>"><i class="ri-close-line" aria-hidden="true"></i> Reset</a>
                 </form>
                 <div class="table-meta">
-                    <?php if ($totalFiltered > 0): ?>
-                        Showing <strong><?= (int)$showFrom ?></strong>–<strong><?= (int)$showTo ?></strong> of <strong><?= (int)$totalFiltered ?></strong><br>
-                        Page <strong><?= (int)$page ?></strong> of <strong><?= (int)$totalPages ?></strong> · <?= (int)$perPage ?> per page
-                    <?php else: ?>
-                        No rows in this view
-                    <?php endif; ?>
+                    Total: <strong><?= (int)$totalFiltered ?></strong>
                 </div>
             </div>
             <div class="table-responsive">
@@ -659,8 +684,9 @@ if (($_GET['added'] ?? '') === 'tech') {
                             $kind = $p['kind'] ?? '';
                             $roleDisp = $kind === 'admin' ? 'Administrator'
                                 : ($kind === 'technician' ? 'Technician'
-                                : ($kind === 'staff' ? 'Staff' : '—'));
-                            $canEdit = ($kind === 'admin' || $kind === 'technician') && ($p['staff_id'] ?? '') !== '';
+                                : ($kind === 'nextcheck' ? 'NextCheck'
+                                : ($kind === 'staff' ? 'Staff' : '—')));
+                            $canEdit = ($kind === 'admin' || $kind === 'technician' || $kind === 'nextcheck') && ($p['staff_id'] ?? '') !== '';
                         ?>
                             <tr>
                                 <td><div class="cell-main"><?= htmlspecialchars($p['full_name']) ?></div></td>

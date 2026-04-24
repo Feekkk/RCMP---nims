@@ -10,6 +10,8 @@ require_once __DIR__ . '/../config/database.php';
 $pdo = db();
 $dbError = '';
 $chartJsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_UNICODE;
+$adminName = trim((string)($_SESSION['user_name'] ?? ''));
+$adminName = $adminName !== '' ? $adminName : trim((string)($_SESSION['staff_id'] ?? 'Admin'));
 
 try {
     $counts = [
@@ -239,16 +241,43 @@ try {
         }
         .page-title h1 i { color: var(--primary); }
         .page-title p { color: var(--text-muted); margin-top: 0.35rem; }
-        .badge-pill {
-            display: inline-flex; align-items: center; gap: 0.45rem;
-            padding: 0.5rem 0.9rem;
-            border-radius: 999px;
-            font-weight: 800;
-            font-size: 0.85rem;
-            color: var(--primary);
-            background: rgba(37,99,235,0.08);
-            border: 1px solid rgba(37,99,235,0.18);
+        .dash-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+            padding: 0.75rem 1.25rem;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 18px;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 12px rgba(15,23,42,0.04);
         }
+        .dash-topbar img { height: 42px; width: auto; object-fit: contain; }
+        .dash-topbar .brand-mid {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            letter-spacing: 0.02em;
+        }
+
+        .greeting-block {
+            background: linear-gradient(135deg, rgba(37,99,235,0.12), rgba(124,58,237,0.08));
+            border: 1px solid rgba(37,99,235,0.2);
+            border-radius: 18px;
+            padding: 1.35rem 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .greeting-block h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.65rem;
+            font-weight: 800;
+            color: var(--text-main);
+        }
+        .greeting-block h1 span { color: var(--primary); }
+        .greeting-block p { margin-top: 0.35rem; font-size: 0.9rem; color: var(--text-muted); max-width: 48rem; line-height: 1.5; }
 
         .alert-db {
             background: rgba(239, 68, 68, 0.1);
@@ -379,20 +408,22 @@ try {
     <?php include __DIR__ . '/../components/sidebarAdmin.php'; ?>
 
     <main class="main-content">
+        <header class="dash-topbar" aria-label="Institution header">
+            <span class="brand-mid">Nexcheck Inventory Management System · Admin</span>
+            <img src="../public/unikl-official.png" alt="UniKL">
+        </header>
+
+        <section class="greeting-block">
+            <h1>Hello, <span><?= htmlspecialchars($adminName, ENT_QUOTES, 'UTF-8') ?></span></h1>
+            <p>Overview of users, assets, NexCheck requests, and recent activity across NIMS.</p>
+        </section>
+
         <?php if ($dbError): ?>
             <div class="alert-db" role="alert">
                 <i class="ri-error-warning-line"></i>
                 Could not load dashboard data. <?= htmlspecialchars($dbError) ?>
             </div>
         <?php endif; ?>
-
-        <header class="page-header">
-            <div class="page-title">
-                <h1><i class="ri-shield-user-line"></i> Admin Dashboard</h1>
-                <p>Overview of users and inventory across NIMS.</p>
-            </div>
-            <div class="badge-pill"><i class="ri-user-3-line"></i> <?= htmlspecialchars($_SESSION['staff_id']) ?></div>
-        </header>
 
         <section class="stats-grid" aria-label="Admin overview stats">
             <div class="stat-card">
